@@ -1,0 +1,109 @@
+{
+  "projection_default": "orthographic along +X onto YZ",
+  "samples": {
+    "box_1x2x3": {
+      "description": "Closed 1 x 2 x 3 rectangular box.",
+      "expected": {
+        "is_watertight": true,
+        "projected_area_x": 6.0,
+        "projected_area_y": 3.0,
+        "projected_area_z": 2.0,
+        "surface_area": 22.0,
+        "volume": 6.0
+      },
+      "files": {
+        "ascii_stl": "samples/box_1x2x3/box_1x2x3_ascii.stl",
+        "binary_stl": "samples/box_1x2x3/box_1x2x3_binary.stl",
+        "step": "samples/box_1x2x3/box_1x2x3.step"
+      }
+    },
+    "cylinder_x_r1_l2": {
+      "description": "Closed cylinder with radius 1 and length 2 along X.",
+      "expected": {
+        "is_watertight": true,
+        "projected_area_x": 3.141592653589793,
+        "projected_area_y": 4.0,
+        "projected_area_z": 4.0,
+        "surface_area": 18.84955592153876,
+        "volume": 6.283185307179586
+      },
+      "files": {
+        "ascii_stl": "samples/cylinder_x_r1_l2/cylinder_x_r1_l2_ascii.stl",
+        "binary_stl": "samples/cylinder_x_r1_l2/cylinder_x_r1_l2_binary.stl",
+        "step": "samples/cylinder_x_r1_l2/cylinder_x_r1_l2.step"
+      }
+    },
+    "frame_with_hole": {
+      "description": "3 x 3 x 0.1 rectangular frame with a centered 1 x 1 through-hole.",
+      "expected": {
+        "is_watertight": true,
+        "projected_area_x": 0.3,
+        "projected_area_z": 8.0,
+        "surface_area": 17.6,
+        "volume": 0.8
+      },
+      "files": {
+        "ascii_stl": "samples/frame_with_hole/frame_with_hole_ascii.stl",
+        "binary_stl": "samples/frame_with_hole/frame_with_hole_binary.stl",
+        "step": "samples/frame_with_hole/frame_with_hole.step"
+      }
+    },
+    "open_cube_missing_face": {
+      "description": "1 x 1 x 1 cube STL with the +Z face removed.",
+      "expected": {
+        "is_watertight": false,
+        "projected_area_x": 1.0,
+        "surface_area": 5.0,
+        "volume": null
+      },
+      "files": {
+        "ascii_stl": "samples/open_cube_missing_face/open_cube_missing_face_ascii.stl",
+        "binary_stl": "samples/open_cube_missing_face/open_cube_missing_face_binary.stl",
+        "step": null
+      }
+    },
+    "sphere_r1": {
+      "description": "Closed sphere with radius 1.",
+      "expected": {
+        "is_watertight": true,
+        "projected_area_x": 3.141592653589793,
+        "surface_area": 12.566370614359172,
+        "volume": 4.1887902047863905
+      },
+      "files": {
+        "ascii_stl": "samples/sphere_r1/sphere_r1_ascii.stl",
+        "binary_stl": "samples/sphere_r1/sphere_r1_binary.stl",
+        "step": "samples/sphere_r1/sphere_r1.step"
+      }
+    },
+    "two_boxes_overlap_projection": {
+      "description": "Two separate unit cubes offset along X so their +X projections overlap.",
+      "expected": {
+        "is_watertight": true,
+        "projected_area_x": 1.0,
+        "surface_area": 12.0,
+        "volume": 2.0
+      },
+      "files": {
+        "ascii_stl": "samples/two_boxes_overlap_projection/two_boxes_overlap_projection_ascii.stl",
+        "binary_stl": "samples/two_boxes_overlap_projection/two_boxes_overlap_projection_binary.stl",
+        "step": "samples/two_boxes_overlap_projection/two_boxes_overlap_projection.step"
+      }
+    },
+    "unit_cube": {
+      "description": "Closed 1 x 1 x 1 cube.",
+      "expected": {
+        "is_watertight": true,
+        "projected_area_x": 1.0,
+        "surface_area": 6.0,
+        "volume": 1.0
+      },
+      "files": {
+        "ascii_stl": "samples/unit_cube/unit_cube_ascii.stl",
+        "binary_stl": "samples/unit_cube/unit_cube_binary.stl",
+        "step": "samples/unit_cube/unit_cube.step"
+      }
+    }
+  },
+  "unit": "m"
+}

@@ -1,0 +1,59 @@
+[project]
+name = "cadmetrics"
+version = "0.1.0"
+description = "CLI and Python API for CAD volume, surface area, and projected area metrics."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+authors = [
+  { name = "cadmetrics contributors" },
+]
+dependencies = [
+  "numpy>=2.0",
+  "rich>=13.7",
+  "shapely>=2.0",
+  "trimesh>=4.4",
+  "typer>=0.12",
+]
+
+[project.optional-dependencies]
+step = [
+  "cadquery-ocp>=7.8",
+]
+gui-pyside = [
+  "PySide6>=6.7",
+  "pyvista>=0.44",
+  "pyvistaqt>=0.11",
+]
+gui-streamlit = [
+  "pyvista>=0.44",
+  "streamlit>=1.38",
+]
+all = [
+  "cadquery-ocp>=7.8",
+  "PySide6>=6.7",
+  "pyvista>=0.44",
+  "pyvistaqt>=0.11",
+  "streamlit>=1.38",
+]
+
+[project.scripts]
+cadmetrics = "cadmetrics.cli:app"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

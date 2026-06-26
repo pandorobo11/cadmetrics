@@ -1,0 +1,64 @@
+# cadmetrics
+
+`cadmetrics` calculates volume, surface area, and projected area for STL and STEP files.
+The first milestone is a CLI and Python API suitable for aerodynamic projected-area checks.
+
+## Scope
+
+- Input: STL ASCII/Binary and STEP (`.step`, `.stp`)
+- Output: CSV
+- Default coordinate convention: X aft, Y right, Z up
+- Euler convention for attitude sweeps: roll -> angle of attack -> sideslip
+- Projected area definition: orthographic 2D outline area with overlaps removed
+- Default length unit: m
+
+STEP support is provided through the optional `step` extra because it pulls in a CAD kernel.
+
+## Install
+
+```bash
+uv sync --extra step
+```
+
+For STL-only usage:
+
+```bash
+uv sync
+```
+
+## CLI
+
+```bash
+cadmetrics measure model.step --unit m --out result.csv
+cadmetrics project model.stl --alpha 10 --beta 0 --roll 0 --out projected.csv
+cadmetrics project model.stl --direction 1,0,0 --out projected.csv
+cadmetrics sweep model.step --alpha -10:20:1 --beta -5:5:1 --roll 0 --out sweep.csv
+cadmetrics inspect model.step
+```
+
+`--unit` describes the input model length unit. `--output-unit` controls output values.
+For example, `--unit mm --output-unit m` reads coordinates as millimeters and reports m2/m3.
+
+## Samples
+
+Validation fixtures live in `samples/`. They include cube, rectangular box, sphere, cylinder,
+overlapping projected boxes, open STL, and a frame with a through-hole. See
+[docs/samples.md](docs/samples.md) for the full list and expected values. Fusion 360 comparison
+notes are kept in [docs/fusion_validation.md](docs/fusion_validation.md).
+
+## Python API
+
+```python
+from cadmetrics import measure, project, sweep
+
+metrics = measure("model.stl")
+single = project("model.stl", alpha_deg=10)
+rows = sweep("model.stl", alpha="-10:20:1", beta="-5:5:1", roll="0")
+```
+
+## Accuracy Notes
+
+STL measurements are mesh-based. STEP volume and surface area use the OCP/OpenCascade CAD
+kernel when the `step` extra is installed; projected area is computed from a tessellated mesh
+so the result depends on `--mesh-deflection`. The target validation tolerance is 0.1% against
+Fusion 360 for representative closed solids.
