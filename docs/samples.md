@@ -18,6 +18,10 @@ Most samples include:
 `open_cube_missing_face` intentionally has no STEP file because it is a non-watertight STL
 fixture for warning behavior.
 
+STEP files declare millimeter units. Analytic STEP samples are generated at 1000x their
+meter dimensions so `cadmetrics` with default `--unit auto --output-unit m` reports the same
+meter-based expected values as the STL fixtures.
+
 ## Shapes
 
 | name | purpose | key expected values |

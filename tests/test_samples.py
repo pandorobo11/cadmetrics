@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -76,3 +76,25 @@ def test_open_cube_sample_warns_about_non_watertight_mesh(kind: str) -> None:
     assert measured.surface_area == pytest.approx(5.0)
     assert measured.is_watertight is False
     assert measured.warnings
+
+
+def test_satellite_step_matches_fusion_validation_values() -> None:
+    if not HAS_OCP:
+        pytest.skip("STEP sample checks require cadmetrics[step]")
+
+    sample = SAMPLES["satellite"]
+    path = ROOT / sample["files"]["step"]
+    expected = sample["expected"]
+
+    measured = measure(path)
+    projected_x = project(path)
+    projected_alpha_60 = project(path, alpha_deg=60, output_unit="mm")
+
+    assert measured.input_unit == "mm"
+    assert measured.volume == pytest.approx(expected["volume"])
+    assert measured.surface_area == pytest.approx(expected["surface_area"])
+    assert projected_x.projected_area == pytest.approx(expected["projected_area_x"])
+    assert projected_alpha_60.projected_area == pytest.approx(
+        expected["projected_area_alpha_60"] * 1_000_000
+    )
+    assert measured.is_watertight is True

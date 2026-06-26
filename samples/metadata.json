@@ -62,6 +62,21 @@
         "step": null
       }
     },
+    "satellite": {
+      "description": "Manual Fusion 360 validation model.",
+      "expected": {
+        "is_watertight": true,
+        "projected_area_alpha_60": 3.1799412015662094,
+        "projected_area_x": 0.7852367025156864,
+        "surface_area": 11.680313693153769,
+        "volume": 2.561328923008496
+      },
+      "files": {
+        "ascii_stl": null,
+        "binary_stl": null,
+        "step": "samples/satellite/satellite.step"
+      }
+    },
     "sphere_r1": {
       "description": "Closed sphere with radius 1.",
       "expected": {

@@ -49,6 +49,12 @@ def rotation_matrix(orientation: Orientation) -> FloatArray:
     return rz @ ry @ rx
 
 
+def projection_direction_for_orientation(orientation: Orientation) -> FloatArray:
+    """Return the model-space projection direction for the attitude convention."""
+
+    return normalize_vector(rotation_matrix(orientation).T @ np.array([1.0, 0.0, 0.0], dtype=float))
+
+
 def parse_vector(value: str) -> FloatArray:
     parts = [part.strip() for part in value.split(",")]
     if len(parts) != 3:

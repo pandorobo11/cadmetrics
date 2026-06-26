@@ -13,7 +13,7 @@ from cadmetrics.api import measure, project
 
 def test_generated_step_box_measurements(tmp_path: Path) -> None:
     step_path = tmp_path / "box.step"
-    shape = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+    shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()
     writer = STEPControl_Writer()
     writer.Transfer(shape, STEPControl_AsIs)
     assert writer.Write(str(step_path)) == IFSelect_RetDone
@@ -25,3 +25,4 @@ def test_generated_step_box_measurements(tmp_path: Path) -> None:
 
     projected = project(step_path)
     assert projected.projected_area == pytest.approx(6.0)
+    assert projected.input_unit == "mm"

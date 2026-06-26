@@ -16,6 +16,7 @@ class ModelData:
     """Loaded geometry in output units."""
 
     path: Path
+    source_format: str
     vertices: FloatArray
     faces: IntArray
     input_unit: str
@@ -46,6 +47,13 @@ class MeasurementRow:
     surface_area: float | None
     projected_area: float | None
     is_watertight: bool | None
+    direction_x: float | None = None
+    direction_y: float | None = None
+    direction_z: float | None = None
+    mesh_deflection: float | None = None
+    angular_deflection: float | None = None
+    method: str | None = None
+    elapsed_sec: float | None = None
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     def to_csv_row(self) -> dict[str, str | float | bool | None]:
@@ -56,9 +64,16 @@ class MeasurementRow:
             "roll_deg": self.roll_deg,
             "alpha_deg": self.alpha_deg,
             "beta_deg": self.beta_deg,
+            "direction_x": self.direction_x,
+            "direction_y": self.direction_y,
+            "direction_z": self.direction_z,
             "volume": self.volume,
             "surface_area": self.surface_area,
             "projected_area": self.projected_area,
             "is_watertight": self.is_watertight,
+            "mesh_deflection": self.mesh_deflection,
+            "angular_deflection": self.angular_deflection,
+            "method": self.method,
+            "elapsed_sec": self.elapsed_sec,
             "warnings": "; ".join(self.warnings),
         }

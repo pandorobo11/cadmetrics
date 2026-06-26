@@ -15,7 +15,7 @@ STL_SUFFIXES = {".stl"}
 def load_model(
     path: str | Path,
     *,
-    input_unit: str = "m",
+    input_unit: str = "auto",
     output_unit: str = "m",
     mesh_deflection: float = 1.0e-3,
     angular_deflection: float = 0.1,
@@ -51,19 +51,21 @@ def _load_stl(path: Path, *, input_unit: str, output_unit: str) -> ModelData:
     mesh = mesh.copy()
     mesh.merge_vertices()
 
-    scale = length_scale(input_unit, output_unit)
+    resolved_input_unit = "m" if input_unit.strip().lower() == "auto" else input_unit
+    scale = length_scale(resolved_input_unit, output_unit)
     warnings: list[str] = []
     is_watertight = bool(mesh.is_watertight)
     if not is_watertight:
         warnings.append("Mesh is not watertight; volume may be unreliable.")
 
-    volume = abs(float(mesh.volume)) * volume_scale(input_unit, output_unit)
-    surface_area = float(mesh.area) * area_scale(input_unit, output_unit)
+    volume = abs(float(mesh.volume)) * volume_scale(resolved_input_unit, output_unit)
+    surface_area = float(mesh.area) * area_scale(resolved_input_unit, output_unit)
     return ModelData(
         path=path,
+        source_format="stl",
         vertices=np.asarray(mesh.vertices, dtype=float) * scale,
         faces=np.asarray(mesh.faces, dtype=np.int64),
-        input_unit=normalize_unit(input_unit),
+        input_unit=normalize_unit(resolved_input_unit),
         output_unit=normalize_unit(output_unit),
         volume=volume,
         surface_area=surface_area,
@@ -87,6 +89,7 @@ def _load_step(
         from OCP.GProp import GProp_GProps
         from OCP.IFSelect import IFSelect_RetDone
         from OCP.STEPControl import STEPControl_Reader
+        from OCP.TColStd import TColStd_SequenceOfAsciiString
         from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
@@ -103,7 +106,18 @@ def _load_step(
         raise ValueError(f"STEP file did not contain transferable roots: {path}")
 
     shape = reader.OneShape()
-    scale = length_scale(input_unit, output_unit)
+    warnings: list[str] = []
+    resolved_input_unit = input_unit
+    if input_unit.strip().lower() == "auto":
+        resolved_input_unit = _detect_step_length_unit(
+            reader,
+            TColStd_SequenceOfAsciiString=TColStd_SequenceOfAsciiString,
+        )
+        if resolved_input_unit is None:
+            resolved_input_unit = "m"
+            warnings.append("Could not detect STEP length unit; assuming m.")
+
+    scale = length_scale(resolved_input_unit, output_unit)
     native_mesh_deflection = mesh_deflection / scale if scale != 0.0 else mesh_deflection
 
     volume = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "VolumeProperties")
@@ -120,17 +134,19 @@ def _load_step(
         TopoDS=TopoDS,
     )
 
-    warnings: list[str] = []
     if volume is None:
         warnings.append("Could not calculate exact STEP volume.")
     if surface_area is None:
         warnings.append("Could not calculate exact STEP surface area.")
 
-    scaled_volume = abs(volume) * volume_scale(input_unit, output_unit) if volume is not None else None
-    scaled_surface_area = (
-        surface_area * area_scale(input_unit, output_unit) if surface_area is not None else None
+    scaled_volume = (
+        abs(volume) * volume_scale(resolved_input_unit, output_unit) if volume is not None else None
     )
-
+    scaled_surface_area = (
+        surface_area * area_scale(resolved_input_unit, output_unit)
+        if surface_area is not None
+        else None
+    )
     is_watertight = None
     if scaled_volume is not None:
         is_watertight = scaled_volume > 0.0
@@ -139,9 +155,10 @@ def _load_step(
 
     return ModelData(
         path=path,
+        source_format="step",
         vertices=vertices * scale,
         faces=faces,
-        input_unit=normalize_unit(input_unit),
+        input_unit=normalize_unit(resolved_input_unit),
         output_unit=normalize_unit(output_unit),
         volume=scaled_volume,
         surface_area=scaled_surface_area,
@@ -203,3 +220,47 @@ def _tessellate_ocp_shape(
         explorer.Next()
 
     return np.asarray(rows, dtype=float), np.asarray(faces, dtype=np.int64)
+
+
+def _detect_step_length_unit(
+    reader: Any,
+    *,
+    TColStd_SequenceOfAsciiString: Any,
+) -> str | None:
+    lengths = TColStd_SequenceOfAsciiString()
+    angles = TColStd_SequenceOfAsciiString()
+    solid_angles = TColStd_SequenceOfAsciiString()
+    try:
+        reader.FileUnits(lengths, angles, solid_angles)
+    except Exception:
+        return None
+
+    units = [
+        lengths.Value(index).ToCString().strip().lower()
+        for index in range(1, lengths.Length() + 1)
+    ]
+    if not units:
+        return None
+
+    return _step_unit_name_to_length_unit(units[0])
+
+
+def _step_unit_name_to_length_unit(unit_name: str) -> str | None:
+    normalized = unit_name.replace("_", " ").replace("-", " ").strip().lower()
+    mapping = {
+        "metre": "m",
+        "meter": "m",
+        "m": "m",
+        "millimetre": "mm",
+        "millimeter": "mm",
+        "mm": "mm",
+        "centimetre": "cm",
+        "centimeter": "cm",
+        "cm": "cm",
+        "inch": "in",
+        "in": "in",
+        "foot": "ft",
+        "feet": "ft",
+        "ft": "ft",
+    }
+    return mapping.get(normalized)

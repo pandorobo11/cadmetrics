@@ -16,9 +16,12 @@ def projected_area(
 
     try:
         from shapely.geometry import Polygon
-        from shapely.ops import unary_union
     except ImportError as exc:
         raise RuntimeError("Projected area calculation requires the 'shapely' dependency.") from exc
+    try:
+        from shapely import union_all
+    except ImportError:
+        from shapely.ops import unary_union as union_all
 
     if model.face_count == 0:
         return 0.0
@@ -48,7 +51,7 @@ def projected_area(
     if not polygons:
         return 0.0
 
-    return float(unary_union(polygons).area)
+    return float(union_all(polygons).area)
 
 
 def projection_basis(direction: FloatArray) -> tuple[FloatArray, FloatArray]:

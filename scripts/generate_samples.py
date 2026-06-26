@@ -21,6 +21,7 @@ from trimesh.transformations import rotation_matrix
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = ROOT / "samples"
+STEP_MM_PER_M = 1000.0
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,8 @@ def main() -> None:
             "files": files,
         }
 
+    add_satellite_metadata(metadata)
+
     (SAMPLES_DIR / "metadata.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -82,7 +85,7 @@ def sample_specs() -> list[SampleSpec]:
                 "is_watertight": True,
             },
             stl_factory=lambda: box_mesh((1.0, 1.0, 1.0)),
-            step_factory=lambda: make_box_shape(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+            step_factory=lambda: make_box_shape_m(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
         ),
         SampleSpec(
             name="box_1x2x3",
@@ -96,7 +99,7 @@ def sample_specs() -> list[SampleSpec]:
                 "is_watertight": True,
             },
             stl_factory=lambda: box_mesh((1.0, 2.0, 3.0)),
-            step_factory=lambda: make_box_shape(0.0, 0.0, 0.0, 1.0, 2.0, 3.0),
+            step_factory=lambda: make_box_shape_m(0.0, 0.0, 0.0, 1.0, 2.0, 3.0),
         ),
         SampleSpec(
             name="sphere_r1",
@@ -108,7 +111,10 @@ def sample_specs() -> list[SampleSpec]:
                 "is_watertight": True,
             },
             stl_factory=lambda: trimesh.creation.icosphere(subdivisions=4, radius=1.0),
-            step_factory=lambda: BRepPrimAPI_MakeSphere(gp_Pnt(0.0, 0.0, 0.0), 1.0).Shape(),
+            step_factory=lambda: BRepPrimAPI_MakeSphere(
+                gp_Pnt(0.0, 0.0, 0.0),
+                1.0 * STEP_MM_PER_M,
+            ).Shape(),
         ),
         SampleSpec(
             name="cylinder_x_r1_l2",
@@ -124,8 +130,8 @@ def sample_specs() -> list[SampleSpec]:
             stl_factory=cylinder_x_mesh,
             step_factory=lambda: BRepPrimAPI_MakeCylinder(
                 gp_Ax2(gp_Pnt(0.0, 0.0, 0.0), gp_Dir(1.0, 0.0, 0.0)),
-                1.0,
-                2.0,
+                1.0 * STEP_MM_PER_M,
+                2.0 * STEP_MM_PER_M,
             ).Shape(),
         ),
         SampleSpec(
@@ -185,6 +191,11 @@ def make_box_shape(x: float, y: float, z: float, dx: float, dy: float, dz: float
     return BRepPrimAPI_MakeBox(gp_Pnt(x, y, z), dx, dy, dz).Shape()
 
 
+def make_box_shape_m(x: float, y: float, z: float, dx: float, dy: float, dz: float) -> object:
+    scale = STEP_MM_PER_M
+    return make_box_shape(x * scale, y * scale, z * scale, dx * scale, dy * scale, dz * scale)
+
+
 def box_mesh(extents: tuple[float, float, float]) -> trimesh.Trimesh:
     return trimesh.creation.box(extents=extents)
 
@@ -207,8 +218,8 @@ def two_boxes_overlap_shape() -> object:
     compound = TopoDS_Compound()
     builder = BRep_Builder()
     builder.MakeCompound(compound)
-    builder.Add(compound, make_box_shape(-1.5, -0.5, -0.5, 1.0, 1.0, 1.0))
-    builder.Add(compound, make_box_shape(0.5, -0.5, -0.5, 1.0, 1.0, 1.0))
+    builder.Add(compound, make_box_shape_m(-1.5, -0.5, -0.5, 1.0, 1.0, 1.0))
+    builder.Add(compound, make_box_shape_m(0.5, -0.5, -0.5, 1.0, 1.0, 1.0))
     return compound
 
 
@@ -219,8 +230,8 @@ def open_cube_mesh() -> trimesh.Trimesh:
 
 
 def frame_with_hole_shape() -> object:
-    outer = make_box_shape(-1.5, -1.5, -0.05, 3.0, 3.0, 0.1)
-    cutter = make_box_shape(-0.5, -0.5, -0.15, 1.0, 1.0, 0.3)
+    outer = make_box_shape_m(-1.5, -1.5, -0.05, 3.0, 3.0, 0.1)
+    cutter = make_box_shape_m(-0.5, -0.5, -0.15, 1.0, 1.0, 0.3)
     cut = BRepAlgoAPI_Cut(outer, cutter)
     cut.Build()
     if not cut.IsDone():
@@ -274,6 +285,28 @@ def frame_with_hole_mesh() -> trimesh.Trimesh:
     mesh = trimesh.Trimesh(vertices=np.asarray(vertices), faces=np.asarray(faces), process=False)
     mesh.merge_vertices()
     return mesh
+
+
+def add_satellite_metadata(metadata: dict[str, object]) -> None:
+    satellite_path = SAMPLES_DIR / "satellite" / "satellite.step"
+    if not satellite_path.exists():
+        return
+
+    metadata["samples"]["satellite"] = {
+        "description": "Manual Fusion 360 validation model.",
+        "expected": {
+            "volume": 2.561328923008496,
+            "surface_area": 11.680313693153769,
+            "projected_area_x": 0.7852367025156864,
+            "projected_area_alpha_60": 3.1799412015662096,
+            "is_watertight": True,
+        },
+        "files": {
+            "ascii_stl": None,
+            "binary_stl": None,
+            "step": str(satellite_path.relative_to(ROOT)),
+        },
+    }
 
 
 if __name__ == "__main__":

@@ -50,6 +50,9 @@ from STL and STEP files.
 - CLI accepts single angle values or inclusive `start:end:step` ranges
 - Sweep calculates every combination of roll, alpha, and beta
 - Vector direction can be specified directly for single projected-area calculations
+- `alpha`, `beta`, and `roll` describe the projection direction attitude. A Fusion 360 sketch
+  or measurement plane angle can be complementary because the projection direction is normal
+  to that plane.
 
 ## CLI Shape
 
@@ -61,6 +64,8 @@ cadmetrics sweep model.step --alpha -10:20:1 --beta -5:5:1 --roll 0 --out sweep.
 cadmetrics inspect model.step
 ```
 
+Default `--unit` is `auto`: STEP units are read from the file, and STL is assumed to be meters.
+
 ## CSV Columns
 
 - `file`
@@ -69,10 +74,17 @@ cadmetrics inspect model.step
 - `roll_deg`
 - `alpha_deg`
 - `beta_deg`
+- `direction_x`
+- `direction_y`
+- `direction_z`
 - `volume`
 - `surface_area`
 - `projected_area`
 - `is_watertight`
+- `mesh_deflection`
+- `angular_deflection`
+- `method`
+- `elapsed_sec`
 - `warnings`
 
 ## Accuracy Target

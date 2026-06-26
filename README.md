@@ -9,8 +9,11 @@ The first milestone is a CLI and Python API suitable for aerodynamic projected-a
 - Output: CSV
 - Default coordinate convention: X aft, Y right, Z up
 - Euler convention for attitude sweeps: roll -> angle of attack -> sideslip
+- `alpha`, `beta`, and `roll` describe the projection direction attitude, not the
+  inclination angle of a sketch or measurement plane
 - Projected area definition: orthographic 2D outline area with overlaps removed
 - Default length unit: m
+- STEP input length units are detected automatically by default; STL defaults to m
 
 STEP support is provided through the optional `step` extra because it pulls in a CAD kernel.
 
@@ -36,8 +39,13 @@ cadmetrics sweep model.step --alpha -10:20:1 --beta -5:5:1 --roll 0 --out sweep.
 cadmetrics inspect model.step
 ```
 
-`--unit` describes the input model length unit. `--output-unit` controls output values.
+`--unit` describes the input model length unit. Its default is `auto`: STEP units are read
+from the file and STL is assumed to be meters. `--output-unit` controls output values.
 For example, `--unit mm --output-unit m` reads coordinates as millimeters and reports m2/m3.
+
+For Fusion 360 checks, be careful with plane angles: a measurement plane inclined by `30 deg`
+has a normal direction that may correspond to `--alpha 60`, depending on the construction.
+Use `--direction x,y,z` when you want to avoid that ambiguity.
 
 ## Samples
 
@@ -62,3 +70,6 @@ STL measurements are mesh-based. STEP volume and surface area use the OCP/OpenCa
 kernel when the `step` extra is installed; projected area is computed from a tessellated mesh
 so the result depends on `--mesh-deflection`. The target validation tolerance is 0.1% against
 Fusion 360 for representative closed solids.
+
+Sweep CSV output includes the effective projection direction vector, tessellation settings,
+calculation method, and elapsed seconds for each row.

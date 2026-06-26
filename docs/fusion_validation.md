@@ -20,7 +20,7 @@ Fusion 360 displayed rounded physical properties in millimeter units:
 cadmetrics command:
 
 ```bash
-uv run cadmetrics measure samples/satellite/satellite.step --unit mm --output-unit mm
+uv run cadmetrics measure samples/satellite/satellite.step --output-unit mm
 ```
 
 ### Projected Area
@@ -39,9 +39,9 @@ direction is normal to the plane, so the angle is complementary in this setup.
 cadmetrics commands:
 
 ```bash
-uv run cadmetrics project samples/satellite/satellite.step --unit mm --output-unit mm --alpha 30
-uv run cadmetrics project samples/satellite/satellite.step --unit mm --output-unit mm --alpha 60
-uv run cadmetrics project samples/satellite/satellite.step --unit mm --output-unit mm --direction 0.5,0,0.8660254
+uv run cadmetrics project samples/satellite/satellite.step --output-unit mm --alpha 30
+uv run cadmetrics project samples/satellite/satellite.step --output-unit mm --alpha 60
+uv run cadmetrics project samples/satellite/satellite.step --output-unit mm --direction 0.5,0,0.8660254
 ```
 
 Results:
