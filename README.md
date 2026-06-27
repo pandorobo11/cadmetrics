@@ -29,6 +29,13 @@ For STL-only usage:
 uv sync
 ```
 
+For the PySide6 desktop GUI:
+
+```bash
+uv sync --extra gui-pyside
+cadmetrics-gui
+```
+
 ## CLI
 
 ```bash
@@ -73,3 +80,12 @@ Fusion 360 for representative closed solids.
 
 Sweep CSV output includes the effective projection direction vector, tessellation settings,
 calculation method, and elapsed seconds for each row.
+
+## GUI
+
+The optional PySide6 GUI is a local desktop tool for loading one STL/STEP file, inspecting the
+mesh, running `measure`, `project`, or `sweep`, and saving the result table as CSV. It uses the
+same Python API as the CLI. The 3D view shows model axes and the current projection direction.
+
+The first GUI milestone intentionally keeps multi-model comparison, automated extrema search,
+geometry repair, Excel/HTML reports, and the Streamlit prototype out of scope.

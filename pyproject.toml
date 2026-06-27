@@ -39,6 +39,7 @@ all = [
 
 [project.scripts]
 cadmetrics = "cadmetrics.cli:app"
+cadmetrics-gui = "cadmetrics.gui.pyside_app:main"
 
 [dependency-groups]
 dev = [

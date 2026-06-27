@@ -15,6 +15,7 @@ from STL and STEP files.
 - Manage the project with `uv`
 - Provide a pip-installable Python package named `cadmetrics`
 - Provide a CLI entry point named `cadmetrics`
+- Provide an optional PySide6 GUI entry point named `cadmetrics-gui`
 - Support STL ASCII/Binary and STEP input
 - Calculate volume and surface area
 - Calculate orthographic projected outline area
@@ -66,6 +67,19 @@ cadmetrics inspect model.step
 
 Default `--unit` is `auto`: STEP units are read from the file, and STL is assumed to be meters.
 
+## GUI Shape
+
+The first GUI is a PySide6 desktop application installed through the `gui-pyside` extra:
+
+```bash
+uv sync --extra gui-pyside
+cadmetrics-gui
+```
+
+It supports one loaded model at a time, a PyVista 3D view, unit controls, `measure`, `project`,
+and `sweep` execution, a progress bar, cancellation for sweep jobs, a result table, and CSV
+export. GUI calculations call the same Python API used by the CLI.
+
 ## CSV Columns
 
 - `file`
@@ -95,10 +109,9 @@ Default `--unit` is `auto`: STEP units are read from the file, and STL is assume
 
 ## Deferred
 
-- PySide6 GUI
 - Streamlit prototype GUI
-- 3D model viewer with axes, projection vector, wireframe, screenshots, and multiple model display
+- Multiple model display
+- GUI screenshots/exported view images
 - Excel and HTML report output
 - Automated maximum/minimum projected-area search
-- STEP unit metadata auto-detection
 - Geometry repair
