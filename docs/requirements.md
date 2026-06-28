@@ -76,9 +76,11 @@ uv sync --extra gui-pyside
 cadmetrics-gui
 ```
 
-It supports one loaded model at a time, a PyVista 3D view, unit controls, `measure`, `project`,
-and `sweep` execution, a progress bar, cancellation for sweep jobs, a result table, and CSV
-export. GUI calculations call the same Python API used by the CLI.
+It supports one loaded model at a time, immediate shape display after Browse file selection, a
+PyVista 3D view, unit controls, sweep execution, a progress bar, cancellation for sweep jobs, a
+result table, and CSV export. GUI attitude input can be alpha/beta, roll/pitch, or unit-vector
+components. Angle modes use separate Start, End, and Step fields. Unit-vector mode is a single
+direction without sweep.
 
 ## CSV Columns
 

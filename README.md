@@ -84,8 +84,10 @@ calculation method, and elapsed seconds for each row.
 ## GUI
 
 The optional PySide6 GUI is a local desktop tool for loading one STL/STEP file, inspecting the
-mesh, running `measure`, `project`, or `sweep`, and saving the result table as CSV. It uses the
-same Python API as the CLI. The 3D view shows model axes and the current projection direction.
+mesh, running projected-area sweeps, and saving the result table as CSV. Choosing a file with
+Browse loads and displays the shape immediately. The GUI supports three attitude input modes:
+alpha/beta, roll/pitch, and unit-vector components. Angle modes use separate Start, End, and
+Step fields. Unit vector mode is a single direction without sweep.
 
 The first GUI milestone intentionally keeps multi-model comparison, automated extrema search,
 geometry repair, Excel/HTML reports, and the Streamlit prototype out of scope.

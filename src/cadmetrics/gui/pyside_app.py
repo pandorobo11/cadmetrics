@@ -50,7 +50,7 @@ if QtCore is not None:
     class CalculationWorker(QtCore.QObject):
         finished = QtCore.Signal(list)
         failed = QtCore.Signal(str)
-        progress = QtCore.Signal(int, int, float, float, float)
+        progress = QtCore.Signal(int, int, str)
         cancelled = QtCore.Signal()
 
         def __init__(self, request: CalculationRequest) -> None:
@@ -73,16 +73,10 @@ if QtCore is not None:
         def cancel(self) -> None:
             self._cancel.set()
 
-        def _on_progress(self, index: int, total: int, orientation: Orientation) -> None:
+        def _on_progress(self, index: int, total: int, description: str) -> None:
             if self._cancel.is_set():
                 raise _CancelledCalculation
-            self.progress.emit(
-                index,
-                total,
-                orientation.roll_deg,
-                orientation.alpha_deg,
-                orientation.beta_deg,
-            )
+            self.progress.emit(index, total, description)
 
 else:
     CalculationWorker = object  # type: ignore[misc,assignment]
@@ -161,36 +155,76 @@ if QtWidgets is not None:
             self.angular_deflection.setValue(0.1)
             form.addRow("Angular deflection", self.angular_deflection)
 
-            self.mode = QtWidgets.QComboBox()
-            self.mode.addItems(["measure", "project", "sweep"])
-            self.mode.currentTextChanged.connect(self._sync_mode_controls)
-            form.addRow("Mode", self.mode)
+            self.attitude_mode = QtWidgets.QComboBox()
+            self.attitude_mode.addItem("Alpha / Beta", "alpha_beta")
+            self.attitude_mode.addItem("Roll / Pitch", "roll_pitch")
+            self.attitude_mode.addItem("Unit vector", "vector")
+            self.attitude_mode.currentIndexChanged.connect(self._sync_attitude_controls)
+            self.attitude_mode.currentIndexChanged.connect(self._update_projection_vector)
+            form.addRow("Attitude input", self.attitude_mode)
 
-            self.roll = QtWidgets.QLineEdit("0")
-            self.alpha = QtWidgets.QLineEdit("0")
-            self.beta = QtWidgets.QLineEdit("0")
-            form.addRow("Roll", self.roll)
-            form.addRow("Alpha", self.alpha)
-            form.addRow("Beta", self.beta)
+            self.roll_group, self.roll_start, self.roll_end, self.roll_step = (
+                self._make_sweep_angle_inputs()
+            )
+            self.alpha_group, self.alpha_start, self.alpha_end, self.alpha_step = (
+                self._make_sweep_angle_inputs()
+            )
+            self.beta_group, self.beta_start, self.beta_end, self.beta_step = (
+                self._make_sweep_angle_inputs()
+            )
+            self.pitch_group, self.pitch_start, self.pitch_end, self.pitch_step = (
+                self._make_sweep_angle_inputs()
+            )
+            self.vector_x = self._make_number_input(1.0)
+            self.vector_y = self._make_number_input(0.0)
+            self.vector_z = self._make_number_input(0.0)
 
-            self.direction = QtWidgets.QLineEdit()
-            self.direction.setPlaceholderText("Optional: 1,0,0")
-            form.addRow("Direction", self.direction)
+            self.roll_label = QtWidgets.QLabel("Roll")
+            self.alpha_label = QtWidgets.QLabel("Alpha")
+            self.beta_label = QtWidgets.QLabel("Beta")
+            self.pitch_label = QtWidgets.QLabel("Pitch")
+            self.vector_x_label = QtWidgets.QLabel("Vector X")
+            self.vector_y_label = QtWidgets.QLabel("Vector Y")
+            self.vector_z_label = QtWidgets.QLabel("Vector Z")
+            form.addRow(self.roll_label, self.roll_group)
+            form.addRow(self.alpha_label, self.alpha_group)
+            form.addRow(self.beta_label, self.beta_group)
+            form.addRow(self.pitch_label, self.pitch_group)
+            form.addRow(self.vector_x_label, self.vector_x)
+            form.addRow(self.vector_y_label, self.vector_y)
+            form.addRow(self.vector_z_label, self.vector_z)
+
+            for field in (
+                self.roll_start,
+                self.roll_end,
+                self.roll_step,
+                self.alpha_start,
+                self.alpha_end,
+                self.alpha_step,
+                self.beta_start,
+                self.beta_end,
+                self.beta_step,
+                self.pitch_start,
+                self.pitch_end,
+                self.pitch_step,
+                self.vector_x,
+                self.vector_y,
+                self.vector_z,
+            ):
+                field.valueChanged.connect(self._update_projection_vector)
 
             angle_note = QtWidgets.QLabel(
-                "Angles describe the projection direction. A Fusion plane angle can be complementary."
+                "Angle sweeps use Start / End / Step fields. Unit vector is a single direction. "
+                "Angles describe the projection direction; a Fusion plane angle can be complementary."
             )
             angle_note.setWordWrap(True)
             form.addRow("", angle_note)
 
             button_row = QtWidgets.QHBoxLayout()
-            self.load_button = QtWidgets.QPushButton("Load")
-            self.load_button.clicked.connect(self._load_model)
-            self.run_button = QtWidgets.QPushButton("Run")
+            self.run_button = QtWidgets.QPushButton("Run Sweep")
             self.run_button.clicked.connect(self._start_calculation)
             self.cancel_button = QtWidgets.QPushButton("Cancel")
             self.cancel_button.clicked.connect(self._cancel_calculation)
-            button_row.addWidget(self.load_button)
             button_row.addWidget(self.run_button)
             button_row.addWidget(self.cancel_button)
             form.addRow("", button_row)
@@ -229,7 +263,38 @@ if QtWidgets is not None:
             root.addWidget(controls)
             root.addWidget(right)
             root.setSizes([400, 920])
-            self._sync_mode_controls()
+            self._sync_attitude_controls()
+
+        def _make_sweep_angle_inputs(
+            self,
+        ) -> tuple[
+            QtWidgets.QWidget,
+            QtWidgets.QDoubleSpinBox,
+            QtWidgets.QDoubleSpinBox,
+            QtWidgets.QDoubleSpinBox,
+        ]:
+            group = QtWidgets.QWidget()
+            layout = QtWidgets.QHBoxLayout(group)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(6)
+            start = self._make_number_input(0.0)
+            end = self._make_number_input(0.0)
+            step = self._make_number_input(1.0)
+            layout.addWidget(QtWidgets.QLabel("Start"))
+            layout.addWidget(start)
+            layout.addWidget(QtWidgets.QLabel("End"))
+            layout.addWidget(end)
+            layout.addWidget(QtWidgets.QLabel("Step"))
+            layout.addWidget(step)
+            return group, start, end, step
+
+        def _make_number_input(self, value: float) -> QtWidgets.QDoubleSpinBox:
+            field = QtWidgets.QDoubleSpinBox()
+            field.setRange(-1.0e6, 1.0e6)
+            field.setDecimals(6)
+            field.setSingleStep(1.0)
+            field.setValue(value)
+            return field
 
         def _create_viewer(self) -> QtWidgets.QWidget:
             try:
@@ -258,6 +323,7 @@ if QtWidgets is not None:
             )
             if file_name:
                 self.file_edit.setText(file_name)
+                self._load_model()
 
         def _request(self) -> CalculationRequest:
             path = Path(self.file_edit.text()).expanduser()
@@ -265,18 +331,29 @@ if QtWidgets is not None:
                 raise ValueError(f"File does not exist: {path}")
             return CalculationRequest(
                 file=path,
-                mode=self.mode.currentText(),
+                attitude_mode=self.attitude_mode.currentData(),
                 input_unit=self.input_unit.currentText(),
                 output_unit=self.output_unit.currentText(),
                 mesh_deflection=self.mesh_deflection.value(),
                 angular_deflection=self.angular_deflection.value(),
-                roll=self.roll.text().strip() or "0",
-                alpha=self.alpha.text().strip() or "0",
-                beta=self.beta.text().strip() or "0",
-                direction=self.direction.text().strip() or None,
+                roll_start=self.roll_start.value(),
+                roll_end=self.roll_end.value(),
+                roll_step=self.roll_step.value(),
+                alpha_start=self.alpha_start.value(),
+                alpha_end=self.alpha_end.value(),
+                alpha_step=self.alpha_step.value(),
+                beta_start=self.beta_start.value(),
+                beta_end=self.beta_end.value(),
+                beta_step=self.beta_step.value(),
+                pitch_start=self.pitch_start.value(),
+                pitch_end=self.pitch_end.value(),
+                pitch_step=self.pitch_step.value(),
+                vector_x=self.vector_x.value(),
+                vector_y=self.vector_y.value(),
+                vector_z=self.vector_z.value(),
             )
 
-        def _load_model(self) -> None:
+        def _load_model(self) -> bool:
             try:
                 request = self._request()
                 self._model = inspect_model(
@@ -288,11 +365,12 @@ if QtWidgets is not None:
                 )
             except Exception as exc:
                 self._show_error(str(exc))
-                return
+                return False
             self._show_model_info(self._model)
             self._plot_model(self._model)
             self._update_projection_vector()
             self.status.setText("Model loaded")
+            return True
 
         def _start_calculation(self) -> None:
             try:
@@ -301,11 +379,12 @@ if QtWidgets is not None:
                 self._show_error(str(exc))
                 return
 
-            if self._model is None or self._model.path != request.file:
-                self._load_model()
+            if not self._load_model():
+                return
 
             self._set_running(True)
-            self.progress.setRange(0, 0 if request.mode == "measure" else 1)
+            self.progress.setRange(0, 1)
+            self.progress.setValue(0)
             self.status.setText("Running")
             self._thread = QtCore.QThread(self)
             self._worker = CalculationWorker(request)
@@ -332,13 +411,11 @@ if QtWidgets is not None:
             self,
             index: int,
             total: int,
-            roll: float,
-            alpha: float,
-            beta: float,
+            description: str,
         ) -> None:
             self.progress.setRange(0, total)
             self.progress.setValue(index)
-            self.status.setText(f"Sweep {index}/{total}: roll={roll:g}, alpha={alpha:g}, beta={beta:g}")
+            self.status.setText(f"Sweep {index}/{total}: {description}")
 
         def _on_finished(self, rows: list[MeasurementRow]) -> None:
             self._rows = rows
@@ -393,6 +470,7 @@ if QtWidgets is not None:
             ).ravel()
             mesh = pv.PolyData(model.vertices, faces)
             self._plotter.clear()
+            self._vector_actor = None
             self._plotter.add_axes()
             self._plotter.show_grid()
             self._mesh_actor = self._plotter.add_mesh(
@@ -407,19 +485,31 @@ if QtWidgets is not None:
         def _update_projection_vector(self, row: MeasurementRow | None = None) -> None:
             if self._plotter is None or self._model is None:
                 return
+            if not isinstance(row, MeasurementRow):
+                row = None
             if row is not None and row.direction_x is not None:
                 direction = np.array([row.direction_x, row.direction_y, row.direction_z], dtype=float)
             else:
                 try:
                     request = self._request()
-                    if request.direction:
-                        direction = parse_vector(request.direction)
+                    if request.attitude_mode == "vector":
+                        direction = parse_vector(
+                            f"{request.vector_x},{request.vector_y},{request.vector_z}"
+                        )
+                    elif request.attitude_mode == "roll_pitch":
+                        direction = projection_direction_for_orientation(
+                            Orientation(
+                                roll_deg=request.roll_start,
+                                alpha_deg=request.pitch_start,
+                                beta_deg=0.0,
+                            )
+                        )
                     else:
                         direction = projection_direction_for_orientation(
                             Orientation(
-                                roll_deg=float(request.roll),
-                                alpha_deg=float(request.alpha),
-                                beta_deg=float(request.beta),
+                                roll_deg=0.0,
+                                alpha_deg=request.alpha_start,
+                                beta_deg=request.beta_start,
                             )
                         )
                 except Exception:
@@ -430,7 +520,16 @@ if QtWidgets is not None:
             scale = max(float(spans.max()), 1.0)
             start = center - direction * scale * 0.6
             vector = direction * scale * 1.2
-            self._plotter.add_arrows(start.reshape(1, 3), vector.reshape(1, 3), color="#d04a02")
+            if self._vector_actor is not None:
+                try:
+                    self._plotter.remove_actor(self._vector_actor)
+                except Exception:
+                    pass
+            self._vector_actor = self._plotter.add_arrows(
+                start.reshape(1, 3),
+                vector.reshape(1, 3),
+                color="#d04a02",
+            )
             self._plotter.render()
 
         def _fill_table(self, rows: list[MeasurementRow]) -> None:
@@ -458,20 +557,29 @@ if QtWidgets is not None:
             ]
             self.model_info.setText("\n".join(lines))
 
-        def _sync_mode_controls(self) -> None:
-            mode = self.mode.currentText()
-            sweep_mode = mode == "sweep"
-            project_mode = mode == "project"
-            self.direction.setEnabled(project_mode)
-            self.roll.setPlaceholderText("start:end:step" if sweep_mode else "degrees")
-            self.alpha.setPlaceholderText("start:end:step" if sweep_mode else "degrees")
-            self.beta.setPlaceholderText("start:end:step" if sweep_mode else "degrees")
+        def _sync_attitude_controls(self) -> None:
+            mode = self.attitude_mode.currentData()
+            self._set_row_visible(self.alpha_label, self.alpha_group, mode == "alpha_beta")
+            self._set_row_visible(self.beta_label, self.beta_group, mode == "alpha_beta")
+            self._set_row_visible(self.roll_label, self.roll_group, mode == "roll_pitch")
+            self._set_row_visible(self.pitch_label, self.pitch_group, mode == "roll_pitch")
+            self._set_row_visible(self.vector_x_label, self.vector_x, mode == "vector")
+            self._set_row_visible(self.vector_y_label, self.vector_y, mode == "vector")
+            self._set_row_visible(self.vector_z_label, self.vector_z, mode == "vector")
 
         def _set_running(self, running: bool) -> None:
-            self.load_button.setEnabled(not running)
             self.run_button.setEnabled(not running)
             self.save_button.setEnabled(not running and bool(self._rows))
             self.cancel_button.setEnabled(running)
+
+        def _set_row_visible(
+            self,
+            label: QtWidgets.QLabel,
+            field: QtWidgets.QWidget,
+            visible: bool,
+        ) -> None:
+            label.setVisible(visible)
+            field.setVisible(visible)
 
         def _show_error(self, message: str) -> None:
             self.status.setText(f"Error: {message}")
