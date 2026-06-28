@@ -5,8 +5,11 @@ import importlib
 import tomllib
 from pathlib import Path
 
+import numpy as np
+
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
+from cadmetrics.gui.pyside_app import _projection_arrow_geometry
 from cadmetrics.types import MeasurementRow
 
 
@@ -20,6 +23,26 @@ def test_pyside_gui_module_imports_without_optional_dependencies() -> None:
     module = importlib.import_module("cadmetrics.gui.pyside_app")
 
     assert module.__name__ == "cadmetrics.gui.pyside_app"
+
+
+def test_projection_arrow_stays_outside_model_bounds() -> None:
+    vertices = np.array(
+        [
+            [-1.0, -0.5, -0.5],
+            [-1.0, 0.5, 0.5],
+            [1.0, -0.5, 0.5],
+            [1.0, 0.5, -0.5],
+        ],
+        dtype=float,
+    )
+    direction = np.array([1.0, 0.0, 0.0], dtype=float)
+
+    start, vector = _projection_arrow_geometry(vertices, direction)
+    end = start + vector
+
+    assert start[0] < vertices[:, 0].min()
+    assert end[0] < vertices[:, 0].min()
+    assert vector[0] > 0.0
 
 
 def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:

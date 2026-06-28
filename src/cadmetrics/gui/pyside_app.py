@@ -515,11 +515,7 @@ if QtWidgets is not None:
                 except Exception:
                     direction = np.array([1.0, 0.0, 0.0], dtype=float)
 
-            center = self._model.vertices.mean(axis=0)
-            spans = np.ptp(self._model.vertices, axis=0)
-            scale = max(float(spans.max()), 1.0)
-            start = center - direction * scale * 0.6
-            vector = direction * scale * 1.2
+            start, vector = _projection_arrow_geometry(self._model.vertices, direction)
             if self._vector_actor is not None:
                 try:
                     self._plotter.remove_actor(self._vector_actor)
@@ -595,3 +591,17 @@ def _format_cell(value: object) -> str:
     if isinstance(value, float):
         return f"{value:.12g}"
     return str(value)
+
+
+def _projection_arrow_geometry(vertices: np.ndarray, direction: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    center = vertices.mean(axis=0)
+    unit_direction = direction / np.linalg.norm(direction)
+    spans = np.ptp(vertices, axis=0)
+    scale = max(float(spans.max()), 1.0)
+    arrow_length = scale * 0.35
+    clearance = scale * 0.15
+    projections = (vertices - center) @ unit_direction
+    upstream_edge = float(projections.min())
+    start = center + unit_direction * (upstream_edge - clearance - arrow_length)
+    vector = unit_direction * arrow_length
+    return start, vector
