@@ -79,8 +79,19 @@ if QtCore is not None:
                 raise _CancelledCalculation
             self.progress.emit(index, total, description)
 
+
+if QtWidgets is not None:
+
+    class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
+        def textFromValue(self, value: float) -> str:  # noqa: N802
+            text = f"{value:.6f}".rstrip("0").rstrip(".")
+            if "." not in text:
+                text = f"{text}.0"
+            return text
+
 else:
     CalculationWorker = object  # type: ignore[misc,assignment]
+    FlexibleDoubleSpinBox = object  # type: ignore[misc,assignment]
 
 
 class _CancelledCalculation(Exception):
@@ -122,10 +133,12 @@ if QtWidgets is not None:
             self.setCentralWidget(root)
 
             controls = QtWidgets.QWidget()
-            controls.setMinimumWidth(360)
-            controls.setMaximumWidth(460)
+            controls.setMinimumWidth(390)
+            controls.setMaximumWidth(500)
             form = QtWidgets.QFormLayout(controls)
             form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+            form.setVerticalSpacing(8)
 
             self.file_edit = QtWidgets.QLineEdit()
             self.file_edit.setPlaceholderText("STL or STEP file")
@@ -146,15 +159,24 @@ if QtWidgets is not None:
 
             self.mesh_deflection = QtWidgets.QDoubleSpinBox()
             self.mesh_deflection.setRange(1.0e-8, 1.0)
-            self.mesh_deflection.setDecimals(8)
+            self.mesh_deflection.setDecimals(4)
             self.mesh_deflection.setValue(1.0e-3)
             form.addRow("Mesh deflection", self.mesh_deflection)
 
             self.angular_deflection = QtWidgets.QDoubleSpinBox()
             self.angular_deflection.setRange(1.0e-6, 1.0)
-            self.angular_deflection.setDecimals(6)
+            self.angular_deflection.setDecimals(2)
             self.angular_deflection.setValue(0.1)
             form.addRow("Angular deflection", self.angular_deflection)
+
+            self.attitude_box = QtWidgets.QGroupBox("Attitude")
+            attitude_form = QtWidgets.QFormLayout(self.attitude_box)
+            attitude_form.setFieldGrowthPolicy(
+                QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+            )
+            attitude_form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+            attitude_form.setVerticalSpacing(6)
+            form.addRow(self.attitude_box)
 
             self.attitude_mode = QtWidgets.QComboBox()
             self.attitude_mode.addItem("Alpha / Beta", "alpha_beta")
@@ -162,7 +184,7 @@ if QtWidgets is not None:
             self.attitude_mode.addItem("Unit vector", "vector")
             self.attitude_mode.currentIndexChanged.connect(self._sync_attitude_controls)
             self.attitude_mode.currentIndexChanged.connect(self._update_projection_vector)
-            form.addRow("Attitude input", self.attitude_mode)
+            attitude_form.addRow("Input", self.attitude_mode)
 
             self.roll_group, self.roll_start, self.roll_end, self.roll_step = (
                 self._make_sweep_angle_inputs()
@@ -187,13 +209,13 @@ if QtWidgets is not None:
             self.vector_x_label = QtWidgets.QLabel("Vector X")
             self.vector_y_label = QtWidgets.QLabel("Vector Y")
             self.vector_z_label = QtWidgets.QLabel("Vector Z")
-            form.addRow(self.roll_label, self.roll_group)
-            form.addRow(self.alpha_label, self.alpha_group)
-            form.addRow(self.beta_label, self.beta_group)
-            form.addRow(self.pitch_label, self.pitch_group)
-            form.addRow(self.vector_x_label, self.vector_x)
-            form.addRow(self.vector_y_label, self.vector_y)
-            form.addRow(self.vector_z_label, self.vector_z)
+            attitude_form.addRow(self.roll_label, self.roll_group)
+            attitude_form.addRow(self.alpha_label, self.alpha_group)
+            attitude_form.addRow(self.beta_label, self.beta_group)
+            attitude_form.addRow(self.pitch_label, self.pitch_group)
+            attitude_form.addRow(self.vector_x_label, self.vector_x)
+            attitude_form.addRow(self.vector_y_label, self.vector_y)
+            attitude_form.addRow(self.vector_z_label, self.vector_z)
 
             for field in (
                 self.roll_start,
@@ -213,13 +235,6 @@ if QtWidgets is not None:
                 self.vector_z,
             ):
                 field.valueChanged.connect(self._update_projection_vector)
-
-            angle_note = QtWidgets.QLabel(
-                "Angle sweeps use Start / End / Step fields. Unit vector is a single direction. "
-                "Angles describe the projection direction; a Fusion plane angle can be complementary."
-            )
-            angle_note.setWordWrap(True)
-            form.addRow("", angle_note)
 
             button_row = QtWidgets.QHBoxLayout()
             self.run_button = QtWidgets.QPushButton("Run Sweep")
@@ -280,7 +295,7 @@ if QtWidgets is not None:
             group = QtWidgets.QWidget()
             layout = QtWidgets.QHBoxLayout(group)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(6)
+            layout.setSpacing(4)
             start = self._make_number_input(0.0)
             end = self._make_number_input(0.0)
             step = self._make_number_input(1.0)
@@ -293,11 +308,12 @@ if QtWidgets is not None:
             return group, start, end, step
 
         def _make_number_input(self, value: float) -> QtWidgets.QDoubleSpinBox:
-            field = QtWidgets.QDoubleSpinBox()
+            field = FlexibleDoubleSpinBox()
             field.setRange(-1.0e6, 1.0e6)
             field.setDecimals(6)
             field.setSingleStep(1.0)
             field.setValue(value)
+            field.setMinimumWidth(72)
             return field
 
         def _create_viewer(self) -> QtWidgets.QWidget:
