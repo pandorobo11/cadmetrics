@@ -9,7 +9,7 @@ import numpy as np
 
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
-from cadmetrics.gui.pyside_app import _projection_arrow_geometry
+from cadmetrics.gui.pyside_app import _projection_arrow_geometry, _projection_camera_geometry
 from cadmetrics.types import MeasurementRow
 
 
@@ -43,6 +43,31 @@ def test_projection_arrow_stays_outside_model_bounds() -> None:
     assert start[0] < vertices[:, 0].min()
     assert end[0] < vertices[:, 0].min()
     assert vector[0] > 0.0
+
+
+def test_gui_viewer_enables_parallel_projection() -> None:
+    source = Path("src/cadmetrics/gui/pyside_app.py").read_text(encoding="utf-8")
+
+    assert source.count("enable_parallel_projection()") >= 2
+
+
+def test_projection_camera_looks_along_direction() -> None:
+    vertices = np.array(
+        [
+            [-1.0, -0.5, -0.5],
+            [-1.0, 0.5, 0.5],
+            [1.0, -0.5, 0.5],
+            [1.0, 0.5, -0.5],
+        ],
+        dtype=float,
+    )
+    direction = np.array([1.0, 0.0, 0.0], dtype=float)
+
+    position, focal_point, view_up = _projection_camera_geometry(vertices, direction)
+    view_direction = (focal_point - position) / np.linalg.norm(focal_point - position)
+
+    assert np.allclose(view_direction, direction)
+    assert np.isclose(float(np.dot(view_up, direction)), 0.0)
 
 
 def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:

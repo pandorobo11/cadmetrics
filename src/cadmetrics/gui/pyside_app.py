@@ -11,6 +11,7 @@ from cadmetrics.api import inspect_model
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
 from cadmetrics.orientation import Orientation, parse_vector, projection_direction_for_orientation
+from cadmetrics.projection import projection_basis
 from cadmetrics.types import MeasurementRow, ModelData
 
 try:
@@ -257,6 +258,9 @@ if QtWidgets is not None:
             self.table.setHorizontalHeaderLabels(TABLE_COLUMNS)
             self.table.horizontalHeader().setStretchLastSection(True)
             self.table.setAlternatingRowColors(True)
+            self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+            self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+            self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
             right.addWidget(self.table)
             right.setSizes([560, 260])
 
@@ -312,6 +316,7 @@ if QtWidgets is not None:
             self._plotter.set_background("white")
             self._plotter.add_axes()
             self._plotter.show_grid()
+            self._plotter.enable_parallel_projection()
             return self._plotter
 
         def _browse_file(self) -> None:
@@ -424,7 +429,9 @@ if QtWidgets is not None:
             self.progress.setRange(0, max(len(rows), 1))
             self.progress.setValue(len(rows))
             self.status.setText(f"Done: {len(rows)} row(s)")
-            self._update_projection_vector(rows[-1] if rows else None)
+            if rows:
+                self.table.selectRow(len(rows) - 1)
+                self._update_projection_vector(rows[-1], align_camera=True)
 
         def _on_failed(self, message: str) -> None:
             self._set_running(False)
@@ -481,8 +488,14 @@ if QtWidgets is not None:
                 opacity=0.92,
             )
             self._plotter.reset_camera()
+            self._plotter.enable_parallel_projection()
 
-        def _update_projection_vector(self, row: MeasurementRow | None = None) -> None:
+        def _update_projection_vector(
+            self,
+            row: MeasurementRow | None = None,
+            *,
+            align_camera: bool = False,
+        ) -> None:
             if self._plotter is None or self._model is None:
                 return
             if not isinstance(row, MeasurementRow):
@@ -526,7 +539,29 @@ if QtWidgets is not None:
                 vector.reshape(1, 3),
                 color="#d04a02",
             )
+            if align_camera:
+                self._look_from_projection_direction(direction)
             self._plotter.render()
+
+        def _look_from_projection_direction(self, direction: np.ndarray) -> None:
+            if self._plotter is None or self._model is None:
+                return
+            position, focal_point, view_up = _projection_camera_geometry(
+                self._model.vertices,
+                direction,
+            )
+            self._plotter.camera_position = (
+                tuple(position),
+                tuple(focal_point),
+                tuple(view_up),
+            )
+            self._plotter.enable_parallel_projection()
+
+        def _on_table_selection_changed(self) -> None:
+            row_index = self.table.currentRow()
+            if row_index < 0 or row_index >= len(self._rows):
+                return
+            self._update_projection_vector(self._rows[row_index], align_camera=True)
 
         def _fill_table(self, rows: list[MeasurementRow]) -> None:
             self.table.setRowCount(len(rows))
@@ -605,3 +640,17 @@ def _projection_arrow_geometry(vertices: np.ndarray, direction: np.ndarray) -> t
     start = center + unit_direction * (upstream_edge - clearance - arrow_length)
     vector = unit_direction * arrow_length
     return start, vector
+
+
+def _projection_camera_geometry(
+    vertices: np.ndarray,
+    direction: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    center = vertices.mean(axis=0)
+    unit_direction = direction / np.linalg.norm(direction)
+    spans = np.ptp(vertices, axis=0)
+    scale = max(float(spans.max()), 1.0)
+    distance = scale * 3.0
+    _, view_up = projection_basis(unit_direction)
+    position = center - unit_direction * distance
+    return position, center, view_up
