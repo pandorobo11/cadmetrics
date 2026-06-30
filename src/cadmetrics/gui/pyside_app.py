@@ -141,67 +141,194 @@ if QtWidgets is not None:
             root.setOrientation(QtCore.Qt.Orientation.Horizontal)
             self.setCentralWidget(root)
 
-            controls = QtWidgets.QWidget()
-            controls.setMinimumWidth(430)
-            controls.setMaximumWidth(540)
-            controls.setStyleSheet(
+            self.setStyleSheet(
                 """
+                QWidget {
+                    color: #202832;
+                    font-size: 13px;
+                }
                 QLineEdit, QComboBox, QDoubleSpinBox {
-                    min-height: 26px;
-                    border: 1px solid #c6ccd2;
-                    border-radius: 3px;
-                    padding: 1px 6px;
+                    min-height: 28px;
+                    border: 1px solid #c9d0d8;
+                    border-radius: 5px;
+                    padding: 2px 7px;
                     background: #ffffff;
+                    selection-background-color: #2f78c4;
                 }
                 QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus {
-                    border-color: #6c93bd;
+                    border-color: #2f78c4;
                 }
                 QPushButton {
-                    min-height: 28px;
-                    padding: 2px 12px;
+                    min-height: 30px;
+                    border: 1px solid #b9c2cc;
+                    border-radius: 5px;
+                    padding: 4px 14px;
+                    background: #f8fafc;
+                    color: #1f2933;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background: #eef3f8;
+                    border-color: #99a8b8;
+                }
+                QPushButton:pressed {
+                    background: #e3eaf2;
+                    border-color: #8798aa;
+                }
+                QPushButton:disabled {
+                    background: #edf0f3;
+                    border-color: #d5dbe1;
+                    color: #a3abb4;
+                }
+                QPushButton#primaryButton {
+                    background: #256fb4;
+                    border-color: #1e609e;
+                    color: #ffffff;
+                }
+                QPushButton#primaryButton:hover {
+                    background: #1f64a5;
+                    border-color: #195487;
+                }
+                QPushButton#primaryButton:pressed {
+                    background: #184f83;
+                    border-color: #143f68;
+                }
+                QPushButton#primaryButton:disabled {
+                    background: #b9cfe4;
+                    border-color: #b9cfe4;
+                    color: #eef5fb;
+                }
+                QPushButton#dangerButton {
+                    background: #fff7f5;
+                    border-color: #d8a59a;
+                    color: #9f3b2f;
+                }
+                QPushButton#dangerButton:hover {
+                    background: #ffece8;
+                    border-color: #c98173;
+                }
+                QPushButton#dangerButton:pressed {
+                    background: #ffdcd6;
+                    border-color: #b56f63;
                 }
                 QCheckBox {
                     min-height: 24px;
                     spacing: 7px;
                 }
+                QCheckBox::indicator {
+                    width: 14px;
+                    height: 14px;
+                    border: 1px solid #aab5c0;
+                    border-radius: 4px;
+                    background: #ffffff;
+                }
+                QCheckBox::indicator:checked {
+                    background: #2f78c4;
+                    border-color: #2f78c4;
+                }
+                QCheckBox::indicator:disabled {
+                    background: #edf0f3;
+                    border-color: #d5dbe1;
+                }
                 QGroupBox {
                     border: 1px solid #d5d9de;
-                    border-radius: 4px;
+                    border-radius: 6px;
                     margin-top: 12px;
-                    padding: 12px 8px 8px 8px;
-                    background: #f8f9fa;
+                    padding: 13px 8px 8px 8px;
+                    background: #f9fafb;
                 }
                 QGroupBox::title {
                     subcontrol-origin: margin;
                     left: 8px;
                     padding: 0 4px;
+                    color: #202832;
+                    font-weight: 600;
+                }
+                QProgressBar {
+                    min-height: 8px;
+                    max-height: 8px;
+                    border: 0;
+                    border-radius: 4px;
+                    background: #dce2e8;
+                    text-align: center;
+                }
+                QProgressBar::chunk {
+                    border-radius: 4px;
+                    background: #256fb4;
+                }
+                QTextEdit {
+                    border: 1px solid #cfd6dd;
+                    border-radius: 5px;
+                    background: #ffffff;
+                    padding: 5px;
+                }
+                QTableWidget {
+                    gridline-color: #e2e7ec;
+                    selection-background-color: #dcecff;
+                    selection-color: #202832;
+                    alternate-background-color: #fafbfc;
+                    background: #ffffff;
+                    border: 0;
+                }
+                QHeaderView::section {
+                    min-height: 24px;
+                    padding: 4px 8px;
+                    border: 0;
+                    border-right: 1px solid #d9dee4;
+                    border-bottom: 1px solid #d9dee4;
+                    background: #f1f4f7;
+                    color: #43505d;
+                    font-weight: 600;
+                }
+                QStatusBar {
+                    border-top: 1px solid #d9dee4;
+                    background: #f7f9fb;
+                }
+                QWidget#resultToolbar {
+                    background: #f7f9fb;
+                    border-top: 1px solid #d9dee4;
+                }
+                QLabel#resultCountLabel {
+                    color: #5f6872;
+                    font-weight: 500;
                 }
                 """
             )
-            form = QtWidgets.QFormLayout(controls)
-            form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-            form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-            form.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
-            form.setVerticalSpacing(9)
-            form.setHorizontalSpacing(10)
 
+            controls_shell = QtWidgets.QScrollArea()
+            controls_shell.setWidgetResizable(True)
+            controls_shell.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+            controls_shell.setMinimumWidth(430)
+            controls_shell.setMaximumWidth(540)
+            controls = QtWidgets.QWidget()
+            controls_shell.setWidget(controls)
+            panel_layout = QtWidgets.QVBoxLayout(controls)
+            panel_layout.setContentsMargins(12, 8, 12, 12)
+            panel_layout.setSpacing(8)
+
+            file_layout = self._make_section(panel_layout, "File")
             self.file_edit = QtWidgets.QLineEdit()
             self.file_edit.setPlaceholderText("STL or STEP file")
             browse = QtWidgets.QPushButton("Browse")
+            browse.setObjectName("secondaryButton")
             browse.clicked.connect(self._browse_file)
             file_row = QtWidgets.QHBoxLayout()
+            file_row.setContentsMargins(0, 0, 0, 0)
+            file_row.setSpacing(8)
             file_row.addWidget(self.file_edit)
             file_row.addWidget(browse)
-            form.addRow("File", file_row)
+            file_layout.addRow("File", file_row)
 
+            unit_layout = self._make_section(panel_layout, "Units")
             self.input_unit = QtWidgets.QComboBox()
             self.input_unit.addItems(UNIT_OPTIONS)
-            form.addRow("Input unit", self.input_unit)
+            unit_layout.addRow("Input unit", self.input_unit)
 
             self.output_unit = QtWidgets.QComboBox()
             self.output_unit.addItems(OUTPUT_UNIT_OPTIONS)
-            form.addRow("Output unit", self.output_unit)
+            unit_layout.addRow("Output unit", self.output_unit)
 
+            tessellation_layout = self._make_section(panel_layout, "Tessellation")
             self.mesh_deflection = FlexibleDoubleSpinBox()
             self.mesh_deflection.setRange(1.0e-8, 1.0)
             self.mesh_deflection.setDecimals(8)
@@ -211,16 +338,18 @@ if QtWidgets is not None:
             self.mesh_deflection_auto.setChecked(True)
             self.mesh_deflection_auto.toggled.connect(self._sync_mesh_deflection_controls)
             mesh_deflection_row = QtWidgets.QHBoxLayout()
+            mesh_deflection_row.setContentsMargins(0, 0, 0, 0)
+            mesh_deflection_row.setSpacing(8)
             mesh_deflection_row.addWidget(self.mesh_deflection)
             mesh_deflection_row.addWidget(self.mesh_deflection_auto)
-            form.addRow("Mesh deflection", mesh_deflection_row)
+            tessellation_layout.addRow("Mesh deflection", mesh_deflection_row)
 
             self.angular_deflection = FlexibleDoubleSpinBox()
             self.angular_deflection.setRange(1.0e-6, 1.0)
             self.angular_deflection.setDecimals(6)
             self.angular_deflection.setSingleStep(0.1)
             self.angular_deflection.setValue(0.1)
-            form.addRow("Angular deflection", self.angular_deflection)
+            tessellation_layout.addRow("Angular deflection", self.angular_deflection)
 
             display_box = QtWidgets.QGroupBox("Shape Display")
             display_layout = QtWidgets.QGridLayout(display_box)
@@ -234,6 +363,7 @@ if QtWidgets is not None:
             self.show_overlay = QtWidgets.QCheckBox("Overlay")
             self.show_overlay.setChecked(True)
             self.save_image_button = QtWidgets.QPushButton("Save Image")
+            self.save_image_button.setObjectName("secondaryButton")
             self.transparent_shape.toggled.connect(self._apply_display_options)
             self.mesh_edges.toggled.connect(self._apply_display_options)
             self.show_overlay.toggled.connect(self._update_overlay)
@@ -242,13 +372,13 @@ if QtWidgets is not None:
             display_layout.addWidget(self.mesh_edges, 0, 1)
             display_layout.addWidget(self.show_overlay, 1, 0)
             display_layout.addWidget(self.save_image_button, 1, 1)
-            form.addRow(display_box)
+            panel_layout.addWidget(display_box)
 
             self.attitude_box = QtWidgets.QGroupBox("Attitude")
             attitude_layout = QtWidgets.QVBoxLayout(self.attitude_box)
             attitude_layout.setContentsMargins(8, 8, 8, 8)
             attitude_layout.setSpacing(7)
-            form.addRow(self.attitude_box)
+            panel_layout.addWidget(self.attitude_box)
 
             self.attitude_mode = QtWidgets.QComboBox()
             self.attitude_mode.addItem("Alpha / Beta", "alpha_beta")
@@ -297,32 +427,41 @@ if QtWidgets is not None:
             ):
                 field.valueChanged.connect(self._update_projection_vector)
 
-            button_row = QtWidgets.QHBoxLayout()
+            run_box = QtWidgets.QGroupBox("Run")
+            run_layout = QtWidgets.QVBoxLayout(run_box)
+            run_layout.setContentsMargins(8, 8, 8, 8)
+            run_layout.setSpacing(8)
             self.run_button = QtWidgets.QPushButton("Run Sweep")
+            self.run_button.setObjectName("primaryButton")
             self.run_button.clicked.connect(self._start_calculation)
             self.cancel_button = QtWidgets.QPushButton("Cancel")
+            self.cancel_button.setObjectName("dangerButton")
             self.cancel_button.clicked.connect(self._cancel_calculation)
-            button_row.addWidget(self.run_button)
-            button_row.addWidget(self.cancel_button)
-            form.addRow("", button_row)
+            run_layout.addWidget(self.run_button)
+            run_layout.addWidget(self.cancel_button)
+            panel_layout.addWidget(run_box)
 
-            self.save_button = QtWidgets.QPushButton("Save CSV")
-            self.save_button.clicked.connect(self._save_csv)
-            form.addRow("", self.save_button)
-
-            self.progress = QtWidgets.QProgressBar()
-            self.progress.setRange(0, 1)
-            self.progress.setValue(0)
-            form.addRow("Progress", self.progress)
-
-            self.status = QtWidgets.QLabel("Ready")
-            self.status.setWordWrap(True)
-            form.addRow("Status", self.status)
-
+            model_box = QtWidgets.QGroupBox("Model Info")
+            model_layout = QtWidgets.QVBoxLayout(model_box)
+            model_layout.setContentsMargins(8, 8, 8, 8)
             self.model_info = QtWidgets.QTextEdit()
             self.model_info.setReadOnly(True)
             self.model_info.setMinimumHeight(130)
-            form.addRow("Model", self.model_info)
+            model_layout.addWidget(self.model_info)
+            panel_layout.addWidget(model_box)
+            panel_layout.addStretch(1)
+
+            self.status = QtWidgets.QLabel("Ready")
+            self.status.setWordWrap(False)
+            self.progress = QtWidgets.QProgressBar()
+            self.progress.setRange(0, 1)
+            self.progress.setValue(0)
+            self.progress.setFixedWidth(180)
+            self.progress.setTextVisible(False)
+            status_bar = QtWidgets.QStatusBar()
+            status_bar.addWidget(self.status, 1)
+            status_bar.addPermanentWidget(self.progress)
+            self.setStatusBar(status_bar)
 
             right = QtWidgets.QSplitter()
             right.setOrientation(QtCore.Qt.Orientation.Vertical)
@@ -336,15 +475,51 @@ if QtWidgets is not None:
             self.table.setAlternatingRowColors(True)
             self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
             self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+            self.table.verticalHeader().setVisible(False)
+            self.table.verticalHeader().setDefaultSectionSize(24)
             self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
-            right.addWidget(self.table)
+            table_panel = QtWidgets.QWidget()
+            table_layout = QtWidgets.QVBoxLayout(table_panel)
+            table_layout.setContentsMargins(0, 0, 0, 0)
+            table_layout.setSpacing(0)
+            result_toolbar = QtWidgets.QWidget()
+            result_toolbar.setObjectName("resultToolbar")
+            result_layout = QtWidgets.QHBoxLayout(result_toolbar)
+            result_layout.setContentsMargins(10, 6, 10, 6)
+            self.result_count = QtWidgets.QLabel("Rows: 0")
+            self.result_count.setObjectName("resultCountLabel")
+            self.save_button = QtWidgets.QPushButton("Save CSV")
+            self.save_button.setObjectName("secondaryButton")
+            self.save_button.clicked.connect(self._save_csv)
+            result_layout.addWidget(self.result_count)
+            result_layout.addStretch(1)
+            result_layout.addWidget(self.save_button)
+            table_layout.addWidget(result_toolbar)
+            table_layout.addWidget(self.table)
+            right.addWidget(table_panel)
             right.setSizes([560, 260])
 
-            root.addWidget(controls)
+            root.addWidget(controls_shell)
             root.addWidget(right)
             root.setSizes([440, 880])
             self._sync_attitude_controls()
             self._sync_mesh_deflection_controls()
+
+        def _make_section(
+            self,
+            parent_layout: QtWidgets.QVBoxLayout,
+            title: str,
+        ) -> QtWidgets.QFormLayout:
+            box = QtWidgets.QGroupBox(title)
+            layout = QtWidgets.QFormLayout(box)
+            layout.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            layout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+            layout.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
+            layout.setVerticalSpacing(8)
+            layout.setHorizontalSpacing(10)
+            layout.setContentsMargins(8, 8, 8, 8)
+            parent_layout.addWidget(box)
+            return layout
 
         def _make_sweep_grid(
             self,
@@ -814,6 +989,7 @@ if QtWidgets is not None:
 
         def _fill_table(self, rows: list[MeasurementRow]) -> None:
             self.table.setRowCount(len(rows))
+            self.result_count.setText(f"Rows: {len(rows)}")
             for row_index, row in enumerate(rows):
                 data = row.to_csv_row()
                 for column_index, key in enumerate(TABLE_COLUMNS):
@@ -852,6 +1028,7 @@ if QtWidgets is not None:
             self.run_button.setEnabled(not running)
             self.save_button.setEnabled(not running and bool(self._rows))
             self.cancel_button.setEnabled(running)
+            self.cancel_button.setVisible(running)
 
         def _show_error(self, message: str) -> None:
             self.status.setText(f"Error: {message}")
