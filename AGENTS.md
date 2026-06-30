@@ -9,7 +9,7 @@ repository root with a relative path:
 open dist/Cadmetrics.app
 ```
 
-If the current working directory is not the repository root, change into it first:
+If the current working directory is not the repository root, change into the repository root first:
 
 ```bash
 cd cadmetrics
