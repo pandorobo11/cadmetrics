@@ -148,7 +148,7 @@ if QtWidgets is not None:
                     font-size: 13px;
                 }
                 QLineEdit, QComboBox, QDoubleSpinBox {
-                    min-height: 28px;
+                    min-height: 26px;
                     border: 1px solid #c9d0d8;
                     border-radius: 5px;
                     padding: 2px 7px;
@@ -159,7 +159,7 @@ if QtWidgets is not None:
                     border-color: #2f78c4;
                 }
                 QPushButton {
-                    min-height: 30px;
+                    min-height: 28px;
                     border: 1px solid #b9c2cc;
                     border-radius: 5px;
                     padding: 4px 14px;
@@ -212,7 +212,7 @@ if QtWidgets is not None:
                     border-color: #b56f63;
                 }
                 QCheckBox {
-                    min-height: 24px;
+                    min-height: 22px;
                     spacing: 7px;
                 }
                 QCheckBox::indicator {
@@ -233,8 +233,8 @@ if QtWidgets is not None:
                 QGroupBox {
                     border: 1px solid #d5d9de;
                     border-radius: 6px;
-                    margin-top: 12px;
-                    padding: 13px 8px 8px 8px;
+                    margin-top: 9px;
+                    padding: 10px 8px 8px 8px;
                     background: #f9fafb;
                 }
                 QGroupBox::title {
@@ -295,18 +295,14 @@ if QtWidgets is not None:
                 """
             )
 
-            controls_shell = QtWidgets.QScrollArea()
-            controls_shell.setWidgetResizable(True)
-            controls_shell.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-            controls_shell.setMinimumWidth(430)
-            controls_shell.setMaximumWidth(540)
             controls = QtWidgets.QWidget()
-            controls_shell.setWidget(controls)
+            controls.setMinimumWidth(430)
+            controls.setMaximumWidth(540)
             panel_layout = QtWidgets.QVBoxLayout(controls)
-            panel_layout.setContentsMargins(12, 8, 12, 12)
-            panel_layout.setSpacing(8)
+            panel_layout.setContentsMargins(12, 4, 12, 8)
+            panel_layout.setSpacing(5)
 
-            file_layout = self._make_section(panel_layout, "File")
+            setup_layout = self._make_section(panel_layout, "Setup")
             self.file_edit = QtWidgets.QLineEdit()
             self.file_edit.setPlaceholderText("STL or STEP file")
             browse = QtWidgets.QPushButton("Browse")
@@ -317,16 +313,15 @@ if QtWidgets is not None:
             file_row.setSpacing(8)
             file_row.addWidget(self.file_edit)
             file_row.addWidget(browse)
-            file_layout.addRow("File", file_row)
+            setup_layout.addRow("File", file_row)
 
-            unit_layout = self._make_section(panel_layout, "Units")
             self.input_unit = QtWidgets.QComboBox()
             self.input_unit.addItems(UNIT_OPTIONS)
-            unit_layout.addRow("Input unit", self.input_unit)
+            setup_layout.addRow("Input unit", self.input_unit)
 
             self.output_unit = QtWidgets.QComboBox()
             self.output_unit.addItems(OUTPUT_UNIT_OPTIONS)
-            unit_layout.addRow("Output unit", self.output_unit)
+            setup_layout.addRow("Output unit", self.output_unit)
 
             tessellation_layout = self._make_section(panel_layout, "Tessellation")
             self.mesh_deflection = FlexibleDoubleSpinBox()
@@ -353,9 +348,9 @@ if QtWidgets is not None:
 
             display_box = QtWidgets.QGroupBox("Shape Display")
             display_layout = QtWidgets.QGridLayout(display_box)
-            display_layout.setContentsMargins(8, 8, 8, 8)
+            display_layout.setContentsMargins(8, 6, 8, 6)
             display_layout.setHorizontalSpacing(12)
-            display_layout.setVerticalSpacing(6)
+            display_layout.setVerticalSpacing(4)
             self.transparent_shape = QtWidgets.QCheckBox("Transparent")
             self.transparent_shape.setChecked(True)
             self.mesh_edges = QtWidgets.QCheckBox("Mesh edges")
@@ -376,8 +371,8 @@ if QtWidgets is not None:
 
             self.attitude_box = QtWidgets.QGroupBox("Attitude")
             attitude_layout = QtWidgets.QVBoxLayout(self.attitude_box)
-            attitude_layout.setContentsMargins(8, 8, 8, 8)
-            attitude_layout.setSpacing(7)
+            attitude_layout.setContentsMargins(8, 6, 8, 8)
+            attitude_layout.setSpacing(5)
             panel_layout.addWidget(self.attitude_box)
 
             self.attitude_mode = QtWidgets.QComboBox()
@@ -427,29 +422,35 @@ if QtWidgets is not None:
             ):
                 field.valueChanged.connect(self._update_projection_vector)
 
-            run_box = QtWidgets.QGroupBox("Run")
-            run_layout = QtWidgets.QVBoxLayout(run_box)
-            run_layout.setContentsMargins(8, 8, 8, 8)
+            run_layout = QtWidgets.QHBoxLayout()
+            run_layout.setContentsMargins(0, 0, 0, 0)
             run_layout.setSpacing(8)
             self.run_button = QtWidgets.QPushButton("Run Sweep")
             self.run_button.setObjectName("primaryButton")
+            self.run_button.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
             self.run_button.clicked.connect(self._start_calculation)
             self.cancel_button = QtWidgets.QPushButton("Cancel")
             self.cancel_button.setObjectName("dangerButton")
+            self.cancel_button.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Fixed,
+            )
             self.cancel_button.clicked.connect(self._cancel_calculation)
             run_layout.addWidget(self.run_button)
             run_layout.addWidget(self.cancel_button)
-            panel_layout.addWidget(run_box)
+            panel_layout.addLayout(run_layout)
 
             model_box = QtWidgets.QGroupBox("Model Info")
             model_layout = QtWidgets.QVBoxLayout(model_box)
-            model_layout.setContentsMargins(8, 8, 8, 8)
+            model_layout.setContentsMargins(8, 6, 8, 8)
             self.model_info = QtWidgets.QTextEdit()
             self.model_info.setReadOnly(True)
-            self.model_info.setMinimumHeight(130)
+            self.model_info.setMaximumHeight(86)
             model_layout.addWidget(self.model_info)
             panel_layout.addWidget(model_box)
-            panel_layout.addStretch(1)
 
             self.status = QtWidgets.QLabel("Ready")
             self.status.setWordWrap(False)
@@ -499,7 +500,7 @@ if QtWidgets is not None:
             right.addWidget(table_panel)
             right.setSizes([560, 260])
 
-            root.addWidget(controls_shell)
+            root.addWidget(controls)
             root.addWidget(right)
             root.setSizes([440, 880])
             self._sync_attitude_controls()
@@ -515,9 +516,9 @@ if QtWidgets is not None:
             layout.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
             layout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
             layout.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
-            layout.setVerticalSpacing(8)
+            layout.setVerticalSpacing(6)
             layout.setHorizontalSpacing(10)
-            layout.setContentsMargins(8, 8, 8, 8)
+            layout.setContentsMargins(8, 6, 8, 7)
             parent_layout.addWidget(box)
             return layout
 
@@ -534,7 +535,7 @@ if QtWidgets is not None:
             layout = QtWidgets.QGridLayout(group)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setHorizontalSpacing(6)
-            layout.setVerticalSpacing(5)
+            layout.setVerticalSpacing(3)
 
             for column, text in enumerate(("Start", "End", "Step"), start=1):
                 header = QtWidgets.QLabel(text)
@@ -600,7 +601,7 @@ if QtWidgets is not None:
             field.setDecimals(6)
             field.setSingleStep(1.0)
             field.setValue(value)
-            field.setMinimumWidth(78)
+            field.setMinimumWidth(70)
             return field
 
         def _create_viewer(self) -> QtWidgets.QWidget:
@@ -1000,19 +1001,15 @@ if QtWidgets is not None:
 
         def _show_model_info(self, model: ModelData) -> None:
             lines = [
-                f"file: {model.path}",
-                f"format: {model.source_format}",
-                f"input_unit: {model.input_unit}",
-                f"output_unit: {model.output_unit}",
-                f"mesh_deflection: {_format_cell(model.mesh_deflection)}",
-                f"angular_deflection: {_format_cell(model.angular_deflection)}",
-                f"vertices: {model.vertex_count}",
-                f"faces: {model.face_count}",
+                f"file: {model.path.name}",
+                f"format/unit: {model.source_format}, {model.output_unit}",
+                f"mesh: {model.vertex_count} vertices, {model.face_count} faces",
                 f"volume: {_format_cell(model.volume)}",
                 f"surface_area: {_format_cell(model.surface_area)}",
-                f"is_watertight: {_format_cell(model.is_watertight)}",
-                f"warnings: {'; '.join(model.warnings)}",
+                f"watertight: {_format_cell(model.is_watertight)}",
             ]
+            if model.warnings:
+                lines.append(f"warnings: {'; '.join(model.warnings)}")
             self.model_info.setText("\n".join(lines))
 
         def _sync_attitude_controls(self) -> None:
