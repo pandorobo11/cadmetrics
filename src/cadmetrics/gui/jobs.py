@@ -17,7 +17,7 @@ class CalculationRequest:
     attitude_mode: AttitudeInputMode = "alpha_beta"
     input_unit: str = "auto"
     output_unit: str = "m"
-    mesh_deflection: float = 1.0e-3
+    mesh_deflection: float | str = "auto"
     angular_deflection: float = 0.1
     roll_start: float = 0.0
     roll_end: float = 0.0

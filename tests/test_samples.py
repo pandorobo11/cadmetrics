@@ -93,8 +93,9 @@ def test_satellite_step_matches_fusion_validation_values() -> None:
     assert measured.input_unit == "mm"
     assert measured.volume == pytest.approx(expected["volume"])
     assert measured.surface_area == pytest.approx(expected["surface_area"])
-    assert projected_x.projected_area == pytest.approx(expected["projected_area_x"])
+    assert projected_x.projected_area == pytest.approx(expected["projected_area_x"], rel=1.0e-3)
     assert projected_alpha_60.projected_area == pytest.approx(
-        expected["projected_area_alpha_60"] * 1_000_000
+        expected["projected_area_alpha_60"] * 1_000_000,
+        rel=1.0e-3,
     )
     assert measured.is_watertight is True

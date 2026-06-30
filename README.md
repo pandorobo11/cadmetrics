@@ -158,8 +158,10 @@ rows = sweep("model.stl", alpha="-10:20:1", beta="-5:5:1", roll="0")
 
 STL measurements are mesh-based. STEP volume and surface area use the OCP/OpenCascade CAD
 kernel when the `step` extra is installed; projected area is computed from a tessellated mesh
-so the result depends on `--mesh-deflection`. The target validation tolerance is 0.1% against
-Fusion 360 for representative closed solids.
+so the result depends on `--mesh-deflection`. The default `--mesh-deflection auto` uses the
+STEP bounding-box diagonal times `1e-5`, in the selected output length unit. Pass an explicit
+number to reproduce a fixed tessellation tolerance. The target validation tolerance is 0.1%
+against Fusion 360 for representative closed solids.
 
 Sweep CSV output includes the effective projection direction vector, projected centroid,
 equivalent attitude angles, tessellation settings, calculation method, and elapsed seconds for

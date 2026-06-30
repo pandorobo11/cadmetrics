@@ -17,7 +17,7 @@ def load_model(
     *,
     input_unit: str = "auto",
     output_unit: str = "m",
-    mesh_deflection: float = 1.0e-3,
+    mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
 ) -> ModelData:
     model_path = Path(path)
@@ -70,6 +70,8 @@ def _load_stl(path: Path, *, input_unit: str, output_unit: str) -> ModelData:
         volume=volume,
         surface_area=surface_area,
         is_watertight=is_watertight,
+        mesh_deflection=None,
+        angular_deflection=None,
         warnings=tuple(warnings),
     )
 
@@ -79,11 +81,13 @@ def _load_step(
     *,
     input_unit: str,
     output_unit: str,
-    mesh_deflection: float,
+    mesh_deflection: float | str,
     angular_deflection: float,
 ) -> ModelData:
     try:
+        from OCP.Bnd import Bnd_Box
         from OCP.BRep import BRep_Tool
+        from OCP.BRepBndLib import BRepBndLib
         from OCP.BRepGProp import BRepGProp
         from OCP.BRepMesh import BRepMesh_IncrementalMesh
         from OCP.GProp import GProp_GProps
@@ -118,7 +122,19 @@ def _load_step(
             warnings.append("Could not detect STEP length unit; assuming m.")
 
     scale = length_scale(resolved_input_unit, output_unit)
-    native_mesh_deflection = mesh_deflection / scale if scale != 0.0 else mesh_deflection
+    native_diagonal = _ocp_bounding_box_diagonal(
+        shape,
+        Bnd_Box=Bnd_Box,
+        BRepBndLib=BRepBndLib,
+    )
+    mesh_deflection_value = _resolve_mesh_deflection(
+        mesh_deflection,
+        native_diagonal=native_diagonal,
+        scale=scale,
+    )
+    native_mesh_deflection = (
+        mesh_deflection_value / scale if scale != 0.0 else mesh_deflection_value
+    )
 
     volume = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "VolumeProperties")
     surface_area = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "SurfaceProperties")
@@ -163,8 +179,47 @@ def _load_step(
         volume=scaled_volume,
         surface_area=scaled_surface_area,
         is_watertight=is_watertight,
+        mesh_deflection=mesh_deflection_value,
+        angular_deflection=angular_deflection,
         warnings=tuple(warnings),
     )
+
+
+def _resolve_mesh_deflection(
+    value: float | str,
+    *,
+    native_diagonal: float,
+    scale: float,
+) -> float:
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text == "auto":
+            output_diagonal = native_diagonal * scale
+            return max(output_diagonal * 1.0e-5, 1.0e-9)
+        try:
+            value = float(text)
+        except ValueError as exc:
+            raise ValueError("mesh_deflection must be a number or 'auto'") from exc
+    if value <= 0.0:
+        raise ValueError("mesh_deflection must be greater than zero")
+    return float(value)
+
+
+def _ocp_bounding_box_diagonal(
+    shape: Any,
+    *,
+    Bnd_Box: Any,
+    BRepBndLib: Any,
+) -> float:
+    box = Bnd_Box()
+    add_method = getattr(BRepBndLib, "Add_s", None) or getattr(BRepBndLib, "Add")
+    add_method(shape, box)
+    try:
+        xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+    except Exception:
+        return 1.0
+    diagonal = float(np.linalg.norm([xmax - xmin, ymax - ymin, zmax - zmin]))
+    return max(diagonal, 1.0)
 
 
 def _ocp_shape_metric(shape: Any, props_type: Any, gprop_type: Any, method_name: str) -> float | None:

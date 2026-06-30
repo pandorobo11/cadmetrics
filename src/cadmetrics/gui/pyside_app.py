@@ -207,7 +207,13 @@ if QtWidgets is not None:
             self.mesh_deflection.setDecimals(8)
             self.mesh_deflection.setSingleStep(1.0e-4)
             self.mesh_deflection.setValue(1.0e-3)
-            form.addRow("Mesh deflection", self.mesh_deflection)
+            self.mesh_deflection_auto = QtWidgets.QCheckBox("Auto")
+            self.mesh_deflection_auto.setChecked(True)
+            self.mesh_deflection_auto.toggled.connect(self._sync_mesh_deflection_controls)
+            mesh_deflection_row = QtWidgets.QHBoxLayout()
+            mesh_deflection_row.addWidget(self.mesh_deflection)
+            mesh_deflection_row.addWidget(self.mesh_deflection_auto)
+            form.addRow("Mesh deflection", mesh_deflection_row)
 
             self.angular_deflection = FlexibleDoubleSpinBox()
             self.angular_deflection.setRange(1.0e-6, 1.0)
@@ -338,6 +344,7 @@ if QtWidgets is not None:
             root.addWidget(right)
             root.setSizes([440, 880])
             self._sync_attitude_controls()
+            self._sync_mesh_deflection_controls()
 
         def _make_sweep_grid(
             self,
@@ -455,12 +462,15 @@ if QtWidgets is not None:
             path = Path(self.file_edit.text()).expanduser()
             if not path.exists():
                 raise ValueError(f"File does not exist: {path}")
+            mesh_deflection: float | str = (
+                "auto" if self.mesh_deflection_auto.isChecked() else self.mesh_deflection.value()
+            )
             return CalculationRequest(
                 file=path,
                 attitude_mode=self.attitude_mode.currentData(),
                 input_unit=self.input_unit.currentText(),
                 output_unit=self.output_unit.currentText(),
-                mesh_deflection=self.mesh_deflection.value(),
+                mesh_deflection=mesh_deflection,
                 angular_deflection=self.angular_deflection.value(),
                 roll_start=self.roll_start.value(),
                 roll_end=self.roll_end.value(),
@@ -818,6 +828,8 @@ if QtWidgets is not None:
                 f"format: {model.source_format}",
                 f"input_unit: {model.input_unit}",
                 f"output_unit: {model.output_unit}",
+                f"mesh_deflection: {_format_cell(model.mesh_deflection)}",
+                f"angular_deflection: {_format_cell(model.angular_deflection)}",
                 f"vertices: {model.vertex_count}",
                 f"faces: {model.face_count}",
                 f"volume: {_format_cell(model.volume)}",
@@ -832,6 +844,9 @@ if QtWidgets is not None:
             self.alpha_beta_group.setVisible(mode == "alpha_beta")
             self.roll_pitch_group.setVisible(mode == "roll_pitch")
             self.vector_group.setVisible(mode == "vector")
+
+        def _sync_mesh_deflection_controls(self) -> None:
+            self.mesh_deflection.setEnabled(not self.mesh_deflection_auto.isChecked())
 
         def _set_running(self, running: bool) -> None:
             self.run_button.setEnabled(not running)

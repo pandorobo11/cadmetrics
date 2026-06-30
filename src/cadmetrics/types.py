@@ -24,6 +24,8 @@ class ModelData:
     volume: float | None
     surface_area: float | None
     is_watertight: bool | None
+    mesh_deflection: float | None = None
+    angular_deflection: float | None = None
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     @property

@@ -57,11 +57,10 @@ def measure(
         help="Input length unit. Use 'auto' to read STEP units and assume m for STL.",
     ),
     output_unit: str = typer.Option("m", "--output-unit", help="Output length unit."),
-    mesh_deflection: float = typer.Option(
-        1.0e-3,
+    mesh_deflection: str = typer.Option(
+        "auto",
         "--mesh-deflection",
-        min=0.0,
-        help="STEP tessellation tolerance in output length units.",
+        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-5.",
     ),
     angular_deflection: float = typer.Option(
         0.1,
@@ -106,11 +105,10 @@ def project(
         help="Input length unit. Use 'auto' to read STEP units and assume m for STL.",
     ),
     output_unit: str = typer.Option("m", "--output-unit", help="Output length unit."),
-    mesh_deflection: float = typer.Option(
-        1.0e-3,
+    mesh_deflection: str = typer.Option(
+        "auto",
         "--mesh-deflection",
-        min=0.0,
-        help="STEP tessellation tolerance in output length units.",
+        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-5.",
     ),
     angular_deflection: float = typer.Option(
         0.1,
@@ -154,11 +152,10 @@ def sweep(
         help="Input length unit. Use 'auto' to read STEP units and assume m for STL.",
     ),
     output_unit: str = typer.Option("m", "--output-unit", help="Output length unit."),
-    mesh_deflection: float = typer.Option(
-        1.0e-3,
+    mesh_deflection: str = typer.Option(
+        "auto",
         "--mesh-deflection",
-        min=0.0,
-        help="STEP tessellation tolerance in output length units.",
+        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-5.",
     ),
     angular_deflection: float = typer.Option(
         0.1,
@@ -224,11 +221,10 @@ def inspect(
         help="Input length unit. Use 'auto' to read STEP units and assume m for STL.",
     ),
     output_unit: str = typer.Option("m", "--output-unit", help="Output length unit."),
-    mesh_deflection: float = typer.Option(
-        1.0e-3,
+    mesh_deflection: str = typer.Option(
+        "auto",
         "--mesh-deflection",
-        min=0.0,
-        help="STEP tessellation tolerance in output length units.",
+        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-5.",
     ),
     angular_deflection: float = typer.Option(
         0.1,

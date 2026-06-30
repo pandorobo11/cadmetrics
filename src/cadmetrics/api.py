@@ -24,7 +24,7 @@ def inspect_model(
     *,
     input_unit: str = "auto",
     output_unit: str = "m",
-    mesh_deflection: float = 1.0e-3,
+    mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
 ) -> ModelData:
     return load_model(
@@ -41,7 +41,7 @@ def measure(
     *,
     input_unit: str = "auto",
     output_unit: str = "m",
-    mesh_deflection: float = 1.0e-3,
+    mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
 ) -> MeasurementRow:
     start = perf_counter()
@@ -64,8 +64,8 @@ def measure(
         surface_area=model.surface_area,
         projected_area=None,
         is_watertight=model.is_watertight,
-        mesh_deflection=mesh_deflection,
-        angular_deflection=angular_deflection,
+        mesh_deflection=model.mesh_deflection,
+        angular_deflection=model.angular_deflection,
         method=_method_name(model, projected=False),
         elapsed_sec=perf_counter() - start,
         warnings=model.warnings,
@@ -81,7 +81,7 @@ def project(
     direction: str | None = None,
     input_unit: str = "auto",
     output_unit: str = "m",
-    mesh_deflection: float = 1.0e-3,
+    mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
 ) -> MeasurementRow:
     start = perf_counter()
@@ -105,8 +105,8 @@ def project(
         surface_area=model.surface_area,
         projection_metrics=metrics,
         is_watertight=model.is_watertight,
-        mesh_deflection=mesh_deflection,
-        angular_deflection=angular_deflection,
+        mesh_deflection=model.mesh_deflection,
+        angular_deflection=model.angular_deflection,
         method=_method_name(model, projected=True),
         elapsed_sec=perf_counter() - start,
         warnings=model.warnings,
@@ -121,8 +121,8 @@ def _projected_row(
     surface_area: float | None,
     projection_metrics: ProjectionMetrics,
     is_watertight: bool | None,
-    mesh_deflection: float,
-    angular_deflection: float,
+    mesh_deflection: float | None,
+    angular_deflection: float | None,
     method: str,
     elapsed_sec: float,
     warnings: tuple[str, ...],
@@ -188,7 +188,7 @@ def sweep(
     beta: str | int | float = 0.0,
     input_unit: str = "auto",
     output_unit: str = "m",
-    mesh_deflection: float = 1.0e-3,
+    mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
     progress_callback: Callable[[int, int, Orientation], None] | None = None,
 ) -> list[MeasurementRow]:
@@ -213,7 +213,7 @@ def sweep(
                 surface_area=model.surface_area,
                 projection_metrics=projected_metrics(model, orientation=orientation),
                 is_watertight=model.is_watertight,
-                mesh_deflection=mesh_deflection,
+                mesh_deflection=model.mesh_deflection,
                 angular_deflection=angular_deflection,
                 method=_method_name(model, projected=True),
                 elapsed_sec=perf_counter() - row_start,
