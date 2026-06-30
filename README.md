@@ -1,148 +1,124 @@
 # cadmetrics
 
 `cadmetrics` calculates volume, surface area, and projected area for STL and STEP files.
-It provides a CLI, Python API, and PySide6 GUI suitable for aerodynamic projected-area checks.
+It provides a CLI, Python API, and PySide6 desktop GUI for aerodynamic projected-area and
+drag-area checks.
 
-## Scope
+## Features
 
-- Input: STL ASCII/Binary and STEP (`.step`, `.stp`)
-- Output: CSV
-- Default coordinate convention: X aft, Y right, Z up
-- Euler convention for attitude sweeps: roll -> angle of attack -> sideslip
-- `alpha`, `beta`, `roll`, and `pitch` describe the projection direction attitude, not the
-  inclination angle of a sketch or measurement plane
-- Projected area definition: orthographic 2D outline area with overlaps removed
-- Default length unit: m
-- STEP input length units are detected automatically by default; STL defaults to m
-
-STEP support is provided through the optional `step` extra because it pulls in a CAD kernel.
+- Read STL ASCII/Binary and STEP (`.step`, `.stp`)
+- Calculate volume and surface area
+- Calculate orthographic projected outline area with overlapping projected regions removed
+- Sweep roll, angle of attack, and sideslip ranges
+- Report equivalent alpha/beta, roll/pitch, and unit-vector direction values
+- Report projected-area centroids in 2D projection coordinates and 3D model coordinates
+- Export CSV from CLI and GUI
+- Inspect geometry in a local PySide6/PyVista GUI
 
 ## Install
 
-From PyPI after release:
+STL-only usage:
 
 ```bash
 pip install cadmetrics
 ```
 
-With optional STEP support:
+STEP support:
 
 ```bash
 pip install "cadmetrics[step]"
 ```
 
-With the PySide6 desktop GUI:
+PySide6 GUI:
 
 ```bash
 pip install "cadmetrics[gui]"
-cadmetrics-gui
 ```
 
-With both STEP support and the GUI:
+STEP support and GUI together:
 
 ```bash
 pip install "cadmetrics[step,gui]"
 ```
 
-From a local checkout:
-
-```bash
-pip install .
-pip install ".[step]"
-pip install ".[gui]"
-pip install ".[step,gui]"
-```
-
-For development with uv:
-
-```bash
-uv sync --extra step
-```
-
-For STL-only usage:
-
-```bash
-uv sync
-```
-
-For the PySide6 desktop GUI:
-
-```bash
-uv sync --extra gui
-cadmetrics-gui
-```
-
-For STEP support and the GUI together:
+From a local checkout with `uv`:
 
 ```bash
 uv sync --extra step --extra gui
+```
+
+cadmetrics currently targets Python 3.12.
+
+## Quickstart
+
+The STEP examples below require `cadmetrics[step]`.
+
+Measure a STEP file:
+
+```bash
+cadmetrics measure samples/unit_cube/unit_cube.step
+```
+
+Calculate projected area from angle of attack and sideslip:
+
+```bash
+cadmetrics project samples/satellite/satellite.step \
+  --output-unit mm \
+  --alpha 60 \
+  --beta 0
+```
+
+Calculate projected area from an explicit direction vector:
+
+```bash
+cadmetrics project samples/satellite/satellite.step \
+  --output-unit mm \
+  --direction 0.5,0,0.8660254
+```
+
+Sweep every combination of attitude ranges and write CSV:
+
+```bash
+cadmetrics sweep samples/satellite/satellite.step \
+  --output-unit mm \
+  --roll 0 \
+  --alpha 0:90:5 \
+  --beta -10:10:5 \
+  --out sweep.csv
+```
+
+Launch the desktop GUI:
+
+```bash
 cadmetrics-gui
 ```
 
-## CLI
+## Coordinate and Attitude Convention
 
-```bash
-cadmetrics measure model.step --unit m --out result.csv
-cadmetrics project model.stl --alpha 10 --beta 0 --roll 0 --out projected.csv
-cadmetrics project model.stl --direction 1,0,0 --out projected.csv
-cadmetrics sweep model.step --alpha -10:20:1 --beta -5:5:1 --roll 0 --out sweep.csv
-cadmetrics inspect model.step
-```
-
-`--unit` describes the input model length unit. Its default is `auto`: STEP units are read
-from the file and STL is assumed to be meters. `--output-unit` controls output values.
-For example, `--unit mm --output-unit m` reads coordinates as millimeters and reports m2/m3.
-
-For Fusion 360 checks, be careful with plane angles: a measurement plane inclined by `30 deg`
-has a normal direction that may correspond to `--alpha 60`, depending on the construction.
-Use `--direction x,y,z` when you want to avoid that ambiguity.
-
-CSV output includes the equivalent attitude representations for each projected-area row:
-`alpha_deg`, `beta_deg`, `roll_deg`, `pitch_deg`, and the normalized unit vector
-`direction_x`, `direction_y`, `direction_z`. It also includes the projected-area centroid as
-2D projection-plane coordinates (`centroid_u`, `centroid_v`) and as a 3D marker position on the
-projection plane through the model center (`centroid_x`, `centroid_y`, `centroid_z`).
-
-## Attitude Definition
-
-The projection direction is represented as a unit vector in model coordinates:
+The default coordinate convention is:
 
 ```text
-d = (d_x, d_y, d_z)
+X aft, Y right, Z up
 ```
 
-For `alpha`/`beta` input, cadmetrics uses the direction generated from the aircraft-style
-attitude convention with roll fixed to zero:
+`alpha`, `beta`, `roll`, and `pitch` describe the projection direction attitude, not the
+inclination angle of a sketch or measurement plane. This matters when comparing with CAD tools:
+a Fusion 360 plane inclined by `30 deg` can correspond to cadmetrics `alpha=60 deg`, depending
+on the construction.
 
-```text
-d = (cos(alpha) cos(beta), -sin(beta), sin(alpha) cos(beta))
-```
+Use `--direction x,y,z` when you want the least ambiguous input.
 
-The equivalent angles written to CSV are recovered from the unit vector as:
+See [Attitude Definition](docs/attitude.md) for formulas and examples.
 
-```text
-alpha = atan2(d_z, d_x)
-beta  = asin(-d_y)
-```
+## Units
 
-For the GUI `roll`/`pitch` input, `pitch` is the angle away from the +X direction and `roll`
-is the azimuth around +X, measured from +Z toward +Y:
+`--unit` describes the input model length unit. Its default is `auto`:
 
-```text
-pitch = atan2(sqrt(d_y^2 + d_z^2), d_x)
-roll  = atan2(d_y, d_z)
-```
+- STEP units are read from the file
+- STL is assumed to be meters
 
-Angles in the CLI/GUI are entered and reported in degrees. A direct `--direction x,y,z` input is
-normalized first, then the equivalent `alpha`/`beta` and `roll`/`pitch` values are calculated
-from the same formulas.
-
-## Samples
-
-Validation fixtures live in `samples/`. They include cube, rectangular box, sphere, cylinder,
-overlapping projected boxes, open STL, and a frame with a through-hole. See
-[docs/samples.md](docs/samples.md) for the full list and expected values. Fusion 360 comparison
-notes are kept in [docs/fusion_validation.md](docs/fusion_validation.md).
+`--output-unit` controls reported coordinates, areas, and volumes. Supported explicit units are
+`m`, `mm`, `cm`, `in`, and `ft`.
 
 ## Python API
 
@@ -154,31 +130,34 @@ single = project("model.stl", alpha_deg=10)
 rows = sweep("model.stl", alpha="-10:20:1", beta="-5:5:1", roll="0")
 ```
 
+## Documentation
+
+- [CLI Usage](docs/cli.md)
+- [GUI Usage](docs/gui.md)
+- [Attitude Definition](docs/attitude.md)
+- [Accuracy Notes](docs/accuracy.md)
+- [Sample Geometry](docs/samples.md)
+- [Fusion 360 Validation Notes](docs/fusion_validation.md)
+- [Requirements](docs/requirements.md)
+
 ## Accuracy Notes
 
 STL measurements are mesh-based. STEP volume and surface area use the OCP/OpenCascade CAD
-kernel when the `step` extra is installed; projected area is computed from a tessellated mesh
-so the result depends on `--mesh-deflection`. The default `--mesh-deflection auto` uses the
-STEP bounding-box diagonal times `1e-5`, in the selected output length unit. Pass an explicit
-number to reproduce a fixed tessellation tolerance. The target validation tolerance is 0.1%
-against Fusion 360 for representative closed solids.
+kernel when the `step` extra is installed. STEP projected area is calculated from a tessellated
+mesh, so the result depends on tessellation quality.
 
-Sweep CSV output includes the effective projection direction vector, projected centroid,
-equivalent attitude angles, tessellation settings, calculation method, and elapsed seconds for
-each row.
+The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-5` in the
+selected output length unit. The current validation target is within `0.1%` against Fusion 360
+for representative closed solids.
 
-## GUI
+See [Accuracy Notes](docs/accuracy.md) for details.
 
-The PySide6 GUI is a local desktop tool for loading one STL/STEP file, inspecting the mesh,
-running projected-area sweeps, and saving the result table as CSV. Choosing a file with Browse
-loads and displays the shape immediately. The viewer can toggle transparency, mesh edge display,
-and an overlay with the current conditions/results. The current 3D view can be exported as a PNG
-image.
+## Project Status
 
-The GUI supports three attitude input modes: alpha/beta, roll/pitch, and unit-vector components.
-Angle modes use separate Start, End, and Step fields. Unit vector mode is a single direction
-without sweep. Selecting a result row points the camera along that case's projection direction
-and updates the overlay.
+The first milestone focuses on a practical local workflow for one model at a time. Deferred
+items include multi-model display, automated maximum/minimum projected-area search, geometry
+repair, and Excel/HTML reports.
 
-The first GUI milestone intentionally keeps multi-model comparison, automated extrema search,
-geometry repair, and Excel/HTML reports out of scope.
+## License
+
+MIT. See [LICENSE](LICENSE).
