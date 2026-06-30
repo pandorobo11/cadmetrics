@@ -151,6 +151,10 @@ if QtWidgets is not None:
                     min-height: 28px;
                     padding: 2px 12px;
                 }
+                QCheckBox {
+                    min-height: 24px;
+                    spacing: 7px;
+                }
                 QGroupBox {
                     border: 1px solid #d5d9de;
                     border-radius: 4px;
@@ -202,6 +206,20 @@ if QtWidgets is not None:
             self.angular_deflection.setSingleStep(0.1)
             self.angular_deflection.setValue(0.1)
             form.addRow("Angular deflection", self.angular_deflection)
+
+            display_box = QtWidgets.QGroupBox("Shape Display")
+            display_layout = QtWidgets.QHBoxLayout(display_box)
+            display_layout.setContentsMargins(8, 8, 8, 8)
+            display_layout.setSpacing(12)
+            self.transparent_shape = QtWidgets.QCheckBox("Transparent")
+            self.transparent_shape.setChecked(True)
+            self.mesh_edges = QtWidgets.QCheckBox("Mesh edges")
+            self.mesh_edges.setChecked(True)
+            self.transparent_shape.toggled.connect(self._apply_display_options)
+            self.mesh_edges.toggled.connect(self._apply_display_options)
+            display_layout.addWidget(self.transparent_shape)
+            display_layout.addWidget(self.mesh_edges)
+            form.addRow(display_box)
 
             self.attitude_box = QtWidgets.QGroupBox("Attitude")
             attitude_layout = QtWidgets.QVBoxLayout(self.attitude_box)
@@ -569,12 +587,28 @@ if QtWidgets is not None:
             self._mesh_actor = self._plotter.add_mesh(
                 mesh,
                 color="#8fb4dd",
-                show_edges=True,
-                edge_color="#3f5870",
-                opacity=0.92,
+                show_edges=self.mesh_edges.isChecked(),
+                edge_color="#111111",
+                opacity=self._shape_opacity(),
             )
             self._plotter.reset_camera()
             self._plotter.enable_parallel_projection()
+
+        def _shape_opacity(self) -> float:
+            return 0.45 if self.transparent_shape.isChecked() else 1.0
+
+        def _apply_display_options(self, _checked: bool | None = None) -> None:
+            if self._plotter is None or self._mesh_actor is None:
+                return
+
+            try:
+                prop = self._mesh_actor.GetProperty()
+            except AttributeError:
+                prop = self._mesh_actor.prop
+            prop.SetOpacity(self._shape_opacity())
+            prop.SetEdgeVisibility(1 if self.mesh_edges.isChecked() else 0)
+            prop.SetEdgeColor(0.07, 0.07, 0.07)
+            self._plotter.render()
 
         def _update_projection_vector(
             self,
