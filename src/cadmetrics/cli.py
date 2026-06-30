@@ -25,6 +25,7 @@ CSV_FIELDS = [
     "input_unit",
     "output_unit",
     "roll_deg",
+    "pitch_deg",
     "alpha_deg",
     "beta_deg",
     "direction_x",
@@ -286,12 +287,14 @@ def _emit_sweep_summary(rows: list[MeasurementRow]) -> None:
     table.add_column("metric")
     table.add_column("projected_area")
     table.add_column("roll")
+    table.add_column("pitch")
     table.add_column("alpha")
     table.add_column("beta")
     table.add_row(
         "min",
         _format_optional(min_row.projected_area),
         _format_optional(min_row.roll_deg),
+        _format_optional(min_row.pitch_deg),
         _format_optional(min_row.alpha_deg),
         _format_optional(min_row.beta_deg),
     )
@@ -299,10 +302,11 @@ def _emit_sweep_summary(rows: list[MeasurementRow]) -> None:
         "max",
         _format_optional(max_row.projected_area),
         _format_optional(max_row.roll_deg),
+        _format_optional(max_row.pitch_deg),
         _format_optional(max_row.alpha_deg),
         _format_optional(max_row.beta_deg),
     )
-    table.add_row("avg", _format_optional(average), "", "", "")
+    table.add_row("avg", _format_optional(average), "", "", "", "")
     err_console.print(table)
 
 

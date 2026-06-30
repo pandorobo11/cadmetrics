@@ -80,6 +80,7 @@ def test_overlay_text_includes_selected_result_values() -> None:
         input_unit="mm",
         output_unit="m",
         roll_deg=1.0,
+        pitch_deg=4.0,
         alpha_deg=2.0,
         beta_deg=3.0,
         direction_x=1.0,
@@ -97,7 +98,8 @@ def test_overlay_text_includes_selected_result_values() -> None:
     assert "cadmetrics result" in text
     assert "model.stl" in text
     assert "projected_area: 6" in text
-    assert "roll/alpha/beta: 1, 2, 3 deg" in text
+    assert "roll/pitch: 1, 4 deg" in text
+    assert "alpha/beta: 2, 3 deg" in text
     assert "direction: (1, 0, 0)" in text
 
 
@@ -221,6 +223,7 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
             "input_unit": "m",
             "output_unit": "m",
             "roll_deg": "0.0",
+            "pitch_deg": "",
             "alpha_deg": "0.0",
             "beta_deg": "0.0",
             "direction_x": "1.0",

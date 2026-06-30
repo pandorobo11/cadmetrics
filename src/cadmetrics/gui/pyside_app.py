@@ -27,6 +27,7 @@ TABLE_COLUMNS = [
     "input_unit",
     "output_unit",
     "roll_deg",
+    "pitch_deg",
     "alpha_deg",
     "beta_deg",
     "direction_x",
@@ -817,8 +818,8 @@ def _overlay_text(
             "cadmetrics result",
             f"file: {Path(row.file).name}",
             f"unit: {row.output_unit}",
-            f"roll/alpha/beta: {_format_angle(row.roll_deg)}, "
-            f"{_format_angle(row.alpha_deg)}, {_format_angle(row.beta_deg)} deg",
+            f"roll/pitch: {_format_angle(row.roll_deg)}, {_format_angle(row.pitch_deg)} deg",
+            f"alpha/beta: {_format_angle(row.alpha_deg)}, {_format_angle(row.beta_deg)} deg",
         ]
         if row.direction_x is not None:
             lines.append(
@@ -855,14 +856,28 @@ def _overlay_text(
             ]
         )
     if request is not None:
-        lines.extend(
-            [
-                f"input: {request.attitude_mode}",
-                f"roll: {_format_sweep(request.roll_start, request.roll_end, request.roll_step)} deg",
-                f"alpha: {_format_sweep(request.alpha_start, request.alpha_end, request.alpha_step)} deg",
-                f"beta: {_format_sweep(request.beta_start, request.beta_end, request.beta_step)} deg",
-            ]
-        )
+        lines.append(f"input: {request.attitude_mode}")
+        if request.attitude_mode == "roll_pitch":
+            lines.extend(
+                [
+                    f"roll: {_format_sweep(request.roll_start, request.roll_end, request.roll_step)} deg",
+                    f"pitch: {_format_sweep(request.pitch_start, request.pitch_end, request.pitch_step)} deg",
+                ]
+            )
+        elif request.attitude_mode == "vector":
+            lines.append(
+                "direction: "
+                f"({_format_vector_value(request.vector_x)}, "
+                f"{_format_vector_value(request.vector_y)}, "
+                f"{_format_vector_value(request.vector_z)})"
+            )
+        else:
+            lines.extend(
+                [
+                    f"alpha: {_format_sweep(request.alpha_start, request.alpha_end, request.alpha_step)} deg",
+                    f"beta: {_format_sweep(request.beta_start, request.beta_end, request.beta_step)} deg",
+                ]
+            )
     return "\n".join(lines)
 
 

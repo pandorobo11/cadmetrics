@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import cos, radians, sin, sqrt
+from math import asin, atan2, cos, degrees, radians, sin, sqrt
 
 import numpy as np
 
@@ -55,6 +55,29 @@ def projection_direction_for_orientation(orientation: Orientation) -> FloatArray
     return normalize_vector(rotation_matrix(orientation).T @ np.array([1.0, 0.0, 0.0], dtype=float))
 
 
+def alpha_beta_from_direction(direction: FloatArray) -> tuple[float, float]:
+    """Return alpha/beta angles for a projection direction with roll fixed to zero."""
+
+    unit = normalize_vector(direction)
+    alpha = degrees(atan2(float(unit[2]), float(unit[0])))
+    beta = degrees(asin(max(min(-float(unit[1]), 1.0), -1.0)))
+    return _clean_zero(alpha), _clean_zero(beta)
+
+
+def roll_pitch_from_direction(direction: FloatArray) -> tuple[float, float]:
+    """Return roll/pitch angles for a projection direction.
+
+    Pitch is the angle away from +X. Roll is the azimuth around +X, measured so
+    +Z is roll=0 and +Y is roll=90.
+    """
+
+    unit = normalize_vector(direction)
+    radial = sqrt(float(unit[1] ** 2 + unit[2] ** 2))
+    pitch = degrees(atan2(radial, float(unit[0])))
+    roll = 0.0 if radial == 0.0 else degrees(atan2(float(unit[1]), float(unit[2])))
+    return _clean_zero(roll), _clean_zero(pitch)
+
+
 def parse_vector(value: str) -> FloatArray:
     parts = [part.strip() for part in value.split(",")]
     if len(parts) != 3:
@@ -71,3 +94,7 @@ def normalize_vector(vector: FloatArray) -> FloatArray:
     if magnitude == 0.0:
         raise ValueError("Vector magnitude must be greater than zero")
     return vector / magnitude
+
+
+def _clean_zero(value: float) -> float:
+    return 0.0 if abs(value) < 1.0e-12 else value

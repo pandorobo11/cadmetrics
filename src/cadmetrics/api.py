@@ -5,7 +5,13 @@ from time import perf_counter
 from typing import Callable
 
 from cadmetrics.io import load_model
-from cadmetrics.orientation import Orientation, parse_vector, projection_direction_for_orientation
+from cadmetrics.orientation import (
+    Orientation,
+    alpha_beta_from_direction,
+    parse_vector,
+    projection_direction_for_orientation,
+    roll_pitch_from_direction,
+)
 from cadmetrics.projection import projected_area
 from cadmetrics.sweep import iter_orientations
 from cadmetrics.types import MeasurementRow, ModelData
@@ -51,6 +57,7 @@ def measure(
         roll_deg=None,
         alpha_deg=None,
         beta_deg=None,
+        pitch_deg=None,
         volume=model.volume,
         surface_area=model.surface_area,
         projected_area=None,
@@ -89,25 +96,57 @@ def project(
         vector if vector is not None else projection_direction_for_orientation(orientation)
     )
     area = projected_area(model, orientation=orientation if vector is None else None, direction=vector)
-    return MeasurementRow(
-        file=str(model.path),
-        input_unit=model.input_unit,
-        output_unit=model.output_unit,
-        roll_deg=None if vector is not None else roll_deg,
-        alpha_deg=None if vector is not None else alpha_deg,
-        beta_deg=None if vector is not None else beta_deg,
+    return _projected_row(
+        model,
+        projection_direction=projection_direction,
         volume=model.volume,
         surface_area=model.surface_area,
         projected_area=area,
         is_watertight=model.is_watertight,
-        direction_x=float(projection_direction[0]),
-        direction_y=float(projection_direction[1]),
-        direction_z=float(projection_direction[2]),
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
         method=_method_name(model, projected=True),
         elapsed_sec=perf_counter() - start,
         warnings=model.warnings,
+    )
+
+
+def _projected_row(
+    model: ModelData,
+    *,
+    projection_direction,
+    volume: float | None,
+    surface_area: float | None,
+    projected_area: float | None,
+    is_watertight: bool | None,
+    mesh_deflection: float,
+    angular_deflection: float,
+    method: str,
+    elapsed_sec: float,
+    warnings: tuple[str, ...],
+) -> MeasurementRow:
+    alpha_deg, beta_deg = alpha_beta_from_direction(projection_direction)
+    roll_deg, pitch_deg = roll_pitch_from_direction(projection_direction)
+    return MeasurementRow(
+        file=str(model.path),
+        input_unit=model.input_unit,
+        output_unit=model.output_unit,
+        roll_deg=roll_deg,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
+        pitch_deg=pitch_deg,
+        volume=volume,
+        surface_area=surface_area,
+        projected_area=projected_area,
+        is_watertight=is_watertight,
+        direction_x=float(projection_direction[0]),
+        direction_y=float(projection_direction[1]),
+        direction_z=float(projection_direction[2]),
+        mesh_deflection=mesh_deflection,
+        angular_deflection=angular_deflection,
+        method=method,
+        elapsed_sec=elapsed_sec,
+        warnings=warnings,
     )
 
 
@@ -137,20 +176,13 @@ def sweep(
         row_start = perf_counter()
         projection_direction = projection_direction_for_orientation(orientation)
         rows.append(
-            MeasurementRow(
-                file=str(model.path),
-                input_unit=model.input_unit,
-                output_unit=model.output_unit,
-                roll_deg=orientation.roll_deg,
-                alpha_deg=orientation.alpha_deg,
-                beta_deg=orientation.beta_deg,
+            _projected_row(
+                model,
+                projection_direction=projection_direction,
                 volume=model.volume,
                 surface_area=model.surface_area,
                 projected_area=projected_area(model, orientation=orientation),
                 is_watertight=model.is_watertight,
-                direction_x=float(projection_direction[0]),
-                direction_y=float(projection_direction[1]),
-                direction_z=float(projection_direction[2]),
                 mesh_deflection=mesh_deflection,
                 angular_deflection=angular_deflection,
                 method=_method_name(model, projected=True),

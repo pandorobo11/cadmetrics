@@ -40,3 +40,19 @@ def test_alpha_direction_is_reported_in_model_coordinates() -> None:
     assert row.direction_x == pytest.approx(0.5)
     assert row.direction_y == pytest.approx(0.0)
     assert row.direction_z == pytest.approx(0.8660254037844386)
+    assert row.alpha_deg == pytest.approx(60.0)
+    assert row.beta_deg == pytest.approx(0.0)
+    assert row.roll_deg == pytest.approx(0.0)
+    assert row.pitch_deg == pytest.approx(60.0)
+
+
+def test_vector_direction_reports_equivalent_attitudes() -> None:
+    row = project(DATA_DIR / "unit_cube.stl", direction="0,1,0")
+
+    assert row.direction_x == pytest.approx(0.0)
+    assert row.direction_y == pytest.approx(1.0)
+    assert row.direction_z == pytest.approx(0.0)
+    assert row.alpha_deg == pytest.approx(0.0)
+    assert row.beta_deg == pytest.approx(-90.0)
+    assert row.roll_deg == pytest.approx(90.0)
+    assert row.pitch_deg == pytest.approx(90.0)

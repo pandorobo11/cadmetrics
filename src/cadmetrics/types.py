@@ -47,6 +47,7 @@ class MeasurementRow:
     surface_area: float | None
     projected_area: float | None
     is_watertight: bool | None
+    pitch_deg: float | None = None
     direction_x: float | None = None
     direction_y: float | None = None
     direction_z: float | None = None
@@ -62,6 +63,7 @@ class MeasurementRow:
             "input_unit": self.input_unit,
             "output_unit": self.output_unit,
             "roll_deg": self.roll_deg,
+            "pitch_deg": self.pitch_deg,
             "alpha_deg": self.alpha_deg,
             "beta_deg": self.beta_deg,
             "direction_x": self.direction_x,
