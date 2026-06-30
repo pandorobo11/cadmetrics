@@ -84,7 +84,7 @@ if QtWidgets is not None:
 
     class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
         def textFromValue(self, value: float) -> str:  # noqa: N802
-            text = f"{value:.6f}".rstrip("0").rstrip(".")
+            text = f"{value:.{self.decimals()}f}".rstrip("0").rstrip(".")
             if "." not in text:
                 text = f"{text}.0"
             return text
@@ -133,12 +133,44 @@ if QtWidgets is not None:
             self.setCentralWidget(root)
 
             controls = QtWidgets.QWidget()
-            controls.setMinimumWidth(390)
-            controls.setMaximumWidth(500)
+            controls.setMinimumWidth(430)
+            controls.setMaximumWidth(540)
+            controls.setStyleSheet(
+                """
+                QLineEdit, QComboBox, QDoubleSpinBox {
+                    min-height: 26px;
+                    border: 1px solid #c6ccd2;
+                    border-radius: 3px;
+                    padding: 1px 6px;
+                    background: #ffffff;
+                }
+                QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus {
+                    border-color: #6c93bd;
+                }
+                QPushButton {
+                    min-height: 28px;
+                    padding: 2px 12px;
+                }
+                QGroupBox {
+                    border: 1px solid #d5d9de;
+                    border-radius: 4px;
+                    margin-top: 12px;
+                    padding: 12px 8px 8px 8px;
+                    background: #f8f9fa;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 8px;
+                    padding: 0 4px;
+                }
+                """
+            )
             form = QtWidgets.QFormLayout(controls)
             form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
             form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-            form.setVerticalSpacing(8)
+            form.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
+            form.setVerticalSpacing(9)
+            form.setHorizontalSpacing(10)
 
             self.file_edit = QtWidgets.QLineEdit()
             self.file_edit.setPlaceholderText("STL or STEP file")
@@ -157,25 +189,24 @@ if QtWidgets is not None:
             self.output_unit.addItems(OUTPUT_UNIT_OPTIONS)
             form.addRow("Output unit", self.output_unit)
 
-            self.mesh_deflection = QtWidgets.QDoubleSpinBox()
+            self.mesh_deflection = FlexibleDoubleSpinBox()
             self.mesh_deflection.setRange(1.0e-8, 1.0)
-            self.mesh_deflection.setDecimals(4)
+            self.mesh_deflection.setDecimals(8)
+            self.mesh_deflection.setSingleStep(1.0e-4)
             self.mesh_deflection.setValue(1.0e-3)
             form.addRow("Mesh deflection", self.mesh_deflection)
 
-            self.angular_deflection = QtWidgets.QDoubleSpinBox()
+            self.angular_deflection = FlexibleDoubleSpinBox()
             self.angular_deflection.setRange(1.0e-6, 1.0)
-            self.angular_deflection.setDecimals(2)
+            self.angular_deflection.setDecimals(6)
+            self.angular_deflection.setSingleStep(0.1)
             self.angular_deflection.setValue(0.1)
             form.addRow("Angular deflection", self.angular_deflection)
 
             self.attitude_box = QtWidgets.QGroupBox("Attitude")
-            attitude_form = QtWidgets.QFormLayout(self.attitude_box)
-            attitude_form.setFieldGrowthPolicy(
-                QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
-            )
-            attitude_form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
-            attitude_form.setVerticalSpacing(6)
+            attitude_layout = QtWidgets.QVBoxLayout(self.attitude_box)
+            attitude_layout.setContentsMargins(8, 8, 8, 8)
+            attitude_layout.setSpacing(7)
             form.addRow(self.attitude_box)
 
             self.attitude_mode = QtWidgets.QComboBox()
@@ -184,38 +215,27 @@ if QtWidgets is not None:
             self.attitude_mode.addItem("Unit vector", "vector")
             self.attitude_mode.currentIndexChanged.connect(self._sync_attitude_controls)
             self.attitude_mode.currentIndexChanged.connect(self._update_projection_vector)
-            attitude_form.addRow("Input", self.attitude_mode)
+            attitude_layout.addWidget(self.attitude_mode)
 
-            self.roll_group, self.roll_start, self.roll_end, self.roll_step = (
-                self._make_sweep_angle_inputs()
-            )
-            self.alpha_group, self.alpha_start, self.alpha_end, self.alpha_step = (
-                self._make_sweep_angle_inputs()
-            )
-            self.beta_group, self.beta_start, self.beta_end, self.beta_step = (
-                self._make_sweep_angle_inputs()
-            )
-            self.pitch_group, self.pitch_start, self.pitch_end, self.pitch_step = (
-                self._make_sweep_angle_inputs()
-            )
-            self.vector_x = self._make_number_input(1.0)
-            self.vector_y = self._make_number_input(0.0)
-            self.vector_z = self._make_number_input(0.0)
-
-            self.roll_label = QtWidgets.QLabel("Roll")
-            self.alpha_label = QtWidgets.QLabel("Alpha")
-            self.beta_label = QtWidgets.QLabel("Beta")
-            self.pitch_label = QtWidgets.QLabel("Pitch")
-            self.vector_x_label = QtWidgets.QLabel("Vector X")
-            self.vector_y_label = QtWidgets.QLabel("Vector Y")
-            self.vector_z_label = QtWidgets.QLabel("Vector Z")
-            attitude_form.addRow(self.roll_label, self.roll_group)
-            attitude_form.addRow(self.alpha_label, self.alpha_group)
-            attitude_form.addRow(self.beta_label, self.beta_group)
-            attitude_form.addRow(self.pitch_label, self.pitch_group)
-            attitude_form.addRow(self.vector_x_label, self.vector_x)
-            attitude_form.addRow(self.vector_y_label, self.vector_y)
-            attitude_form.addRow(self.vector_z_label, self.vector_z)
+            (
+                self.alpha_beta_group,
+                (self.alpha_start, self.alpha_end, self.alpha_step),
+                (self.beta_start, self.beta_end, self.beta_step),
+            ) = self._make_sweep_grid("Alpha", "Beta")
+            (
+                self.roll_pitch_group,
+                (self.roll_start, self.roll_end, self.roll_step),
+                (self.pitch_start, self.pitch_end, self.pitch_step),
+            ) = self._make_sweep_grid("Roll", "Pitch")
+            (
+                self.vector_group,
+                self.vector_x,
+                self.vector_y,
+                self.vector_z,
+            ) = self._make_vector_inputs()
+            attitude_layout.addWidget(self.alpha_beta_group)
+            attitude_layout.addWidget(self.roll_pitch_group)
+            attitude_layout.addWidget(self.vector_group)
 
             for field in (
                 self.roll_start,
@@ -281,10 +301,56 @@ if QtWidgets is not None:
 
             root.addWidget(controls)
             root.addWidget(right)
-            root.setSizes([400, 920])
+            root.setSizes([440, 880])
             self._sync_attitude_controls()
 
-        def _make_sweep_angle_inputs(
+        def _make_sweep_grid(
+            self,
+            first_label: str,
+            second_label: str,
+        ) -> tuple[
+            QtWidgets.QWidget,
+            tuple[QtWidgets.QDoubleSpinBox, QtWidgets.QDoubleSpinBox, QtWidgets.QDoubleSpinBox],
+            tuple[QtWidgets.QDoubleSpinBox, QtWidgets.QDoubleSpinBox, QtWidgets.QDoubleSpinBox],
+        ]:
+            group = QtWidgets.QWidget()
+            layout = QtWidgets.QGridLayout(group)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setHorizontalSpacing(6)
+            layout.setVerticalSpacing(5)
+
+            for column, text in enumerate(("Start", "End", "Step"), start=1):
+                header = QtWidgets.QLabel(text)
+                header.setStyleSheet("color: #5f6872;")
+                header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                layout.addWidget(header, 0, column)
+
+            first = self._make_sweep_row(layout, 1, first_label)
+            second = self._make_sweep_row(layout, 2, second_label)
+            layout.setColumnStretch(0, 0)
+            for column in (1, 2, 3):
+                layout.setColumnStretch(column, 1)
+            return group, first, second
+
+        def _make_sweep_row(
+            self,
+            layout: QtWidgets.QGridLayout,
+            row: int,
+            label_text: str,
+        ) -> tuple[QtWidgets.QDoubleSpinBox, QtWidgets.QDoubleSpinBox, QtWidgets.QDoubleSpinBox]:
+            label = QtWidgets.QLabel(label_text)
+            label.setStyleSheet("color: #374151;")
+            label.setMinimumWidth(46)
+            layout.addWidget(label, row, 0)
+            start = self._make_number_input(0.0)
+            end = self._make_number_input(0.0)
+            step = self._make_number_input(1.0)
+            layout.addWidget(start, row, 1)
+            layout.addWidget(end, row, 2)
+            layout.addWidget(step, row, 3)
+            return start, end, step
+
+        def _make_vector_inputs(
             self,
         ) -> tuple[
             QtWidgets.QWidget,
@@ -293,19 +359,23 @@ if QtWidgets is not None:
             QtWidgets.QDoubleSpinBox,
         ]:
             group = QtWidgets.QWidget()
-            layout = QtWidgets.QHBoxLayout(group)
+            layout = QtWidgets.QGridLayout(group)
             layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(4)
-            start = self._make_number_input(0.0)
-            end = self._make_number_input(0.0)
-            step = self._make_number_input(1.0)
-            layout.addWidget(QtWidgets.QLabel("Start"))
-            layout.addWidget(start)
-            layout.addWidget(QtWidgets.QLabel("End"))
-            layout.addWidget(end)
-            layout.addWidget(QtWidgets.QLabel("Step"))
-            layout.addWidget(step)
-            return group, start, end, step
+            layout.setHorizontalSpacing(6)
+            labels = ("X", "Y", "Z")
+            fields = (
+                self._make_number_input(1.0),
+                self._make_number_input(0.0),
+                self._make_number_input(0.0),
+            )
+            for column, (label, field) in enumerate(zip(labels, fields, strict=True)):
+                header = QtWidgets.QLabel(label)
+                header.setStyleSheet("color: #5f6872;")
+                header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                layout.addWidget(header, 0, column)
+                layout.addWidget(field, 1, column)
+                layout.setColumnStretch(column, 1)
+            return group, fields[0], fields[1], fields[2]
 
         def _make_number_input(self, value: float) -> QtWidgets.QDoubleSpinBox:
             field = FlexibleDoubleSpinBox()
@@ -313,7 +383,7 @@ if QtWidgets is not None:
             field.setDecimals(6)
             field.setSingleStep(1.0)
             field.setValue(value)
-            field.setMinimumWidth(72)
+            field.setMinimumWidth(78)
             return field
 
         def _create_viewer(self) -> QtWidgets.QWidget:
@@ -606,27 +676,14 @@ if QtWidgets is not None:
 
         def _sync_attitude_controls(self) -> None:
             mode = self.attitude_mode.currentData()
-            self._set_row_visible(self.alpha_label, self.alpha_group, mode == "alpha_beta")
-            self._set_row_visible(self.beta_label, self.beta_group, mode == "alpha_beta")
-            self._set_row_visible(self.roll_label, self.roll_group, mode == "roll_pitch")
-            self._set_row_visible(self.pitch_label, self.pitch_group, mode == "roll_pitch")
-            self._set_row_visible(self.vector_x_label, self.vector_x, mode == "vector")
-            self._set_row_visible(self.vector_y_label, self.vector_y, mode == "vector")
-            self._set_row_visible(self.vector_z_label, self.vector_z, mode == "vector")
+            self.alpha_beta_group.setVisible(mode == "alpha_beta")
+            self.roll_pitch_group.setVisible(mode == "roll_pitch")
+            self.vector_group.setVisible(mode == "vector")
 
         def _set_running(self, running: bool) -> None:
             self.run_button.setEnabled(not running)
             self.save_button.setEnabled(not running and bool(self._rows))
             self.cancel_button.setEnabled(running)
-
-        def _set_row_visible(
-            self,
-            label: QtWidgets.QLabel,
-            field: QtWidgets.QWidget,
-            visible: bool,
-        ) -> None:
-            label.setVisible(visible)
-            field.setVisible(visible)
 
         def _show_error(self, message: str) -> None:
             self.status.setText(f"Error: {message}")
