@@ -51,9 +51,14 @@ from STL and STEP files.
 - CLI accepts single angle values or inclusive `start:end:step` ranges
 - Sweep calculates every combination of roll, alpha, and beta
 - Vector direction can be specified directly for single projected-area calculations
-- `alpha`, `beta`, and `roll` describe the projection direction attitude. A Fusion 360 sketch
-  or measurement plane angle can be complementary because the projection direction is normal
-  to that plane.
+- `alpha`, `beta`, `roll`, and `pitch` describe the projection direction attitude. A Fusion
+  360 sketch or measurement plane angle can be complementary because the projection direction
+  is normal to that plane.
+- Projected-area output reports equivalent alpha/beta, roll/pitch, and unit-vector direction
+  values for each case.
+- With normalized projection direction `d = (d_x, d_y, d_z)`, equivalent output angles are
+  `alpha = atan2(d_z, d_x)`, `beta = asin(-d_y)`,
+  `pitch = atan2(sqrt(d_y^2 + d_z^2), d_x)`, and `roll = atan2(d_y, d_z)`.
 
 ## CLI Shape
 
@@ -69,10 +74,10 @@ Default `--unit` is `auto`: STEP units are read from the file, and STL is assume
 
 ## GUI Shape
 
-The first GUI is a PySide6 desktop application installed through the `gui-pyside` extra:
+The first GUI is a PySide6 desktop application installed through the `gui` extra:
 
 ```bash
-uv sync --extra gui-pyside
+uv sync --extra gui
 cadmetrics-gui
 ```
 
@@ -80,7 +85,8 @@ It supports one loaded model at a time, immediate shape display after Browse fil
 PyVista 3D view, unit controls, sweep execution, a progress bar, cancellation for sweep jobs, a
 result table, and CSV export. GUI attitude input can be alpha/beta, roll/pitch, or unit-vector
 components. Angle modes use separate Start, End, and Step fields. Unit-vector mode is a single
-direction without sweep.
+direction without sweep. The viewer supports transparency and mesh-edge toggles, a conditions
+and results overlay, row-selection camera alignment, and PNG image export.
 
 ## CSV Columns
 
@@ -88,6 +94,7 @@ direction without sweep.
 - `input_unit`
 - `output_unit`
 - `roll_deg`
+- `pitch_deg`
 - `alpha_deg`
 - `beta_deg`
 - `direction_x`
@@ -111,9 +118,7 @@ direction without sweep.
 
 ## Deferred
 
-- Streamlit prototype GUI
 - Multiple model display
-- GUI screenshots/exported view images
 - Excel and HTML report output
 - Automated maximum/minimum projected-area search
 - Geometry repair

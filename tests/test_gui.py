@@ -21,6 +21,9 @@ def test_gui_entry_point_is_registered() -> None:
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
     assert pyproject["project"]["scripts"]["cadmetrics-gui"] == "cadmetrics.gui.pyside_app:main"
+    optional_dependencies = pyproject["project"]["optional-dependencies"]
+    assert "gui" in optional_dependencies
+    assert "gui-pyside" not in optional_dependencies
 
 
 def test_pyside_gui_module_imports_without_optional_dependencies() -> None:

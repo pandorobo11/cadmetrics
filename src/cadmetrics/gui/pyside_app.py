@@ -102,7 +102,7 @@ class _CancelledCalculation(Exception):
 def main() -> None:
     if QtWidgets is None:
         raise MissingGuiDependency(
-            "PySide6 GUI dependencies are not installed. Run: uv sync --extra gui-pyside"
+            "PySide6 GUI dependencies are not installed. Run: uv sync --extra gui"
         )
     app = QtWidgets.QApplication(sys.argv)
     window = MainWindow()
@@ -423,7 +423,7 @@ if QtWidgets is not None:
                 placeholder.setReadOnly(True)
                 placeholder.setText(
                     "3D viewer dependencies are not installed.\n"
-                    "Run: uv sync --extra gui-pyside"
+                    "Run: uv sync --extra gui"
                 )
                 return placeholder
 
