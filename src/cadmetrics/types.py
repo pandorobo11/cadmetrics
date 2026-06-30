@@ -51,6 +51,11 @@ class MeasurementRow:
     direction_x: float | None = None
     direction_y: float | None = None
     direction_z: float | None = None
+    centroid_u: float | None = None
+    centroid_v: float | None = None
+    centroid_x: float | None = None
+    centroid_y: float | None = None
+    centroid_z: float | None = None
     mesh_deflection: float | None = None
     angular_deflection: float | None = None
     method: str | None = None
@@ -69,6 +74,11 @@ class MeasurementRow:
             "direction_x": self.direction_x,
             "direction_y": self.direction_y,
             "direction_z": self.direction_z,
+            "centroid_u": self.centroid_u,
+            "centroid_v": self.centroid_v,
+            "centroid_x": self.centroid_x,
+            "centroid_y": self.centroid_y,
+            "centroid_z": self.centroid_z,
             "volume": self.volume,
             "surface_area": self.surface_area,
             "projected_area": self.projected_area,

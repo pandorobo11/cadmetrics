@@ -89,6 +89,11 @@ def test_overlay_text_includes_selected_result_values() -> None:
         direction_x=1.0,
         direction_y=0.0,
         direction_z=0.0,
+        centroid_u=2.0,
+        centroid_v=3.0,
+        centroid_x=4.0,
+        centroid_y=5.0,
+        centroid_z=6.0,
         volume=4.0,
         surface_area=5.0,
         projected_area=6.0,
@@ -104,6 +109,7 @@ def test_overlay_text_includes_selected_result_values() -> None:
     assert "roll/pitch: 1, 4 deg" in text
     assert "alpha/beta: 2, 3 deg" in text
     assert "direction: (1, 0, 0)" in text
+    assert "centroid: (4, 5, 6)" in text
 
 
 def test_gui_view_can_be_saved_as_image() -> None:
@@ -205,6 +211,11 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
         direction_x=1.0,
         direction_y=0.0,
         direction_z=0.0,
+        centroid_u=0.0,
+        centroid_v=0.0,
+        centroid_x=0.0,
+        centroid_y=0.0,
+        centroid_z=0.0,
         volume=1.0,
         surface_area=6.0,
         projected_area=1.0,
@@ -232,6 +243,11 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
             "direction_x": "1.0",
             "direction_y": "0.0",
             "direction_z": "0.0",
+            "centroid_u": "0.0",
+            "centroid_v": "0.0",
+            "centroid_x": "0.0",
+            "centroid_y": "0.0",
+            "centroid_z": "0.0",
             "volume": "1.0",
             "surface_area": "6.0",
             "projected_area": "1.0",

@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
-from cadmetrics.orientation import Orientation, normalize_vector, rotation_matrix
+from cadmetrics.orientation import Orientation, normalize_vector, projection_direction_for_orientation
 from cadmetrics.types import FloatArray, ModelData
+
+
+@dataclass(frozen=True)
+class ProjectionMetrics:
+    area: float
+    centroid_u: float | None
+    centroid_v: float | None
 
 
 def projected_area(
@@ -13,6 +22,17 @@ def projected_area(
     direction: FloatArray | None = None,
 ) -> float:
     """Calculate orthographic 2D outline area with overlapping triangles unioned."""
+
+    return projected_metrics(model, orientation=orientation, direction=direction).area
+
+
+def projected_metrics(
+    model: ModelData,
+    *,
+    orientation: Orientation | None = None,
+    direction: FloatArray | None = None,
+) -> ProjectionMetrics:
+    """Calculate orthographic 2D outline area and its projected centroid."""
 
     try:
         from shapely.geometry import Polygon
@@ -24,14 +44,13 @@ def projected_area(
         from shapely.ops import unary_union as union_all
 
     if model.face_count == 0:
-        return 0.0
+        return ProjectionMetrics(area=0.0, centroid_u=None, centroid_v=None)
 
     vertices = model.vertices
     projection_direction = np.array([1.0, 0.0, 0.0], dtype=float)
 
     if orientation is not None:
-        matrix = rotation_matrix(orientation)
-        vertices = vertices @ matrix.T
+        projection_direction = projection_direction_for_orientation(orientation)
 
     if direction is not None:
         projection_direction = normalize_vector(direction)
@@ -49,9 +68,15 @@ def projected_area(
             polygons.append(polygon)
 
     if not polygons:
-        return 0.0
+        return ProjectionMetrics(area=0.0, centroid_u=None, centroid_v=None)
 
-    return float(union_all(polygons).area)
+    outline = union_all(polygons)
+    centroid = outline.centroid
+    return ProjectionMetrics(
+        area=float(outline.area),
+        centroid_u=float(centroid.x),
+        centroid_v=float(centroid.y),
+    )
 
 
 def projection_basis(direction: FloatArray) -> tuple[FloatArray, FloatArray]:

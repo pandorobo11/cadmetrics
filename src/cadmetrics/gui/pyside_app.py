@@ -33,6 +33,11 @@ TABLE_COLUMNS = [
     "direction_x",
     "direction_y",
     "direction_z",
+    "centroid_u",
+    "centroid_v",
+    "centroid_x",
+    "centroid_y",
+    "centroid_z",
     "volume",
     "surface_area",
     "projected_area",
@@ -124,6 +129,7 @@ if QtWidgets is not None:
             self._plotter: Any | None = None
             self._vector_actor: Any | None = None
             self._mesh_actor: Any | None = None
+            self._centroid_actor: Any | None = None
             self._overlay_actor: Any | None = None
             self._overlay_row: MeasurementRow | None = None
 
@@ -593,6 +599,7 @@ if QtWidgets is not None:
             mesh = pv.PolyData(model.vertices, faces)
             self._plotter.clear()
             self._vector_actor = None
+            self._centroid_actor = None
             self._overlay_actor = None
             self._plotter.add_axes()
             self._plotter.show_grid()
@@ -730,10 +737,45 @@ if QtWidgets is not None:
                 vector.reshape(1, 3),
                 color="#d04a02",
             )
+            self._update_centroid_marker(row)
             if align_camera:
                 self._look_from_projection_direction(direction)
             self._update_overlay()
             self._plotter.render()
+
+        def _update_centroid_marker(self, row: MeasurementRow | None) -> None:
+            if self._plotter is None:
+                return
+            if self._centroid_actor is not None:
+                try:
+                    self._plotter.remove_actor(self._centroid_actor)
+                except Exception:
+                    pass
+                self._centroid_actor = None
+            if (
+                row is None
+                or row.centroid_x is None
+                or row.centroid_y is None
+                or row.centroid_z is None
+            ):
+                return
+
+            import pyvista as pv
+
+            spans = np.ptp(self._model.vertices, axis=0) if self._model is not None else np.array([1.0])
+            radius = max(float(spans.max()) * 0.025, 1.0e-6)
+            marker = pv.Sphere(
+                radius=radius,
+                center=(row.centroid_x, row.centroid_y, row.centroid_z),
+                theta_resolution=24,
+                phi_resolution=12,
+            )
+            self._centroid_actor = self._plotter.add_mesh(
+                marker,
+                color="#ffd400",
+                edge_color="#111111",
+                show_edges=True,
+            )
 
         def _look_from_projection_direction(self, direction: np.ndarray) -> None:
             if self._plotter is None or self._model is None:
@@ -831,6 +873,10 @@ def _overlay_text(
         lines.extend(
             [
                 f"projected_area: {_format_metric(row.projected_area)}",
+                "centroid: "
+                f"({_format_vector_value(row.centroid_x)}, "
+                f"{_format_vector_value(row.centroid_y)}, "
+                f"{_format_vector_value(row.centroid_z)})",
                 f"volume: {_format_metric(row.volume)}",
                 f"surface_area: {_format_metric(row.surface_area)}",
             ]

@@ -24,6 +24,11 @@ def test_cube_projected_area_default_direction() -> None:
     assert row.direction_x == pytest.approx(1.0)
     assert row.direction_y == pytest.approx(0.0)
     assert row.direction_z == pytest.approx(0.0)
+    assert row.centroid_u == pytest.approx(0.5)
+    assert row.centroid_v == pytest.approx(0.5)
+    assert row.centroid_x == pytest.approx(0.5)
+    assert row.centroid_y == pytest.approx(0.5)
+    assert row.centroid_z == pytest.approx(0.5)
     assert row.method == "stl-mesh-projection"
     assert row.elapsed_sec is not None
 

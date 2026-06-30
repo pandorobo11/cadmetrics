@@ -8,11 +8,13 @@ from cadmetrics.io import load_model
 from cadmetrics.orientation import (
     Orientation,
     alpha_beta_from_direction,
+    normalize_vector,
     parse_vector,
     projection_direction_for_orientation,
     roll_pitch_from_direction,
 )
-from cadmetrics.projection import projected_area
+from cadmetrics.projection import ProjectionMetrics, projected_metrics
+from cadmetrics.projection import projection_basis
 from cadmetrics.sweep import iter_orientations
 from cadmetrics.types import MeasurementRow, ModelData
 
@@ -95,13 +97,13 @@ def project(
     projection_direction = (
         vector if vector is not None else projection_direction_for_orientation(orientation)
     )
-    area = projected_area(model, orientation=orientation if vector is None else None, direction=vector)
+    metrics = projected_metrics(model, orientation=orientation if vector is None else None, direction=vector)
     return _projected_row(
         model,
         projection_direction=projection_direction,
         volume=model.volume,
         surface_area=model.surface_area,
-        projected_area=area,
+        projection_metrics=metrics,
         is_watertight=model.is_watertight,
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
@@ -117,7 +119,7 @@ def _projected_row(
     projection_direction,
     volume: float | None,
     surface_area: float | None,
-    projected_area: float | None,
+    projection_metrics: ProjectionMetrics,
     is_watertight: bool | None,
     mesh_deflection: float,
     angular_deflection: float,
@@ -125,8 +127,15 @@ def _projected_row(
     elapsed_sec: float,
     warnings: tuple[str, ...],
 ) -> MeasurementRow:
+    projection_direction = normalize_vector(projection_direction)
     alpha_deg, beta_deg = alpha_beta_from_direction(projection_direction)
     roll_deg, pitch_deg = roll_pitch_from_direction(projection_direction)
+    centroid_x, centroid_y, centroid_z = _centroid_model_coordinates(
+        model,
+        projection_direction=projection_direction,
+        centroid_u=projection_metrics.centroid_u,
+        centroid_v=projection_metrics.centroid_v,
+    )
     return MeasurementRow(
         file=str(model.path),
         input_unit=model.input_unit,
@@ -137,17 +146,38 @@ def _projected_row(
         pitch_deg=pitch_deg,
         volume=volume,
         surface_area=surface_area,
-        projected_area=projected_area,
+        projected_area=projection_metrics.area,
         is_watertight=is_watertight,
         direction_x=float(projection_direction[0]),
         direction_y=float(projection_direction[1]),
         direction_z=float(projection_direction[2]),
+        centroid_u=projection_metrics.centroid_u,
+        centroid_v=projection_metrics.centroid_v,
+        centroid_x=centroid_x,
+        centroid_y=centroid_y,
+        centroid_z=centroid_z,
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
         method=method,
         elapsed_sec=elapsed_sec,
         warnings=warnings,
     )
+
+
+def _centroid_model_coordinates(
+    model: ModelData,
+    *,
+    projection_direction,
+    centroid_u: float | None,
+    centroid_v: float | None,
+) -> tuple[float | None, float | None, float | None]:
+    if centroid_u is None or centroid_v is None:
+        return None, None, None
+    basis_u, basis_v = projection_basis(projection_direction)
+    normal = normalize_vector(projection_direction)
+    plane_offset = float(model.vertices.mean(axis=0) @ normal)
+    point = basis_u * centroid_u + basis_v * centroid_v + normal * plane_offset
+    return float(point[0]), float(point[1]), float(point[2])
 
 
 def sweep(
@@ -181,7 +211,7 @@ def sweep(
                 projection_direction=projection_direction,
                 volume=model.volume,
                 surface_area=model.surface_area,
-                projected_area=projected_area(model, orientation=orientation),
+                projection_metrics=projected_metrics(model, orientation=orientation),
                 is_watertight=model.is_watertight,
                 mesh_deflection=mesh_deflection,
                 angular_deflection=angular_deflection,

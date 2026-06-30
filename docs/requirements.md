@@ -56,6 +56,8 @@ from STL and STEP files.
   is normal to that plane.
 - Projected-area output reports equivalent alpha/beta, roll/pitch, and unit-vector direction
   values for each case.
+- Projected-area output reports the projected 2D centroid and a corresponding 3D marker
+  position on the projection plane through the model center.
 - With normalized projection direction `d = (d_x, d_y, d_z)`, equivalent output angles are
   `alpha = atan2(d_z, d_x)`, `beta = asin(-d_y)`,
   `pitch = atan2(sqrt(d_y^2 + d_z^2), d_x)`, and `roll = atan2(d_y, d_z)`.
@@ -100,6 +102,11 @@ and results overlay, row-selection camera alignment, and PNG image export.
 - `direction_x`
 - `direction_y`
 - `direction_z`
+- `centroid_u`
+- `centroid_v`
+- `centroid_x`
+- `centroid_y`
+- `centroid_z`
 - `volume`
 - `surface_area`
 - `projected_area`

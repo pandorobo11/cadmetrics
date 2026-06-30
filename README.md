@@ -99,7 +99,9 @@ Use `--direction x,y,z` when you want to avoid that ambiguity.
 
 CSV output includes the equivalent attitude representations for each projected-area row:
 `alpha_deg`, `beta_deg`, `roll_deg`, `pitch_deg`, and the normalized unit vector
-`direction_x`, `direction_y`, `direction_z`.
+`direction_x`, `direction_y`, `direction_z`. It also includes the projected-area centroid as
+2D projection-plane coordinates (`centroid_u`, `centroid_v`) and as a 3D marker position on the
+projection plane through the model center (`centroid_x`, `centroid_y`, `centroid_z`).
 
 ## Attitude Definition
 
@@ -159,8 +161,9 @@ kernel when the `step` extra is installed; projected area is computed from a tes
 so the result depends on `--mesh-deflection`. The target validation tolerance is 0.1% against
 Fusion 360 for representative closed solids.
 
-Sweep CSV output includes the effective projection direction vector, equivalent attitude angles,
-tessellation settings, calculation method, and elapsed seconds for each row.
+Sweep CSV output includes the effective projection direction vector, projected centroid,
+equivalent attitude angles, tessellation settings, calculation method, and elapsed seconds for
+each row.
 
 ## GUI
 
