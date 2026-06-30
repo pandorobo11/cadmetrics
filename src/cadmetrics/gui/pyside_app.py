@@ -726,7 +726,12 @@ if QtWidgets is not None:
                 except Exception:
                     direction = np.array([1.0, 0.0, 0.0], dtype=float)
 
-            start, vector = _projection_arrow_geometry(self._model.vertices, direction)
+            through_point = _row_centroid_point(row)
+            start, vector = _projection_arrow_geometry(
+                self._model.vertices,
+                direction,
+                through_point=through_point,
+            )
             if self._vector_actor is not None:
                 try:
                     self._plotter.remove_actor(self._vector_actor)
@@ -945,16 +950,27 @@ def _format_sweep(start: float, end: float, step: float) -> str:
     return f"{start:.3g}:{end:.3g}:{step:.3g}"
 
 
-def _projection_arrow_geometry(vertices: np.ndarray, direction: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    center = vertices.mean(axis=0)
+def _row_centroid_point(row: MeasurementRow | None) -> np.ndarray | None:
+    if row is None or row.centroid_x is None or row.centroid_y is None or row.centroid_z is None:
+        return None
+    return np.array([row.centroid_x, row.centroid_y, row.centroid_z], dtype=float)
+
+
+def _projection_arrow_geometry(
+    vertices: np.ndarray,
+    direction: np.ndarray,
+    *,
+    through_point: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    anchor = vertices.mean(axis=0) if through_point is None else through_point
     unit_direction = direction / np.linalg.norm(direction)
     spans = np.ptp(vertices, axis=0)
     scale = max(float(spans.max()), 1.0)
-    arrow_length = scale * 0.35
     clearance = scale * 0.15
-    projections = (vertices - center) @ unit_direction
+    projections = (vertices - anchor) @ unit_direction
     upstream_edge = float(projections.min())
-    start = center + unit_direction * (upstream_edge - clearance - arrow_length)
+    arrow_length = scale * 0.35
+    start = anchor + unit_direction * (upstream_edge - clearance - arrow_length)
     vector = unit_direction * arrow_length
     return start, vector
 
