@@ -9,7 +9,11 @@ import numpy as np
 
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
-from cadmetrics.gui.pyside_app import _projection_arrow_geometry, _projection_camera_geometry
+from cadmetrics.gui.pyside_app import (
+    _overlay_text,
+    _projection_arrow_geometry,
+    _projection_camera_geometry,
+)
 from cadmetrics.types import MeasurementRow
 
 
@@ -68,6 +72,39 @@ def test_projection_camera_looks_along_direction() -> None:
 
     assert np.allclose(view_direction, direction)
     assert np.isclose(float(np.dot(view_up, direction)), 0.0)
+
+
+def test_overlay_text_includes_selected_result_values() -> None:
+    row = MeasurementRow(
+        file="/tmp/model.stl",
+        input_unit="mm",
+        output_unit="m",
+        roll_deg=1.0,
+        alpha_deg=2.0,
+        beta_deg=3.0,
+        direction_x=1.0,
+        direction_y=0.0,
+        direction_z=0.0,
+        volume=4.0,
+        surface_area=5.0,
+        projected_area=6.0,
+        is_watertight=True,
+        method="stl-mesh-projection",
+    )
+
+    text = _overlay_text(row, model=None, request=None)
+
+    assert "cadmetrics result" in text
+    assert "model.stl" in text
+    assert "projected_area: 6" in text
+    assert "roll/alpha/beta: 1, 2, 3 deg" in text
+    assert "direction: (1, 0, 0)" in text
+
+
+def test_gui_view_can_be_saved_as_image() -> None:
+    source = Path("src/cadmetrics/gui/pyside_app.py").read_text(encoding="utf-8")
+
+    assert "screenshot(str(output_path))" in source
 
 
 def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:

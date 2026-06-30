@@ -123,6 +123,8 @@ if QtWidgets is not None:
             self._plotter: Any | None = None
             self._vector_actor: Any | None = None
             self._mesh_actor: Any | None = None
+            self._overlay_actor: Any | None = None
+            self._overlay_row: MeasurementRow | None = None
 
             self._build_ui()
             self._set_running(False)
@@ -208,17 +210,25 @@ if QtWidgets is not None:
             form.addRow("Angular deflection", self.angular_deflection)
 
             display_box = QtWidgets.QGroupBox("Shape Display")
-            display_layout = QtWidgets.QHBoxLayout(display_box)
+            display_layout = QtWidgets.QGridLayout(display_box)
             display_layout.setContentsMargins(8, 8, 8, 8)
-            display_layout.setSpacing(12)
+            display_layout.setHorizontalSpacing(12)
+            display_layout.setVerticalSpacing(6)
             self.transparent_shape = QtWidgets.QCheckBox("Transparent")
             self.transparent_shape.setChecked(True)
             self.mesh_edges = QtWidgets.QCheckBox("Mesh edges")
             self.mesh_edges.setChecked(True)
+            self.show_overlay = QtWidgets.QCheckBox("Overlay")
+            self.show_overlay.setChecked(True)
+            self.save_image_button = QtWidgets.QPushButton("Save Image")
             self.transparent_shape.toggled.connect(self._apply_display_options)
             self.mesh_edges.toggled.connect(self._apply_display_options)
-            display_layout.addWidget(self.transparent_shape)
-            display_layout.addWidget(self.mesh_edges)
+            self.show_overlay.toggled.connect(self._update_overlay)
+            self.save_image_button.clicked.connect(self._save_view_image)
+            display_layout.addWidget(self.transparent_shape, 0, 0)
+            display_layout.addWidget(self.mesh_edges, 0, 1)
+            display_layout.addWidget(self.show_overlay, 1, 0)
+            display_layout.addWidget(self.save_image_button, 1, 1)
             form.addRow(display_box)
 
             self.attitude_box = QtWidgets.QGroupBox("Attitude")
@@ -582,6 +592,7 @@ if QtWidgets is not None:
             mesh = pv.PolyData(model.vertices, faces)
             self._plotter.clear()
             self._vector_actor = None
+            self._overlay_actor = None
             self._plotter.add_axes()
             self._plotter.show_grid()
             self._mesh_actor = self._plotter.add_mesh(
@@ -593,6 +604,7 @@ if QtWidgets is not None:
             )
             self._plotter.reset_camera()
             self._plotter.enable_parallel_projection()
+            self._update_overlay()
 
         def _shape_opacity(self) -> float:
             return 0.45 if self.transparent_shape.isChecked() else 1.0
@@ -610,6 +622,63 @@ if QtWidgets is not None:
             prop.SetEdgeColor(0.07, 0.07, 0.07)
             self._plotter.render()
 
+        def _save_view_image(self) -> None:
+            if self._plotter is None:
+                self._show_error("3D viewer is not available.")
+                return
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self,
+                "Save View Image",
+                "cadmetrics_view.png",
+                "PNG Images (*.png);;All Files (*)",
+            )
+            if not path:
+                return
+            output_path = Path(path)
+            if output_path.suffix == "":
+                output_path = output_path.with_suffix(".png")
+            try:
+                self._plotter.screenshot(str(output_path))
+            except Exception as exc:
+                self._show_error(str(exc))
+                return
+            self.status.setText(f"Saved image: {output_path}")
+
+        def _update_overlay(self, _checked: bool | None = None) -> None:
+            if self._plotter is None:
+                return
+            if self._overlay_actor is not None:
+                try:
+                    self._plotter.remove_actor(self._overlay_actor)
+                except Exception:
+                    pass
+                self._overlay_actor = None
+            if not self.show_overlay.isChecked():
+                self._plotter.render()
+                return
+            text = _overlay_text(
+                self._overlay_row,
+                model=self._model,
+                request=self._request_or_none(),
+            )
+            if not text:
+                self._plotter.render()
+                return
+            self._overlay_actor = self._plotter.add_text(
+                text,
+                position="upper_left",
+                font_size=10,
+                color="#111111",
+                shadow=True,
+            )
+            self._plotter.render()
+
+        def _request_or_none(self) -> CalculationRequest | None:
+            try:
+                return self._request()
+            except Exception:
+                return None
+
         def _update_projection_vector(
             self,
             row: MeasurementRow | None = None,
@@ -620,6 +689,7 @@ if QtWidgets is not None:
                 return
             if not isinstance(row, MeasurementRow):
                 row = None
+            self._overlay_row = row
             if row is not None and row.direction_x is not None:
                 direction = np.array([row.direction_x, row.direction_y, row.direction_z], dtype=float)
             else:
@@ -661,6 +731,7 @@ if QtWidgets is not None:
             )
             if align_camera:
                 self._look_from_projection_direction(direction)
+            self._update_overlay()
             self._plotter.render()
 
         def _look_from_projection_direction(self, direction: np.ndarray) -> None:
@@ -733,6 +804,84 @@ def _format_cell(value: object) -> str:
     if isinstance(value, float):
         return f"{value:.12g}"
     return str(value)
+
+
+def _overlay_text(
+    row: MeasurementRow | None,
+    *,
+    model: ModelData | None,
+    request: CalculationRequest | None,
+) -> str:
+    if row is not None:
+        lines = [
+            "cadmetrics result",
+            f"file: {Path(row.file).name}",
+            f"unit: {row.output_unit}",
+            f"roll/alpha/beta: {_format_angle(row.roll_deg)}, "
+            f"{_format_angle(row.alpha_deg)}, {_format_angle(row.beta_deg)} deg",
+        ]
+        if row.direction_x is not None:
+            lines.append(
+                "direction: "
+                f"({_format_vector_value(row.direction_x)}, "
+                f"{_format_vector_value(row.direction_y)}, "
+                f"{_format_vector_value(row.direction_z)})"
+            )
+        lines.extend(
+            [
+                f"projected_area: {_format_metric(row.projected_area)}",
+                f"volume: {_format_metric(row.volume)}",
+                f"surface_area: {_format_metric(row.surface_area)}",
+            ]
+        )
+        if row.method:
+            lines.append(f"method: {row.method}")
+        if row.warnings:
+            lines.append(f"warnings: {'; '.join(row.warnings)}")
+        return "\n".join(lines)
+
+    if model is None and request is None:
+        return ""
+
+    lines = ["cadmetrics view"]
+    if model is not None:
+        lines.extend(
+            [
+                f"file: {model.path.name}",
+                f"format: {model.source_format}",
+                f"unit: {model.output_unit}",
+                f"volume: {_format_metric(model.volume)}",
+                f"surface_area: {_format_metric(model.surface_area)}",
+            ]
+        )
+    if request is not None:
+        lines.extend(
+            [
+                f"input: {request.attitude_mode}",
+                f"roll: {_format_sweep(request.roll_start, request.roll_end, request.roll_step)} deg",
+                f"alpha: {_format_sweep(request.alpha_start, request.alpha_end, request.alpha_step)} deg",
+                f"beta: {_format_sweep(request.beta_start, request.beta_end, request.beta_step)} deg",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _format_metric(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.6g}"
+
+
+def _format_angle(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.3g}"
+
+
+def _format_vector_value(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.4g}"
+
+
+def _format_sweep(start: float, end: float, step: float) -> str:
+    if start == end:
+        return f"{start:.3g}"
+    return f"{start:.3g}:{end:.3g}:{step:.3g}"
 
 
 def _projection_arrow_geometry(vertices: np.ndarray, direction: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
