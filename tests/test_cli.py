@@ -4,6 +4,9 @@ import csv
 from pathlib import Path
 
 import pytest
+import typer
+
+from cadmetrics.cli import _resolve_project_attitude
 from typer.testing import CliRunner
 
 from cadmetrics.cli import app
@@ -149,7 +152,15 @@ def test_cli_rejects_mixed_attitude_inputs(runner: CliRunner) -> None:
     )
 
     assert result.exit_code != 0
-    assert "--alpha cannot be used with --attitude roll-pitch" in result.output
+    with pytest.raises(typer.BadParameter, match="--alpha cannot be used"):
+        _resolve_project_attitude(
+            attitude="roll-pitch",
+            alpha=10.0,
+            beta=0.0,
+            roll=0.0,
+            pitch=5.0,
+            direction=None,
+        )
 
 
 def test_cli_rejects_roll_in_alpha_beta_mode(runner: CliRunner) -> None:
@@ -168,4 +179,12 @@ def test_cli_rejects_roll_in_alpha_beta_mode(runner: CliRunner) -> None:
     )
 
     assert result.exit_code != 0
-    assert "--roll cannot be used with --attitude alpha-beta" in result.output
+    with pytest.raises(typer.BadParameter, match="--roll cannot be used"):
+        _resolve_project_attitude(
+            attitude="alpha-beta",
+            alpha=10.0,
+            beta=0.0,
+            roll=5.0,
+            pitch=None,
+            direction=None,
+        )
