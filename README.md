@@ -9,7 +9,7 @@ drag-area checks.
 - Read STL ASCII/Binary and STEP (`.step`, `.stp`)
 - Calculate volume and surface area
 - Calculate orthographic projected outline area with overlapping projected regions removed
-- Sweep roll, angle of attack, and sideslip ranges
+- Sweep alpha/beta or roll/pitch angle ranges
 - Report equivalent alpha/beta, roll/pitch, and unit-vector direction values
 - Report projected-area centroids in 2D projection coordinates and 3D model coordinates
 - Export CSV from CLI and GUI
@@ -64,8 +64,19 @@ Calculate projected area from angle of attack and sideslip:
 ```bash
 cadmetrics project samples/satellite/satellite.step \
   --output-unit mm \
+  --attitude alpha-beta \
   --alpha 60 \
   --beta 0
+```
+
+Calculate projected area from roll and pitch:
+
+```bash
+cadmetrics project samples/satellite/satellite.step \
+  --output-unit mm \
+  --attitude roll-pitch \
+  --roll 0 \
+  --pitch 60
 ```
 
 Calculate projected area from an explicit direction vector:
@@ -73,6 +84,7 @@ Calculate projected area from an explicit direction vector:
 ```bash
 cadmetrics project samples/satellite/satellite.step \
   --output-unit mm \
+  --attitude vector \
   --direction 0.5,0,0.8660254
 ```
 
@@ -81,7 +93,7 @@ Sweep every combination of attitude ranges and write CSV:
 ```bash
 cadmetrics sweep samples/satellite/satellite.step \
   --output-unit mm \
-  --roll 0 \
+  --attitude alpha-beta \
   --alpha 0:90:5 \
   --beta -10:10:5 \
   --out sweep.csv
@@ -129,6 +141,9 @@ metrics = measure("model.stl")
 single = project("model.stl", alpha_deg=10)
 rows = sweep("model.stl", alpha="-10:20:1", beta="-5:5:1", roll="0")
 ```
+
+The Python API keeps lower-level `alpha`, `beta`, `roll`, and `direction` arguments. The CLI and
+GUI present these as explicit `alpha-beta`, `roll-pitch`, and `vector` input modes.
 
 ## Documentation
 

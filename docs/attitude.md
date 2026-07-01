@@ -19,10 +19,26 @@ d = (d_x, d_y, d_z)
 
 Projected area is the 2D outline area seen when looking along `d`.
 
+## Input Modes
+
+The CLI and GUI expose three input modes:
+
+| mode | meaning | sweep support |
+|---|---|---|
+| `alpha-beta` | angle of attack and sideslip | yes |
+| `roll-pitch` | azimuth around +X and pitch away from +X | yes |
+| `vector` | explicit projection direction vector | no, one direction only |
+
+The output CSV always reports all equivalent representations:
+
+- `alpha_deg`, `beta_deg`
+- `roll_deg`, `pitch_deg`
+- `direction_x`, `direction_y`, `direction_z`
+
 ## Alpha and Beta
 
-For `alpha` and `beta` input, cadmetrics uses an aircraft-style projection-direction convention
-with roll fixed to zero:
+In `alpha-beta` mode, cadmetrics builds the projection direction from angle of attack and
+sideslip:
 
 ```text
 d = (cos(alpha) cos(beta), -sin(beta), sin(alpha) cos(beta))
@@ -45,8 +61,8 @@ Examples:
 
 ## Roll and Pitch
 
-The GUI also supports `roll` and `pitch` input. `pitch` is the angle away from the +X direction.
-`roll` is the azimuth around +X, measured from +Z toward +Y.
+In `roll-pitch` mode, `pitch` is the angle away from the +X direction. `roll` is the azimuth
+around +X, measured from +Z toward +Y.
 
 The equivalent output values are:
 
@@ -63,26 +79,51 @@ that cone.
 For explicit vector input:
 
 ```bash
-cadmetrics project model.step --direction 1,0,0
+cadmetrics project model.step --attitude vector --direction 1,0,0
 ```
 
 cadmetrics normalizes the vector first, then calculates equivalent `alpha`/`beta` and
 `roll`/`pitch` values for CSV and GUI display.
 
-## Sweep Order
+## CLI Examples
 
-The CLI sweep command accepts `roll`, `alpha`, and `beta` ranges:
+Single projected-area calculations:
 
 ```bash
-cadmetrics sweep model.step --roll 0:20:10 --alpha -5:5:5 --beta -2:2:2
+cadmetrics project model.step --attitude alpha-beta --alpha 10 --beta 0
+cadmetrics project model.step --attitude roll-pitch --roll 0 --pitch 10
+cadmetrics project model.step --attitude vector --direction 1,0,0
 ```
 
-The calculation evaluates every combination of those ranges. Conceptually, the aircraft-style
-attitude order is:
+For convenience, `--attitude` can be omitted:
 
-```text
-roll -> alpha -> beta
+- `--direction` implies `vector`
+- `--pitch` implies `roll-pitch`
+- otherwise cadmetrics uses `alpha-beta`
+
+## Sweep Behavior
+
+For `alpha-beta`, the CLI sweep command accepts `alpha` and `beta` ranges:
+
+```bash
+cadmetrics sweep model.step --attitude alpha-beta --alpha -5:5:5 --beta -2:2:2
 ```
+
+For `roll-pitch`, it accepts `roll` and `pitch` ranges:
+
+```bash
+cadmetrics sweep model.step --attitude roll-pitch --roll 0:20:10 --pitch 0:10:5
+```
+
+For `vector`, the CLI accepts one explicit direction and returns one row:
+
+```bash
+cadmetrics sweep model.step --attitude vector --direction 1,0,0
+```
+
+The calculation evaluates every combination of the selected angle ranges. There is no hidden
+extra rotation order in the CLI modes: `alpha-beta` uses only alpha/beta, `roll-pitch` uses only
+roll/pitch, and `vector` uses only the normalized direction vector.
 
 ## Fusion 360 Plane Angles
 

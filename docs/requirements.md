@@ -46,11 +46,11 @@ from STL and STEP files.
 ## Attitude Convention
 
 - Default coordinate convention: X aft, Y right, Z up
-- Angles follow an aircraft-style convention
-- Rotation order: roll -> angle of attack -> sideslip
 - CLI accepts single angle values or inclusive `start:end:step` ranges
-- Sweep calculates every combination of roll, alpha, and beta
-- Vector direction can be specified directly for single projected-area calculations
+- CLI and GUI projected-area input modes are alpha/beta, roll/pitch, and unit vector
+- Alpha/beta mode sweeps every combination of alpha and beta
+- Roll/pitch mode sweeps every combination of roll and pitch
+- Unit-vector mode calculates one direction without sweep
 - `alpha`, `beta`, `roll`, and `pitch` describe the projection direction attitude. A Fusion
   360 sketch or measurement plane angle can be complementary because the projection direction
   is normal to that plane.
@@ -66,9 +66,11 @@ from STL and STEP files.
 
 ```bash
 cadmetrics measure model.step --unit m --out result.csv
-cadmetrics project model.stl --alpha 10 --beta 0 --roll 0 --out projected.csv
-cadmetrics project model.stl --direction 1,0,0 --out projected.csv
-cadmetrics sweep model.step --alpha -10:20:1 --beta -5:5:1 --roll 0 --out sweep.csv
+cadmetrics project model.stl --attitude alpha-beta --alpha 10 --beta 0 --out projected.csv
+cadmetrics project model.stl --attitude roll-pitch --roll 0 --pitch 10 --out projected.csv
+cadmetrics project model.stl --attitude vector --direction 1,0,0 --out projected.csv
+cadmetrics sweep model.step --attitude alpha-beta --alpha -10:20:1 --beta -5:5:1 --out sweep.csv
+cadmetrics sweep model.step --attitude roll-pitch --roll 0:90:5 --pitch 0:30:5 --out sweep.csv
 cadmetrics inspect model.step
 ```
 

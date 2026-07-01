@@ -19,6 +19,7 @@ from cadmetrics.types import MeasurementRow
 app = typer.Typer(no_args_is_help=True, help="Calculate CAD volume, surface, and projected area.")
 console = Console()
 err_console = Console(stderr=True)
+ATTITUDE_MODES = ("alpha-beta", "roll-pitch", "vector")
 
 CSV_FIELDS = [
     "file",
@@ -87,17 +88,27 @@ def measure(
 @app.command()
 def project(
     file: Path = typer.Argument(..., exists=True, readable=True, help="STL or STEP file."),
-    roll: float = typer.Option(0.0, "--roll", help="Roll angle in degrees."),
+    attitude: str | None = typer.Option(
+        None,
+        "--attitude",
+        help="Attitude input mode: alpha-beta, roll-pitch, or vector.",
+    ),
     alpha: float = typer.Option(
         0.0,
         "--alpha",
-        help="Projection-direction angle of attack in degrees, not plane inclination.",
+        help="Alpha angle in degrees for --attitude alpha-beta.",
     ),
-    beta: float = typer.Option(0.0, "--beta", help="Sideslip angle in degrees."),
+    beta: float = typer.Option(0.0, "--beta", help="Beta angle in degrees for --attitude alpha-beta."),
+    roll: float = typer.Option(0.0, "--roll", help="Roll angle in degrees for --attitude roll-pitch."),
+    pitch: float | None = typer.Option(
+        None,
+        "--pitch",
+        help="Pitch angle in degrees for --attitude roll-pitch.",
+    ),
     direction: str | None = typer.Option(
         None,
         "--direction",
-        help="Projection direction vector, e.g. 1,0,0. Overrides attitude angles.",
+        help="Projection direction vector for --attitude vector, e.g. 1,0,0.",
     ),
     unit: str = typer.Option(
         "auto",
@@ -120,13 +131,21 @@ def project(
 ) -> None:
     """Calculate projected area for one attitude or vector direction."""
 
+    request = _resolve_project_attitude(
+        attitude=attitude,
+        alpha=alpha,
+        beta=beta,
+        roll=roll,
+        pitch=pitch,
+        direction=direction,
+    )
     row = _run_or_exit(
         lambda: project_api(
             file,
-            roll_deg=roll,
-            alpha_deg=alpha,
-            beta_deg=beta,
-            direction=direction,
+            roll_deg=request["roll"],
+            alpha_deg=request["alpha"],
+            beta_deg=request["beta"],
+            direction=request["direction"],
             input_unit=unit,
             output_unit=output_unit,
             mesh_deflection=mesh_deflection,
@@ -139,13 +158,36 @@ def project(
 @app.command()
 def sweep(
     file: Path = typer.Argument(..., exists=True, readable=True, help="STL or STEP file."),
-    roll: str = typer.Option("0", "--roll", help="Roll degrees as value or start:end:step."),
+    attitude: str | None = typer.Option(
+        None,
+        "--attitude",
+        help="Attitude input mode: alpha-beta, roll-pitch, or vector.",
+    ),
     alpha: str = typer.Option(
         "0",
         "--alpha",
-        help="Projection-direction angle of attack degrees as value or start:end:step.",
+        help="Alpha degrees for --attitude alpha-beta as value or start/end/step range.",
     ),
-    beta: str = typer.Option("0", "--beta", help="Sideslip degrees as value or range."),
+    beta: str = typer.Option(
+        "0",
+        "--beta",
+        help="Beta degrees for --attitude alpha-beta as value or start/end/step range.",
+    ),
+    roll: str = typer.Option(
+        "0",
+        "--roll",
+        help="Roll degrees for --attitude roll-pitch as value or start/end/step range.",
+    ),
+    pitch: str | None = typer.Option(
+        None,
+        "--pitch",
+        help="Pitch degrees for --attitude roll-pitch as value or start/end/step range.",
+    ),
+    direction: str | None = typer.Option(
+        None,
+        "--direction",
+        help="Projection direction vector for --attitude vector, e.g. 1,0,0.",
+    ),
     unit: str = typer.Option(
         "auto",
         "--unit",
@@ -166,7 +208,16 @@ def sweep(
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
     summary: bool = typer.Option(True, "--summary/--no-summary", help="Print sweep summary."),
 ) -> None:
-    """Calculate projected area for every combination of roll, alpha, and beta."""
+    """Calculate projected area for attitude sweeps or one vector direction."""
+
+    request = _resolve_sweep_attitude(
+        attitude=attitude,
+        alpha=alpha,
+        beta=beta,
+        roll=roll,
+        pitch=pitch,
+        direction=direction,
+    )
 
     progress = Progress(
         TextColumn("[progress.description]{task.description}"),
@@ -191,22 +242,35 @@ def sweep(
             ),
         )
 
-    rows = _run_or_exit(
-        lambda: _run_with_progress(
-            progress,
-            lambda: sweep_api(
+    if request["mode"] == "vector":
+        row = _run_or_exit(
+            lambda: project_api(
                 file,
-                roll=roll,
-                alpha=alpha,
-                beta=beta,
+                direction=request["direction"],
                 input_unit=unit,
                 output_unit=output_unit,
                 mesh_deflection=mesh_deflection,
                 angular_deflection=angular_deflection,
-                progress_callback=on_progress,
-            ),
+            )
         )
-    )
+        rows = [row]
+    else:
+        rows = _run_or_exit(
+            lambda: _run_with_progress(
+                progress,
+                lambda: sweep_api(
+                    file,
+                    roll=request["roll"],
+                    alpha=request["alpha"],
+                    beta=request["beta"],
+                    input_unit=unit,
+                    output_unit=output_unit,
+                    mesh_deflection=mesh_deflection,
+                    angular_deflection=angular_deflection,
+                    progress_callback=on_progress,
+                ),
+            )
+        )
     _emit_rows(rows, out)
     if summary:
         _emit_sweep_summary(rows)
@@ -309,6 +373,114 @@ def _emit_sweep_summary(rows: list[MeasurementRow]) -> None:
     )
     table.add_row("avg", _format_optional(average), "", "", "", "")
     err_console.print(table)
+
+
+def _resolve_project_attitude(
+    *,
+    attitude: str | None,
+    alpha: float,
+    beta: float,
+    roll: float,
+    pitch: float | None,
+    direction: str | None,
+) -> dict[str, float | str | None]:
+    mode = _normalize_attitude_mode(attitude, pitch=pitch, direction=direction)
+    if mode == "vector":
+        if direction is None:
+            raise typer.BadParameter("--direction is required when --attitude vector is used")
+        _reject_nonzero(alpha, "--alpha", mode)
+        _reject_nonzero(beta, "--beta", mode)
+        _reject_nonzero(roll, "--roll", mode)
+        if pitch is not None:
+            _reject_nonzero(pitch, "--pitch", mode)
+        return {"mode": mode, "roll": 0.0, "alpha": 0.0, "beta": 0.0, "direction": direction}
+
+    if direction is not None:
+        raise typer.BadParameter("--direction can only be used with --attitude vector")
+    if mode == "roll-pitch":
+        _reject_nonzero(alpha, "--alpha", mode)
+        _reject_nonzero(beta, "--beta", mode)
+        return {
+            "mode": mode,
+            "roll": roll,
+            "alpha": 0.0 if pitch is None else pitch,
+            "beta": 0.0,
+            "direction": None,
+        }
+
+    if pitch is not None:
+        raise typer.BadParameter("--pitch can only be used with --attitude roll-pitch")
+    _reject_nonzero(roll, "--roll", mode)
+    return {"mode": mode, "roll": roll, "alpha": alpha, "beta": beta, "direction": None}
+
+
+def _resolve_sweep_attitude(
+    *,
+    attitude: str | None,
+    alpha: str,
+    beta: str,
+    roll: str,
+    pitch: str | None,
+    direction: str | None,
+) -> dict[str, str | float | None]:
+    mode = _normalize_attitude_mode(attitude, pitch=pitch, direction=direction)
+    if mode == "vector":
+        if direction is None:
+            raise typer.BadParameter("--direction is required when --attitude vector is used")
+        _reject_nondefault_spec(alpha, "--alpha", mode)
+        _reject_nondefault_spec(beta, "--beta", mode)
+        _reject_nondefault_spec(roll, "--roll", mode)
+        if pitch is not None:
+            _reject_nondefault_spec(pitch, "--pitch", mode)
+        return {"mode": mode, "roll": "0", "alpha": "0", "beta": "0", "direction": direction}
+
+    if direction is not None:
+        raise typer.BadParameter("--direction can only be used with --attitude vector")
+    if mode == "roll-pitch":
+        _reject_nondefault_spec(alpha, "--alpha", mode)
+        _reject_nondefault_spec(beta, "--beta", mode)
+        return {
+            "mode": mode,
+            "roll": roll,
+            "alpha": "0" if pitch is None else pitch,
+            "beta": 0.0,
+            "direction": None,
+        }
+
+    if pitch is not None:
+        raise typer.BadParameter("--pitch can only be used with --attitude roll-pitch")
+    _reject_nondefault_spec(roll, "--roll", mode)
+    return {"mode": mode, "roll": roll, "alpha": alpha, "beta": beta, "direction": None}
+
+
+def _normalize_attitude_mode(
+    attitude: str | None,
+    *,
+    pitch: float | str | None,
+    direction: str | None,
+) -> str:
+    if attitude is None:
+        if direction is not None:
+            return "vector"
+        if pitch is not None:
+            return "roll-pitch"
+        return "alpha-beta"
+    mode = attitude.strip().lower().replace("_", "-")
+    if mode not in ATTITUDE_MODES:
+        raise typer.BadParameter(
+            f"--attitude must be one of: {', '.join(ATTITUDE_MODES)}"
+        )
+    return mode
+
+
+def _reject_nonzero(value: float, option: str, mode: str) -> None:
+    if value != 0.0:
+        raise typer.BadParameter(f"{option} cannot be used with --attitude {mode}")
+
+
+def _reject_nondefault_spec(value: str, option: str, mode: str) -> None:
+    if str(value).strip() not in {"0", "0.0"}:
+        raise typer.BadParameter(f"{option} cannot be used with --attitude {mode}")
 
 
 def _run_with_progress(progress: Progress, action):

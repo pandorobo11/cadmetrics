@@ -4,7 +4,7 @@
 
 - `measure`: volume and surface area
 - `project`: projected area for one attitude or direction
-- `sweep`: projected area for all combinations in attitude ranges
+- `sweep`: projected area for angle sweeps or one vector direction
 - `inspect`: loaded model information
 
 Install the base package for STL support:
@@ -67,41 +67,65 @@ output length unit.
 
 ## project
 
-Calculate projected area for one direction:
+Choose one of three attitude input modes:
+
+| mode | options |
+|---|---|
+| `alpha-beta` | `--alpha`, `--beta` |
+| `roll-pitch` | `--roll`, `--pitch` |
+| `vector` | `--direction x,y,z` |
+
+Calculate projected area with alpha and beta:
 
 ```bash
-cadmetrics project samples/box_1x2x3/box_1x2x3.step --direction 1,0,0
+cadmetrics project model.step --attitude alpha-beta --alpha 10 --beta 0
 ```
 
-Calculate projected area from attitude angles:
+Calculate projected area with roll and pitch:
 
 ```bash
-cadmetrics project model.step --alpha 10 --beta 0 --roll 0
+cadmetrics project model.step --attitude roll-pitch --roll 0 --pitch 10
 ```
 
-`--direction x,y,z` overrides `--roll`, `--alpha`, and `--beta`. The direction vector is
-normalized before calculation.
+Calculate projected area from a unit-vector direction:
+
+```bash
+cadmetrics project model.step --attitude vector --direction 1,0,0
+```
+
+The direction vector is normalized before calculation.
 
 ## sweep
 
-Run every combination of `roll`, `alpha`, and `beta` values:
+For `alpha-beta`, run every combination of `alpha` and `beta` values:
 
 ```bash
 cadmetrics sweep model.step \
-  --roll 0 \
+  --attitude alpha-beta \
   --alpha -10:20:1 \
   --beta -5:5:1 \
   --out sweep.csv
 ```
 
-Ranges use inclusive `start:end:step` syntax. A single value is also valid:
+For `roll-pitch`, run every combination of `roll` and `pitch` values:
 
 ```bash
-cadmetrics sweep model.step --alpha 0 --beta 0 --roll 0
+cadmetrics sweep model.step \
+  --attitude roll-pitch \
+  --roll 0:180:10 \
+  --pitch 0:90:5 \
+  --out sweep.csv
 ```
 
-The sweep command prints a progress bar to stderr and writes CSV rows to stdout unless `--out`
-is provided. Use `--no-summary` to suppress the printed summary.
+For `vector`, `sweep` returns one row because a unit vector is a single direction:
+
+```bash
+cadmetrics sweep model.step --attitude vector --direction 1,0,0
+```
+
+Ranges use inclusive `start:end:step` syntax. A single value is also valid. The sweep command
+prints a progress bar to stderr and writes CSV rows to stdout unless `--out` is provided. Use
+`--no-summary` to suppress the printed summary.
 
 ## inspect
 
@@ -152,6 +176,7 @@ Project from a direction equivalent to `alpha=60 deg`:
 
 ```bash
 cadmetrics project samples/satellite/satellite.step \
+  --attitude vector \
   --output-unit mm \
   --direction 0.5,0,0.8660254
 ```
