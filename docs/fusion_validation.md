@@ -23,38 +23,32 @@ cadmetrics command:
 uv run cadmetrics measure samples/satellite/satellite.step --output-unit mm
 ```
 
-### Projected Area
+## 2026-07-01: Satellite Projected-Area Sweep
 
-Fusion 360 measured the area of a projected/intersection sketch on a plane inclined by
-`30 deg` and displayed:
+The same satellite model was checked in Fusion 360 for `alpha=0..90 deg` in `15 deg`
+increments.
 
-```text
-3.180E+06 mm^2
-```
-
-This corresponds to `alpha=60 deg` in cadmetrics, because the Fusion plane angle is the
-plane inclination and cadmetrics `alpha` describes the projection direction. The projection
-direction is normal to the plane, so the angle is complementary in this setup.
-
-cadmetrics commands:
+Fusion 360 displays area values rounded in scientific notation in the status bar. The
+cadmetrics values below were calculated with:
 
 ```bash
-uv run cadmetrics project samples/satellite/satellite.step --output-unit mm --alpha 30
-uv run cadmetrics project samples/satellite/satellite.step --output-unit mm --alpha 60
-uv run cadmetrics project samples/satellite/satellite.step --output-unit mm --attitude vector --direction 0.5,0,0.8660254
+uv run cadmetrics sweep samples/satellite/satellite.step \
+  --output-unit mm \
+  --attitude alpha-beta \
+  --alpha 0:90:15 \
+  --beta 0 \
+  --no-summary
 ```
 
-Results:
+| cadmetrics alpha | Fusion 360 display | cadmetrics |
+|---:|---:|---:|
+| `0 deg` | `7.854E+05 mm^2` | `785,372.351552 mm^2` |
+| `15 deg` | `1.535E+06 mm^2` | `1,535,047.379169 mm^2` |
+| `30 deg` | `2.234E+06 mm^2` | `2,234,197.015840 mm^2` |
+| `45 deg` | `2.800E+06 mm^2` | `2,800,196.784857 mm^2` |
+| `60 deg` | `3.180E+06 mm^2` | `3,179,890.524209 mm^2` |
+| `75 deg` | `3.345E+06 mm^2` | `3,345,124.905654 mm^2` |
+| `90 deg` | `3.284E+06 mm^2` | `3,283,992.455144 mm^2` |
 
-| case | projected area |
-|---|---:|
-| Fusion 360, plane inclined by `30 deg` | `3.180E+06 mm^2` |
-| cadmetrics `alpha=30 deg` | `2,234,250.858218 mm^2` |
-| cadmetrics `alpha=60 deg` | `3,179,941.201566 mm^2` |
-| cadmetrics `direction=0.5,0,0.8660254` | `3,179,941.201566 mm^2` |
-
-Difference between Fusion's displayed value and cadmetrics `alpha=60 deg` is approximately
-`58.8 mm^2`, or about `0.0019%` relative to the rounded Fusion value.
-
-Conclusion: the Fusion 360 inclined-plane measurement is consistent with cadmetrics
-`alpha=60 deg`, not `alpha=30 deg`.
+Conclusion: the manual Fusion 360 sweep agrees with cadmetrics within Fusion's rounded
+display precision for all checked attitudes.

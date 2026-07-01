@@ -1,7 +1,6 @@
 # Attitude Definition
 
-cadmetrics describes projected area by the direction of orthographic projection, not by the
-inclination of a measurement plane.
+cadmetrics describes projected area by the direction of orthographic projection.
 
 The default model coordinate convention is:
 
@@ -124,16 +123,3 @@ cadmetrics sweep model.step --attitude vector --direction 1,0,0
 The calculation evaluates every combination of the selected angle ranges. There is no hidden
 extra rotation order in the CLI modes: `alpha-beta` uses only alpha/beta, `roll-pitch` uses only
 roll/pitch, and `vector` uses only the normalized direction vector.
-
-## Fusion 360 Plane Angles
-
-Fusion 360 often reports or constructs the angle of a sketch or measurement plane. cadmetrics
-uses the projection direction, which is normal to that plane. Because of that, a plane angle and
-a cadmetrics projection angle can be complementary.
-
-For example, a Fusion 360 plane inclined by `30 deg` can correspond to a cadmetrics projection
-direction of `alpha=60 deg`, depending on how the plane was constructed.
-
-When comparing with CAD tools, `--direction x,y,z` is the least ambiguous input.
-
-See [Fusion 360 validation notes](fusion_validation.md) for the satellite sample comparison.

@@ -114,9 +114,7 @@ X aft, Y right, Z up
 ```
 
 `alpha`, `beta`, `roll`, and `pitch` describe the projection direction attitude, not the
-inclination angle of a sketch or measurement plane. This matters when comparing with CAD tools:
-a Fusion 360 plane inclined by `30 deg` can correspond to cadmetrics `alpha=60 deg`, depending
-on the construction.
+model rotation.
 
 Use `--direction x,y,z` when you want the least ambiguous input.
 
