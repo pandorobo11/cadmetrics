@@ -618,6 +618,7 @@ if QtWidgets is not None:
 
             self._plotter = QtInteractor(self)
             self._plotter.set_background("white")
+            self._configure_scene_lighting()
             self._plotter.add_axes()
             self._plotter.show_grid()
             self._plotter.enable_parallel_projection()
@@ -787,6 +788,7 @@ if QtWidgets is not None:
             self._vector_actor = None
             self._centroid_actor = None
             self._overlay_actor = None
+            self._configure_scene_lighting()
             self._plotter.add_axes()
             self._plotter.show_grid()
             self._mesh_actor = self._plotter.add_mesh(
@@ -795,10 +797,57 @@ if QtWidgets is not None:
                 show_edges=self.mesh_edges.isChecked(),
                 edge_color="#111111",
                 opacity=self._shape_opacity(),
+                smooth_shading=True,
+                split_sharp_edges=True,
+                ambient=0.18,
+                diffuse=0.78,
+                specular=0.28,
+                specular_power=32,
             )
+            self._apply_mesh_shading()
             self._plotter.reset_camera()
             self._plotter.enable_parallel_projection()
             self._update_overlay()
+
+        def _configure_scene_lighting(self) -> None:
+            if self._plotter is None:
+                return
+            try:
+                self._plotter.remove_all_lights()
+            except Exception:
+                pass
+
+            try:
+                import pyvista as pv
+
+                key_light = pv.Light(
+                    position=(2.5, -3.0, 4.0),
+                    focal_point=(0.0, 0.0, 0.0),
+                    color="white",
+                    intensity=0.9,
+                    positional=False,
+                )
+                fill_light = pv.Light(
+                    position=(-3.0, 2.5, 2.0),
+                    focal_point=(0.0, 0.0, 0.0),
+                    color="white",
+                    intensity=0.35,
+                    positional=False,
+                )
+                head_light = pv.Light(light_type="headlight", intensity=0.25)
+                self._plotter.add_light(key_light)
+                self._plotter.add_light(fill_light)
+                self._plotter.add_light(head_light)
+            except Exception:
+                try:
+                    self._plotter.enable_lightkit()
+                except Exception:
+                    pass
+
+            try:
+                self._plotter.enable_eye_dome_lighting()
+            except Exception:
+                pass
 
         def _shape_opacity(self) -> float:
             return 0.45 if self.transparent_shape.isChecked() else 1.0
@@ -814,7 +863,25 @@ if QtWidgets is not None:
             prop.SetOpacity(self._shape_opacity())
             prop.SetEdgeVisibility(1 if self.mesh_edges.isChecked() else 0)
             prop.SetEdgeColor(0.07, 0.07, 0.07)
+            self._apply_mesh_shading(prop)
             self._plotter.render()
+
+        def _apply_mesh_shading(self, prop: Any | None = None) -> None:
+            if self._mesh_actor is None:
+                return
+            if prop is None:
+                try:
+                    prop = self._mesh_actor.GetProperty()
+                except AttributeError:
+                    prop = self._mesh_actor.prop
+            try:
+                prop.SetInterpolationToPhong()
+                prop.SetAmbient(0.18)
+                prop.SetDiffuse(0.78)
+                prop.SetSpecular(0.28)
+                prop.SetSpecularPower(32)
+            except AttributeError:
+                return
 
         def _save_view_image(self) -> None:
             if self._plotter is None:
