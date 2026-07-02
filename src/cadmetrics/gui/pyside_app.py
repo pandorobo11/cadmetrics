@@ -129,6 +129,8 @@ if QtWidgets is not None:
             self._plotter: Any | None = None
             self._vector_actor: Any | None = None
             self._mesh_actor: Any | None = None
+            self._feature_edges_actor: Any | None = None
+            self._mesh_polydata: Any | None = None
             self._centroid_actor: Any | None = None
             self._overlay_actor: Any | None = None
             self._overlay_row: MeasurementRow | None = None
@@ -352,21 +354,25 @@ if QtWidgets is not None:
             display_layout.setHorizontalSpacing(12)
             display_layout.setVerticalSpacing(4)
             self.transparent_shape = QtWidgets.QCheckBox("Transparent")
-            self.transparent_shape.setChecked(True)
+            self.transparent_shape.setChecked(False)
             self.mesh_edges = QtWidgets.QCheckBox("Mesh edges")
-            self.mesh_edges.setChecked(True)
+            self.mesh_edges.setChecked(False)
+            self.feature_edges = QtWidgets.QCheckBox("Feature edges")
+            self.feature_edges.setChecked(True)
             self.show_overlay = QtWidgets.QCheckBox("Overlay")
             self.show_overlay.setChecked(True)
             self.save_image_button = QtWidgets.QPushButton("Save Image")
             self.save_image_button.setObjectName("secondaryButton")
             self.transparent_shape.toggled.connect(self._apply_display_options)
             self.mesh_edges.toggled.connect(self._apply_display_options)
+            self.feature_edges.toggled.connect(self._apply_display_options)
             self.show_overlay.toggled.connect(self._update_overlay)
             self.save_image_button.clicked.connect(self._save_view_image)
             display_layout.addWidget(self.transparent_shape, 0, 0)
             display_layout.addWidget(self.mesh_edges, 0, 1)
-            display_layout.addWidget(self.show_overlay, 1, 0)
-            display_layout.addWidget(self.save_image_button, 1, 1)
+            display_layout.addWidget(self.feature_edges, 1, 0)
+            display_layout.addWidget(self.show_overlay, 1, 1)
+            display_layout.addWidget(self.save_image_button, 2, 0, 1, 2)
             panel_layout.addWidget(display_box)
 
             self.attitude_box = QtWidgets.QGroupBox("Attitude")
@@ -784,10 +790,12 @@ if QtWidgets is not None:
                 ]
             ).ravel()
             mesh = pv.PolyData(model.vertices, faces)
+            self._mesh_polydata = mesh
             self._plotter.clear()
             self._vector_actor = None
             self._centroid_actor = None
             self._overlay_actor = None
+            self._feature_edges_actor = None
             self._configure_scene_lighting()
             self._plotter.add_axes()
             self._plotter.show_grid()
@@ -805,6 +813,7 @@ if QtWidgets is not None:
                 specular_power=32,
             )
             self._apply_mesh_shading()
+            self._update_feature_edges()
             self._plotter.reset_camera()
             self._plotter.enable_parallel_projection()
             self._update_overlay()
@@ -864,7 +873,52 @@ if QtWidgets is not None:
             prop.SetEdgeVisibility(1 if self.mesh_edges.isChecked() else 0)
             prop.SetEdgeColor(0.07, 0.07, 0.07)
             self._apply_mesh_shading(prop)
+            self._update_feature_edges(render=False)
             self._plotter.render()
+
+        def _update_feature_edges(self, *, render: bool = True) -> None:
+            if self._plotter is None:
+                return
+            if self._feature_edges_actor is not None:
+                try:
+                    self._plotter.remove_actor(self._feature_edges_actor)
+                except Exception:
+                    pass
+                self._feature_edges_actor = None
+
+            if self._mesh_polydata is None or not self.feature_edges.isChecked():
+                if render:
+                    self._plotter.render()
+                return
+
+            try:
+                edges = self._mesh_polydata.extract_feature_edges(
+                    feature_angle=35.0,
+                    boundary_edges=True,
+                    feature_edges=True,
+                    manifold_edges=False,
+                    non_manifold_edges=True,
+                )
+            except Exception:
+                if render:
+                    self._plotter.render()
+                return
+
+            if edges.n_cells <= 0:
+                if render:
+                    self._plotter.render()
+                return
+
+            self._feature_edges_actor = self._plotter.add_mesh(
+                edges,
+                color="#1d2730",
+                line_width=2.5,
+                render_lines_as_tubes=True,
+                opacity=0.9,
+                pickable=False,
+            )
+            if render:
+                self._plotter.render()
 
         def _apply_mesh_shading(self, prop: Any | None = None) -> None:
             if self._mesh_actor is None:
