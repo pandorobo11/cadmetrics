@@ -57,7 +57,19 @@ The selected file is loaded and displayed immediately after browsing.
 
 `Output unit` controls displayed and exported length, area, and volume units.
 
-## Tessellation
+## Advanced
+
+`Advanced` is collapsed by default because these settings are usually changed less often.
+Expand it when the loaded CAD axes or STEP tessellation settings need adjustment.
+
+### Axis Map
+
+`Axis map` remaps the loaded model axes before calculation and display. Choose which input axis
+becomes cadmetrics `X`, `Y`, and `Z`. Use signs such as `-Z` when an axis is reversed. Changing
+the combo boxes does not reload the model immediately; click `Apply`, browse a file, or run a
+calculation to use the new mapping.
+
+### Tessellation
 
 `Mesh deflection` controls STEP tessellation used for projected-area calculations. `Auto`
 is enabled by default and uses:
@@ -74,6 +86,7 @@ The 3D view supports:
 
 - transparent shape display
 - mesh-edge display
+- feature-edge display
 - overlay text with current conditions or selected result values
 - PNG export with `Save Image`
 

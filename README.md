@@ -116,6 +116,14 @@ X aft, Y right, Z up
 `alpha`, `beta`, `roll`, and `pitch` describe the projection direction attitude, not the
 model rotation.
 
+If the source model axes do not match this convention, remap them before calculation:
+
+```bash
+cadmetrics project model.step --axis-map x,-z,y --alpha 10
+```
+
+`--axis-map` lists the source axes used as cadmetrics `X,Y,Z`.
+
 Use `--direction x,y,z` when you want the least ambiguous input.
 
 See [Attitude Definition](docs/attitude.md) for formulas and examples.

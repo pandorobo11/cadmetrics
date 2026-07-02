@@ -18,6 +18,17 @@ d = (d_x, d_y, d_z)
 
 Projected area is the 2D outline area seen when looking along `d`.
 
+If the source CAD axes do not match this convention, apply an axis map before calculating
+attitudes. For example, `x,-z,y` means:
+
+```text
+cadmetrics X = input X
+cadmetrics Y = input -Z
+cadmetrics Z = input Y
+```
+
+The CLI option is `--axis-map`; the GUI exposes the same setting as `Axis map` in `Setup`.
+
 ## Input Modes
 
 The CLI and GUI expose three input modes:

@@ -90,6 +90,22 @@ def test_project_cli_accepts_vector_mode(runner: CliRunner) -> None:
     assert float(row["beta_deg"]) == pytest.approx(-90.0)
 
 
+def test_project_cli_accepts_axis_map(runner: CliRunner) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "project",
+            str(DATA_DIR / "unit_cube.stl"),
+            "--axis-map=-x,y,z",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    row = _csv_rows(result.output)[0]
+    assert float(row["centroid_x"]) == pytest.approx(-0.5)
+    assert float(row["centroid_y"]) == pytest.approx(0.5)
+
+
 def test_sweep_cli_accepts_roll_pitch_ranges(runner: CliRunner, tmp_path: Path) -> None:
     output = tmp_path / "roll_pitch.csv"
     result = runner.invoke(

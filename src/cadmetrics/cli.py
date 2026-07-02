@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
+from cadmetrics.coordinates import DEFAULT_AXIS_MAP
 from cadmetrics.orientation import Orientation
 from cadmetrics.api import inspect_model
 from cadmetrics.api import measure as measure_api
@@ -69,6 +70,11 @@ def measure(
         min=0.0,
         help="STEP tessellation angular tolerance.",
     ),
+    axis_map: str = typer.Option(
+        DEFAULT_AXIS_MAP,
+        "--axis-map",
+        help="Map cadmetrics X,Y,Z to input axes, e.g. x,y,z or x,-z,y.",
+    ),
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
 ) -> None:
     """Calculate volume and surface area."""
@@ -80,6 +86,7 @@ def measure(
             output_unit=output_unit,
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
+            axis_map=axis_map,
         )
     )
     _emit_rows([row], out)
@@ -127,6 +134,11 @@ def project(
         min=0.0,
         help="STEP tessellation angular tolerance.",
     ),
+    axis_map: str = typer.Option(
+        DEFAULT_AXIS_MAP,
+        "--axis-map",
+        help="Map cadmetrics X,Y,Z to input axes, e.g. x,y,z or x,-z,y.",
+    ),
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
 ) -> None:
     """Calculate projected area for one attitude or vector direction."""
@@ -150,6 +162,7 @@ def project(
             output_unit=output_unit,
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
+            axis_map=axis_map,
         )
     )
     _emit_rows([row], out)
@@ -205,6 +218,11 @@ def sweep(
         min=0.0,
         help="STEP tessellation angular tolerance.",
     ),
+    axis_map: str = typer.Option(
+        DEFAULT_AXIS_MAP,
+        "--axis-map",
+        help="Map cadmetrics X,Y,Z to input axes, e.g. x,y,z or x,-z,y.",
+    ),
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
     summary: bool = typer.Option(True, "--summary/--no-summary", help="Print sweep summary."),
 ) -> None:
@@ -251,6 +269,7 @@ def sweep(
                 output_unit=output_unit,
                 mesh_deflection=mesh_deflection,
                 angular_deflection=angular_deflection,
+                axis_map=axis_map,
             )
         )
         rows = [row]
@@ -267,6 +286,7 @@ def sweep(
                     output_unit=output_unit,
                     mesh_deflection=mesh_deflection,
                     angular_deflection=angular_deflection,
+                    axis_map=axis_map,
                     progress_callback=on_progress,
                 ),
             )
@@ -296,6 +316,11 @@ def inspect(
         min=0.0,
         help="STEP tessellation angular tolerance.",
     ),
+    axis_map: str = typer.Option(
+        DEFAULT_AXIS_MAP,
+        "--axis-map",
+        help="Map cadmetrics X,Y,Z to input axes, e.g. x,y,z or x,-z,y.",
+    ),
 ) -> None:
     """Show loaded model information."""
 
@@ -306,6 +331,7 @@ def inspect(
             output_unit=output_unit,
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
+            axis_map=axis_map,
         )
     )
     table = Table(title=str(model.path))

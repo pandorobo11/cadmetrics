@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 from threading import Event
 from typing import Any
@@ -8,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from cadmetrics.api import inspect_model
+from cadmetrics.coordinates import AXIS_CHOICES
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
 from cadmetrics.orientation import Orientation, parse_vector, projection_direction_for_orientation
@@ -104,6 +106,24 @@ class _CancelledCalculation(Exception):
     pass
 
 
+def _spinbox_arrow_image_urls() -> tuple[str, str]:
+    asset_dir = Path(tempfile.gettempdir()) / "cadmetrics-gui-assets"
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    up = asset_dir / "spin-up.svg"
+    down = asset_dir / "spin-down.svg"
+    up.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="8" viewBox="0 0 10 8">'
+        '<path d="M5 1 L9 6 H1 Z" fill="#43505d"/></svg>',
+        encoding="utf-8",
+    )
+    down.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="8" viewBox="0 0 10 8">'
+        '<path d="M1 2 H9 L5 7 Z" fill="#43505d"/></svg>',
+        encoding="utf-8",
+    )
+    return up.as_posix(), down.as_posix()
+
+
 def main() -> None:
     if QtWidgets is None:
         raise MissingGuiDependency(
@@ -142,6 +162,7 @@ if QtWidgets is not None:
             root = QtWidgets.QSplitter()
             root.setOrientation(QtCore.Qt.Orientation.Horizontal)
             self.setCentralWidget(root)
+            spin_up_url, spin_down_url = _spinbox_arrow_image_urls()
 
             self.setStyleSheet(
                 """
@@ -159,6 +180,39 @@ if QtWidgets is not None:
                 }
                 QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus {
                     border-color: #2f78c4;
+                }
+                QDoubleSpinBox {
+                    padding-right: 18px;
+                }
+                QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+                    width: 18px;
+                    border-left: 1px solid #d5dbe2;
+                    background: #f8fafc;
+                }
+                QDoubleSpinBox::up-button {
+                    subcontrol-origin: border;
+                    subcontrol-position: top right;
+                    border-top-right-radius: 5px;
+                    height: 13px;
+                }
+                QDoubleSpinBox::down-button {
+                    subcontrol-origin: border;
+                    subcontrol-position: bottom right;
+                    border-bottom-right-radius: 5px;
+                    height: 13px;
+                }
+                QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
+                    background: #eef3f8;
+                }
+                QDoubleSpinBox::up-arrow, QDoubleSpinBox::down-arrow {
+                    width: 10px;
+                    height: 8px;
+                }
+                QDoubleSpinBox::up-arrow {
+                    image: url("__SPIN_UP_URL__");
+                }
+                QDoubleSpinBox::down-arrow {
+                    image: url("__SPIN_DOWN_URL__");
                 }
                 QPushButton {
                     min-height: 28px;
@@ -246,6 +300,19 @@ if QtWidgets is not None:
                     color: #202832;
                     font-weight: 600;
                 }
+                QToolButton#sectionToggle {
+                    border: 1px solid #d5d9de;
+                    border-radius: 6px;
+                    background: #f9fafb;
+                    color: #202832;
+                    font-weight: 600;
+                    padding: 7px 8px;
+                    text-align: left;
+                }
+                QToolButton#sectionToggle:hover {
+                    border-color: #b8c3cf;
+                    background: #ffffff;
+                }
                 QProgressBar {
                     min-height: 8px;
                     max-height: 8px;
@@ -286,6 +353,10 @@ if QtWidgets is not None:
                     border-top: 1px solid #d9dee4;
                     background: #f7f9fb;
                 }
+                QScrollArea {
+                    border: 0;
+                    background: #eef1f4;
+                }
                 QWidget#resultToolbar {
                     background: #f7f9fb;
                     border-top: 1px solid #d9dee4;
@@ -295,12 +366,19 @@ if QtWidgets is not None:
                     font-weight: 500;
                 }
                 """
+                .replace("__SPIN_UP_URL__", spin_up_url)
+                .replace("__SPIN_DOWN_URL__", spin_down_url)
             )
 
-            controls = QtWidgets.QWidget()
+            controls = QtWidgets.QScrollArea()
             controls.setMinimumWidth(430)
             controls.setMaximumWidth(540)
-            panel_layout = QtWidgets.QVBoxLayout(controls)
+            controls.setWidgetResizable(True)
+            controls.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+            controls_content = QtWidgets.QWidget()
+            controls.setWidget(controls_content)
+            panel_layout = QtWidgets.QVBoxLayout(controls_content)
             panel_layout.setContentsMargins(12, 4, 12, 8)
             panel_layout.setSpacing(5)
 
@@ -325,7 +403,35 @@ if QtWidgets is not None:
             self.output_unit.addItems(OUTPUT_UNIT_OPTIONS)
             setup_layout.addRow("Output unit", self.output_unit)
 
-            tessellation_layout = self._make_section(panel_layout, "Tessellation")
+            advanced_layout = self._make_collapsible_section(panel_layout, "Advanced")
+
+            self.axis_x = self._axis_combo("x")
+            self.axis_y = self._axis_combo("y")
+            self.axis_z = self._axis_combo("z")
+            axis_widget = QtWidgets.QWidget()
+            axis_layout = QtWidgets.QVBoxLayout(axis_widget)
+            axis_layout.setContentsMargins(0, 0, 0, 0)
+            axis_layout.setSpacing(4)
+            axis_select_row = QtWidgets.QHBoxLayout()
+            axis_select_row.setContentsMargins(0, 0, 0, 0)
+            axis_select_row.setSpacing(6)
+            axis_select_row.addWidget(QtWidgets.QLabel("X"))
+            axis_select_row.addWidget(self.axis_x, 1)
+            axis_select_row.addWidget(QtWidgets.QLabel("Y"))
+            axis_select_row.addWidget(self.axis_y, 1)
+            axis_select_row.addWidget(QtWidgets.QLabel("Z"))
+            axis_select_row.addWidget(self.axis_z, 1)
+            axis_apply = QtWidgets.QPushButton("Apply")
+            axis_apply.setObjectName("secondaryButton")
+            axis_apply.clicked.connect(self._apply_axis_map)
+            axis_apply_row = QtWidgets.QHBoxLayout()
+            axis_apply_row.setContentsMargins(0, 0, 0, 0)
+            axis_apply_row.addStretch(1)
+            axis_apply_row.addWidget(axis_apply)
+            axis_layout.addLayout(axis_select_row)
+            axis_layout.addLayout(axis_apply_row)
+            advanced_layout.addRow("Axis map", axis_widget)
+
             self.mesh_deflection = FlexibleDoubleSpinBox()
             self.mesh_deflection.setRange(1.0e-8, 1.0)
             self.mesh_deflection.setDecimals(8)
@@ -339,14 +445,14 @@ if QtWidgets is not None:
             mesh_deflection_row.setSpacing(8)
             mesh_deflection_row.addWidget(self.mesh_deflection)
             mesh_deflection_row.addWidget(self.mesh_deflection_auto)
-            tessellation_layout.addRow("Mesh deflection", mesh_deflection_row)
+            advanced_layout.addRow("Mesh deflection", mesh_deflection_row)
 
             self.angular_deflection = FlexibleDoubleSpinBox()
             self.angular_deflection.setRange(1.0e-6, 1.0)
             self.angular_deflection.setDecimals(6)
             self.angular_deflection.setSingleStep(0.1)
             self.angular_deflection.setValue(0.1)
-            tessellation_layout.addRow("Angular deflection", self.angular_deflection)
+            advanced_layout.addRow("Angular deflection", self.angular_deflection)
 
             display_box = QtWidgets.QGroupBox("Shape Display")
             display_layout = QtWidgets.QGridLayout(display_box)
@@ -450,11 +556,19 @@ if QtWidgets is not None:
             panel_layout.addLayout(run_layout)
 
             model_box = QtWidgets.QGroupBox("Model Info")
+            model_box.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Preferred,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
             model_layout = QtWidgets.QVBoxLayout(model_box)
             model_layout.setContentsMargins(8, 6, 8, 8)
             self.model_info = QtWidgets.QTextEdit()
             self.model_info.setReadOnly(True)
-            self.model_info.setMaximumHeight(86)
+            self.model_info.setMinimumHeight(130)
+            self.model_info.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Expanding,
+                QtWidgets.QSizePolicy.Policy.Expanding,
+            )
             model_layout.addWidget(self.model_info)
             panel_layout.addWidget(model_box)
 
@@ -526,6 +640,42 @@ if QtWidgets is not None:
             layout.setHorizontalSpacing(10)
             layout.setContentsMargins(8, 6, 8, 7)
             parent_layout.addWidget(box)
+            return layout
+
+        def _make_collapsible_section(
+            self,
+            parent_layout: QtWidgets.QVBoxLayout,
+            title: str,
+        ) -> QtWidgets.QFormLayout:
+            toggle = QtWidgets.QToolButton()
+            toggle.setObjectName("sectionToggle")
+            toggle.setText(title)
+            toggle.setCheckable(True)
+            toggle.setChecked(False)
+            toggle.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            toggle.setArrowType(QtCore.Qt.ArrowType.RightArrow)
+
+            content = QtWidgets.QGroupBox()
+            layout = QtWidgets.QFormLayout(content)
+            layout.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            layout.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+            layout.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
+            layout.setVerticalSpacing(6)
+            layout.setHorizontalSpacing(10)
+            layout.setContentsMargins(8, 8, 8, 8)
+            content.setVisible(False)
+
+            def sync_collapsed_state(checked: bool) -> None:
+                toggle.setArrowType(
+                    QtCore.Qt.ArrowType.DownArrow
+                    if checked
+                    else QtCore.Qt.ArrowType.RightArrow
+                )
+                content.setVisible(checked)
+
+            toggle.toggled.connect(sync_collapsed_state)
+            parent_layout.addWidget(toggle)
+            parent_layout.addWidget(content)
             return layout
 
         def _make_sweep_grid(
@@ -610,6 +760,16 @@ if QtWidgets is not None:
             field.setMinimumWidth(70)
             return field
 
+        def _axis_combo(self, default: str):
+            combo = QtWidgets.QComboBox()
+            combo.setMinimumWidth(62)
+            for axis in AXIS_CHOICES:
+                combo.addItem(axis.upper(), axis)
+            index = combo.findData(default)
+            if index >= 0:
+                combo.setCurrentIndex(index)
+            return combo
+
         def _create_viewer(self) -> QtWidgets.QWidget:
             try:
                 from pyvistaqt import QtInteractor
@@ -670,7 +830,23 @@ if QtWidgets is not None:
                 vector_x=self.vector_x.value(),
                 vector_y=self.vector_y.value(),
                 vector_z=self.vector_z.value(),
+                axis_map=self._axis_map(),
             )
+
+        def _axis_map(self) -> str:
+            return ",".join(
+                [
+                    self.axis_x.currentData(),
+                    self.axis_y.currentData(),
+                    self.axis_z.currentData(),
+                ]
+            )
+
+        def _apply_axis_map(self) -> None:
+            if not self.file_edit.text().strip():
+                self._show_error("Select a model file before applying the axis map.")
+                return
+            self._load_model()
 
         def _load_model(self) -> bool:
             try:
@@ -681,6 +857,7 @@ if QtWidgets is not None:
                     output_unit=request.output_unit,
                     mesh_deflection=request.mesh_deflection,
                     angular_deflection=request.angular_deflection,
+                    axis_map=request.axis_map,
                 )
             except Exception as exc:
                 self._show_error(str(exc))

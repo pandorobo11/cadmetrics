@@ -50,6 +50,8 @@ from STL and STEP files.
 ## Attitude Convention
 
 - Default coordinate convention: X aft, Y right, Z up
+- Users can remap input model axes by choosing the signed source axis used for cadmetrics X, Y,
+  and Z
 - CLI accepts single angle values or inclusive `start:end:step` ranges
 - CLI and GUI projected-area input modes are alpha/beta, roll/pitch, and unit vector
 - Alpha/beta mode sweeps every combination of alpha and beta

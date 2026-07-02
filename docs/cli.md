@@ -40,6 +40,18 @@ Supported explicit units are:
 m, mm, cm, in, ft
 ```
 
+## Axis Mapping
+
+Use `--axis-map` when the input model's axes do not match the cadmetrics convention. The value
+lists the input axes to use as cadmetrics `X,Y,Z`:
+
+```bash
+cadmetrics project model.step --axis-map x,-z,y --alpha 10
+```
+
+In this example, cadmetrics `X` is input `X`, cadmetrics `Y` is input `-Z`, and cadmetrics `Z`
+is input `Y`. Each source axis must be used exactly once. The default is `x,y,z`.
+
 ## measure
 
 Calculate volume and surface area:

@@ -33,6 +33,20 @@ def test_cube_projected_area_default_direction() -> None:
     assert row.elapsed_sec is not None
 
 
+def test_axis_map_flips_loaded_model_coordinates() -> None:
+    row = project(DATA_DIR / "unit_cube.stl", axis_map="-x,y,z")
+
+    assert row.projected_area == pytest.approx(1.0)
+    assert row.centroid_x == pytest.approx(-0.5)
+    assert row.centroid_y == pytest.approx(0.5)
+    assert row.centroid_z == pytest.approx(0.5)
+
+
+def test_axis_map_rejects_duplicate_source_axes() -> None:
+    with pytest.raises(ValueError, match="each source axis exactly once"):
+        project(DATA_DIR / "unit_cube.stl", axis_map="x,x,z")
+
+
 def test_cube_sweep_combinations() -> None:
     rows = sweep(DATA_DIR / "unit_cube.stl", alpha="0:1:1", beta="0:1:1", roll="0")
     assert len(rows) == 4

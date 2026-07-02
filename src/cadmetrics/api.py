@@ -4,6 +4,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable
 
+from cadmetrics.coordinates import DEFAULT_AXIS_MAP, transform_model_axes
 from cadmetrics.io import load_model
 from cadmetrics.orientation import (
     Orientation,
@@ -26,14 +27,16 @@ def inspect_model(
     output_unit: str = "m",
     mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
+    axis_map: str = DEFAULT_AXIS_MAP,
 ) -> ModelData:
-    return load_model(
+    model = load_model(
         path,
         input_unit=input_unit,
         output_unit=output_unit,
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
     )
+    return transform_model_axes(model, axis_map)
 
 
 def measure(
@@ -43,6 +46,7 @@ def measure(
     output_unit: str = "m",
     mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
+    axis_map: str = DEFAULT_AXIS_MAP,
 ) -> MeasurementRow:
     start = perf_counter()
     model = inspect_model(
@@ -51,6 +55,7 @@ def measure(
         output_unit=output_unit,
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
+        axis_map=axis_map,
     )
     return MeasurementRow(
         file=str(model.path),
@@ -83,6 +88,7 @@ def project(
     output_unit: str = "m",
     mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
+    axis_map: str = DEFAULT_AXIS_MAP,
 ) -> MeasurementRow:
     start = perf_counter()
     model = inspect_model(
@@ -91,6 +97,7 @@ def project(
         output_unit=output_unit,
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
+        axis_map=axis_map,
     )
     orientation = Orientation(roll_deg=roll_deg, alpha_deg=alpha_deg, beta_deg=beta_deg)
     vector = parse_vector(direction) if direction is not None else None
@@ -191,6 +198,7 @@ def sweep(
     mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
     progress_callback: Callable[[int, int, Orientation], None] | None = None,
+    axis_map: str = DEFAULT_AXIS_MAP,
 ) -> list[MeasurementRow]:
     model = inspect_model(
         path,
@@ -198,6 +206,7 @@ def sweep(
         output_unit=output_unit,
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
+        axis_map=axis_map,
     )
     rows: list[MeasurementRow] = []
     orientations = iter_orientations(roll=roll, alpha=alpha, beta=beta)

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from cadmetrics.api import project, sweep
+from cadmetrics.coordinates import DEFAULT_AXIS_MAP
 from cadmetrics.types import MeasurementRow
 
 AttitudeInputMode = Literal["alpha_beta", "roll_pitch", "vector"]
@@ -19,6 +20,7 @@ class CalculationRequest:
     output_unit: str = "m"
     mesh_deflection: float | str = "auto"
     angular_deflection: float = 0.1
+    axis_map: str = DEFAULT_AXIS_MAP
     roll_start: float = 0.0
     roll_end: float = 0.0
     roll_step: float = 1.0
@@ -46,6 +48,7 @@ def run_calculation(
         "output_unit": request.output_unit,
         "mesh_deflection": request.mesh_deflection,
         "angular_deflection": request.angular_deflection,
+        "axis_map": request.axis_map,
     }
     if request.attitude_mode == "alpha_beta":
         return sweep(
