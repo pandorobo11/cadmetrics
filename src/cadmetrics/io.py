@@ -87,6 +87,7 @@ def _load_step(
     try:
         from OCP.Bnd import Bnd_Box
         from OCP.BRep import BRep_Tool
+        from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
         from OCP.BRepBndLib import BRepBndLib
         from OCP.BRepGProp import BRepGProp
         from OCP.BRepMesh import BRepMesh_IncrementalMesh
@@ -94,12 +95,14 @@ def _load_step(
         from OCP.IFSelect import IFSelect_RetDone
         from OCP.STEPControl import STEPControl_Reader
         from OCP.TColStd import TColStd_SequenceOfAsciiString
-        from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED
+        from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED, TopAbs_SOLID
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS
     except ImportError as exc:
-        raise RuntimeError("STEP support requires the optional dependency: cadmetrics[step].") from exc
+        raise RuntimeError(
+            "STEP support requires the optional dependency: cadmetrics[step]."
+        ) from exc
 
     reader = STEPControl_Reader()
     status = reader.ReadFile(str(path))
@@ -111,6 +114,17 @@ def _load_step(
 
     shape = reader.OneShape()
     warnings: list[str] = []
+    shape, unioned = _boolean_union_ocp_solids(
+        shape,
+        BRepAlgoAPI_Fuse=BRepAlgoAPI_Fuse,
+        TopAbs_SOLID=TopAbs_SOLID,
+        TopExp_Explorer=TopExp_Explorer,
+        TopoDS=TopoDS,
+    )
+    if unioned is None:
+        warnings.append(
+            "Could not boolean-union STEP solids; volume and surface area may double-count overlaps."
+        )
     resolved_input_unit = input_unit
     if input_unit.strip().lower() == "auto":
         resolved_input_unit = _detect_step_length_unit(
@@ -136,7 +150,7 @@ def _load_step(
         mesh_deflection_value / scale if scale != 0.0 else mesh_deflection_value
     )
 
-    volume = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "VolumeProperties")
+    volume = _ocp_volume_metric_gk(shape, GProp_GProps=GProp_GProps, BRepGProp=BRepGProp)
     surface_area = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "SurfaceProperties")
 
     BRepMesh_IncrementalMesh(shape, native_mesh_deflection, False, angular_deflection, True)
@@ -156,7 +170,9 @@ def _load_step(
         warnings.append("Could not calculate exact STEP surface area.")
 
     scaled_volume = (
-        abs(volume) * volume_scale(resolved_input_unit, output_unit) if volume is not None else None
+        abs(volume) * volume_scale(resolved_input_unit, output_unit)
+        if volume is not None
+        else None
     )
     scaled_surface_area = (
         surface_area * area_scale(resolved_input_unit, output_unit)
@@ -222,9 +238,49 @@ def _ocp_bounding_box_diagonal(
     return max(diagonal, 1.0)
 
 
-def _ocp_shape_metric(shape: Any, props_type: Any, gprop_type: Any, method_name: str) -> float | None:
+def _boolean_union_ocp_solids(
+    shape: Any,
+    *,
+    BRepAlgoAPI_Fuse: Any,
+    TopAbs_SOLID: Any,
+    TopExp_Explorer: Any,
+    TopoDS: Any,
+) -> tuple[Any, bool | None]:
+    solids = []
+    explorer = TopExp_Explorer(shape, TopAbs_SOLID)
+    solid_method = getattr(TopoDS, "Solid_s", None) or getattr(TopoDS, "Solid")
+
+    while explorer.More():
+        solids.append(solid_method(explorer.Current()))
+        explorer.Next()
+
+    if len(solids) <= 1:
+        return shape, False
+
+    fused = solids[0]
+    for solid in solids[1:]:
+        fuse = BRepAlgoAPI_Fuse(fused, solid)
+        if hasattr(fuse, "SetRunParallel"):
+            fuse.SetRunParallel(True)
+        fuse.Build()
+        if not fuse.IsDone():
+            return shape, None
+        try:
+            fuse.SimplifyResult(True, True, 1.0e-7)
+        except Exception:
+            pass
+        fused = fuse.Shape()
+
+    return fused, True
+
+
+def _ocp_shape_metric(
+    shape: Any, props_type: Any, gprop_type: Any, method_name: str
+) -> float | None:
     props = props_type()
-    method = getattr(gprop_type, f"{method_name}_s", None) or getattr(gprop_type, method_name, None)
+    method = getattr(gprop_type, f"{method_name}_s", None) or getattr(
+        gprop_type, method_name, None
+    )
     if method is None:
         return None
     try:
@@ -232,6 +288,23 @@ def _ocp_shape_metric(shape: Any, props_type: Any, gprop_type: Any, method_name:
         return float(props.Mass())
     except Exception:
         return None
+
+
+def _ocp_volume_metric_gk(shape: Any, *, GProp_GProps: Any, BRepGProp: Any) -> float | None:
+    props = GProp_GProps()
+    method = getattr(BRepGProp, "VolumePropertiesGK_s", None) or getattr(
+        BRepGProp, "VolumePropertiesGK", None
+    )
+    if method is None:
+        return _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "VolumeProperties")
+
+    try:
+        error = method(shape, props, 1.0e-3, False, True, False, False, False)
+        if error is not None and error < 0.0:
+            return _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "VolumeProperties")
+        return float(props.Mass())
+    except Exception:
+        return _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "VolumeProperties")
 
 
 def _tessellate_ocp_shape(

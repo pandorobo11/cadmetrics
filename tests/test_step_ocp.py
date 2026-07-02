@@ -4,9 +4,12 @@ import pytest
 
 pytest.importorskip("OCP")
 
+from OCP.BRep import BRep_Builder
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+from OCP.gp import gp_Pnt
 from OCP.IFSelect import IFSelect_RetDone
 from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
+from OCP.TopoDS import TopoDS_Compound
 
 from cadmetrics.api import measure, project
 
@@ -28,3 +31,24 @@ def test_generated_step_box_measurements(tmp_path: Path) -> None:
     assert projected.projected_area == pytest.approx(6.0)
     assert projected.input_unit == "mm"
     assert projected.mesh_deflection == measured.mesh_deflection
+
+
+def test_step_overlapping_solids_are_boolean_unioned_for_measurements(tmp_path: Path) -> None:
+    step_path = tmp_path / "overlapping_boxes.step"
+    box_a = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    box_b = BRepPrimAPI_MakeBox(gp_Pnt(500.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
+
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    builder.Add(compound, box_a)
+    builder.Add(compound, box_b)
+
+    writer = STEPControl_Writer()
+    writer.Transfer(compound, STEPControl_AsIs)
+    assert writer.Write(str(step_path)) == IFSelect_RetDone
+
+    measured = measure(step_path)
+    assert measured.volume == pytest.approx(1.5)
+    assert measured.surface_area == pytest.approx(8.0)
+    assert measured.is_watertight is True

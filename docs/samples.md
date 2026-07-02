@@ -31,6 +31,7 @@ meter-based expected values as the STL fixtures.
 | `sphere_r1` | attitude-invariant reference | volume `4/3*pi`, surface `4*pi`, projection `pi` |
 | `cylinder_x_r1_l2` | axis-sensitive curved shape | volume `2*pi`, surface `6*pi`, +X projection `pi` |
 | `two_boxes_overlap_projection` | projected-overlap removal | volume `2`, surface `12`, +X projection `1` |
+| `two_boxes_intersecting` | STEP boolean-union vs raw STL overlap behavior | STEP volume `1.5`, STEP surface `8`, STL volume `2`, STL surface `12`, +X projection `1` |
 | `open_cube_missing_face` | non-watertight STL warning | surface `5`, +X projection `1`, `is_watertight=false` |
 | `frame_with_hole` | hole and concave outline behavior | volume `0.8`, surface `17.6`, +Z projection `8` |
 | `satellite` | manually added Fusion 360 validation model | see [Fusion validation notes](fusion_validation.md) |

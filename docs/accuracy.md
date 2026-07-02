@@ -6,7 +6,8 @@ Understanding the difference is important when comparing results with CAD softwa
 ## Geometry Backends
 
 STL files are mesh geometry. Volume, surface area, and projected area are calculated from the
-mesh.
+mesh. Self-intersecting or overlapping STL components are not repaired automatically; in those
+cases volume and surface area can double-count overlaps or otherwise become unreliable.
 
 STEP files use the optional `step` extra:
 
@@ -16,9 +17,13 @@ pip install "cadmetrics[step]"
 
 For STEP input:
 
-- volume uses the OCP/OpenCascade B-Rep model
-- surface area uses the OCP/OpenCascade B-Rep model
+- volume uses OCP/OpenCascade `VolumePropertiesGK` after boolean-unioning multiple solids
+- surface area uses the OCP/OpenCascade B-Rep model after boolean-unioning multiple solids
 - projected area uses a tessellated mesh generated from the B-Rep
+
+OCP does not expose a separate `SurfacePropertiesGK` function. Surface area uses
+`SurfaceProperties`; OCP's Python binding also exposes an adaptive-integration overload that
+accepts an error tolerance, but cadmetrics currently keeps the default exact-surface call.
 
 ## Projected Area Definition
 
@@ -69,8 +74,7 @@ The current target is within `0.1%` against Fusion 360 for representative closed
 The satellite sample has been manually checked against Fusion 360:
 
 - volume and surface area match Fusion's rounded physical properties
-- a Fusion plane inclined by `30 deg` matches cadmetrics `alpha=60 deg`
-- the projected-area difference is about `0.0019%` relative to Fusion's rounded displayed value
+- projected-area sweep values match Fusion's rounded displayed values
 
 See [Fusion 360 Validation Notes](fusion_validation.md) for details.
 

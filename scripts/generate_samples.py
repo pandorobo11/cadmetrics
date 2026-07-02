@@ -147,6 +147,20 @@ def sample_specs() -> list[SampleSpec]:
             step_factory=two_boxes_overlap_shape,
         ),
         SampleSpec(
+            name="two_boxes_intersecting",
+            description="Two unit cubes intersecting by 0.5 along X.",
+            expected={
+                "volume_stl": 2.0,
+                "surface_area_stl": 12.0,
+                "volume_step": 1.5,
+                "surface_area_step": 8.0,
+                "projected_area_x": 1.0,
+                "is_watertight": True,
+            },
+            stl_factory=two_boxes_intersecting_mesh,
+            step_factory=two_boxes_intersecting_shape,
+        ),
+        SampleSpec(
             name="open_cube_missing_face",
             description="1 x 1 x 1 cube STL with the +Z face removed.",
             expected={
@@ -220,6 +234,23 @@ def two_boxes_overlap_shape() -> object:
     builder.MakeCompound(compound)
     builder.Add(compound, make_box_shape_m(-1.5, -0.5, -0.5, 1.0, 1.0, 1.0))
     builder.Add(compound, make_box_shape_m(0.5, -0.5, -0.5, 1.0, 1.0, 1.0))
+    return compound
+
+
+def two_boxes_intersecting_mesh() -> trimesh.Trimesh:
+    first = trimesh.creation.box(extents=(1.0, 1.0, 1.0))
+    second = trimesh.creation.box(extents=(1.0, 1.0, 1.0))
+    first.apply_translation((0.0, 0.0, 0.0))
+    second.apply_translation((0.5, 0.0, 0.0))
+    return trimesh.util.concatenate([first, second])
+
+
+def two_boxes_intersecting_shape() -> object:
+    compound = TopoDS_Compound()
+    builder = BRep_Builder()
+    builder.MakeCompound(compound)
+    builder.Add(compound, make_box_shape_m(-0.5, -0.5, -0.5, 1.0, 1.0, 1.0))
+    builder.Add(compound, make_box_shape_m(0.0, -0.5, -0.5, 1.0, 1.0, 1.0))
     return compound
 
 

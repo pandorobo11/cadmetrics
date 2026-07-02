@@ -54,6 +54,35 @@ def test_overlap_sample_counts_projected_silhouette_once(kind: str) -> None:
     assert projected.projected_area == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl"])
+def test_intersecting_boxes_stl_keeps_raw_component_measurements(kind: str) -> None:
+    path = ROOT / SAMPLES["two_boxes_intersecting"]["files"][kind]
+    expected = SAMPLES["two_boxes_intersecting"]["expected"]
+
+    measured = measure(path)
+    projected = project(path)
+
+    assert measured.volume == pytest.approx(expected["volume_stl"])
+    assert measured.surface_area == pytest.approx(expected["surface_area_stl"])
+    assert projected.projected_area == pytest.approx(expected["projected_area_x"])
+    assert measured.is_watertight is True
+
+
+def test_intersecting_boxes_step_uses_boolean_union_for_measurements() -> None:
+    if not HAS_OCP:
+        pytest.skip("STEP sample checks require cadmetrics[step]")
+    path = ROOT / SAMPLES["two_boxes_intersecting"]["files"]["step"]
+    expected = SAMPLES["two_boxes_intersecting"]["expected"]
+
+    measured = measure(path)
+    projected = project(path)
+
+    assert measured.volume == pytest.approx(expected["volume_step"])
+    assert measured.surface_area == pytest.approx(expected["surface_area_step"])
+    assert projected.projected_area == pytest.approx(expected["projected_area_x"])
+    assert measured.is_watertight is True
+
+
 @pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl", "step"])
 def test_frame_sample_preserves_hole_in_z_projection(kind: str) -> None:
     if kind == "step" and not HAS_OCP:

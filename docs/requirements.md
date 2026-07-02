@@ -25,8 +25,12 @@ from STL and STEP files.
 
 ## Geometry Scope
 
-- STL is treated as mesh geometry
+- STL is treated as mesh geometry. Self-intersecting or overlapping STL components are not
+  repaired automatically; volume and surface area may double-count overlaps in those cases.
 - STEP volume and surface area should use B-Rep calculations when the `step` extra is installed
+- STEP volume should use OCP/OpenCascade `VolumePropertiesGK`
+- STEP multiple-solid input should be boolean-unioned before volume and surface-area
+  calculation so intersecting solids do not double-count overlap volume
 - STEP projected area is calculated from a tessellated mesh
 - Multiple solids are treated as one projected silhouette, so overlapping projected regions are
   counted once
@@ -51,9 +55,7 @@ from STL and STEP files.
 - Alpha/beta mode sweeps every combination of alpha and beta
 - Roll/pitch mode sweeps every combination of roll and pitch
 - Unit-vector mode calculates one direction without sweep
-- `alpha`, `beta`, `roll`, and `pitch` describe the projection direction attitude. A Fusion
-  360 sketch or measurement plane angle can be complementary because the projection direction
-  is normal to that plane.
+- `alpha`, `beta`, `roll`, and `pitch` describe the projection direction attitude.
 - Projected-area output reports equivalent alpha/beta, roll/pitch, and unit-vector direction
   values for each case.
 - Projected-area output reports the projected 2D centroid and a corresponding 3D marker
