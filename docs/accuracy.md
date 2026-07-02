@@ -25,6 +25,33 @@ OCP does not expose a separate `SurfacePropertiesGK` function. Surface area uses
 `SurfaceProperties`; OCP's Python binding also exposes an adaptive-integration overload that
 accepts an error tolerance, but cadmetrics currently keeps the default exact-surface call.
 
+## STEP B-Rep vs STL-Like Mesh Values
+
+It is possible to tessellate a STEP model and then calculate volume and surface area from the
+triangle mesh, as if the model had been converted to STL. cadmetrics keeps B-Rep volume and
+surface area as the default for STEP because those values avoid tessellation error.
+
+The mesh-based values are useful for debugging STL comparisons, but they are approximations.
+Planar solids usually match exactly because their faces can be represented by triangles without
+geometric approximation. Curved solids depend on `--mesh-deflection` and
+`--angular-deflection`.
+
+Representative local comparisons against B-Rep values:
+
+| sample | mesh deflection | volume difference | surface-area difference |
+|---|---:|---:|---:|
+| cube / box / frame | `auto` to `0.01` | about `0%` | about `0%` |
+| `sphere_r1` | `auto` | `-0.0051%` | `-0.0028%` |
+| `sphere_r1` | `0.001` | `-0.144%` | `-0.077%` |
+| `cylinder_x_r1_l2` | `auto` | `-0.0023%` | `-0.0012%` |
+| `cylinder_x_r1_l2` | `0.001` | `-0.041%` | `-0.021%` |
+| `satellite` | `auto` | `-0.0047%` | `-0.0017%` |
+| `satellite` | `0.001` | `-0.0415%` | `-0.0157%` |
+
+For intersecting STEP solids, tessellate after the STEP boolean union if mesh-based comparison
+is needed. Tessellating or exporting components independently and then summing STL metrics can
+double-count overlap volume and area.
+
 ## Projected Area Definition
 
 Projected area is the orthographic 2D outline area for the selected projection direction.

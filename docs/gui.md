@@ -36,6 +36,14 @@ If using the local macOS helper app from the repository root:
 open dist/Cadmetrics.app
 ```
 
+## Screenshot
+
+![cadmetrics GUI showing a satellite STEP sweep](assets/gui-main.png)
+
+The screenshot shows the default single-model workflow: a STEP sample loaded in the 3D view,
+the advanced axis/tessellation controls collapsed, an alpha sweep configured, and the results
+area below the viewer.
+
 ## Basic Workflow
 
 1. Click `Browse` and choose an STL or STEP file.
@@ -130,6 +138,5 @@ when available.
 The first GUI milestone supports one loaded model at a time. The following items are deferred:
 
 - multiple model display
-- automated maximum/minimum projected-area search
 - geometry repair
 - Excel and HTML reports

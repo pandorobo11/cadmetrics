@@ -1,13 +1,11 @@
 # Documentation Assets
 
-This directory is reserved for README and docs images.
+This directory contains README and docs images.
 
-Recommended GUI screenshot path:
+Current assets:
 
-```text
-docs/assets/gui-main.png
-```
+- `gui-main.png`: PySide6 GUI screenshot with the satellite STEP sample loaded, alpha sweep
+  configured, the 3D viewer visible, and the results area shown.
 
-Capture it with the PySide6 GUI open, a representative STEP sample loaded, and the left control
-panel visible. After the image exists, the README and GUI usage page can reference it as a
-normal Markdown image.
+When refreshing `gui-main.png`, use a representative STEP sample and keep the left control
+panel visible so the README remains useful without additional context.

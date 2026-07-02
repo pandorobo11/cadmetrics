@@ -146,5 +146,4 @@ and results overlay, row-selection camera alignment, and PNG image export.
 
 - Multiple model display
 - Excel and HTML report output
-- Automated maximum/minimum projected-area search
 - Geometry repair

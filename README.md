@@ -17,6 +17,10 @@ drag-area checks.
 - Export CSV from CLI and GUI
 - Inspect geometry in a local PySide6/PyVista GUI
 
+## GUI Preview
+
+![cadmetrics GUI showing a satellite STEP sweep](docs/assets/gui-main.png)
+
 ## Install
 
 STL-only usage:
@@ -179,8 +183,7 @@ See [Accuracy Notes](docs/accuracy.md) for details.
 ## Project Status
 
 The first milestone focuses on a practical local workflow for one model at a time. Deferred
-items include multi-model display, automated maximum/minimum projected-area search, geometry
-repair, and Excel/HTML reports.
+items include multi-model display, geometry repair, and Excel/HTML reports.
 
 ## License
 
