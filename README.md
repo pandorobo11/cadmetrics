@@ -162,6 +162,7 @@ GUI present these as explicit `alpha-beta`, `roll-pitch`, and `vector` input mod
 - [Sample Geometry](docs/samples.md)
 - [Fusion 360 Validation Notes](docs/fusion_validation.md)
 - [Requirements](docs/requirements.md)
+- [Release Process](docs/release.md)
 
 ## Accuracy Notes
 
