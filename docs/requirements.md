@@ -63,6 +63,7 @@ from STL and STEP files.
 - Projected-area output reports the projected 2D centroid and a corresponding 3D marker
   position on the projection plane through the model center.
 - Output rows report model XYZ coordinate bounds in the selected output unit.
+- Output rows report the cadmetrics package version and git hash used for calculation.
 - With normalized projection direction `d = (d_x, d_y, d_z)`, equivalent output angles are
   `alpha = atan2(d_z, d_x)`, `beta = asin(-d_y)`,
   `pitch = atan2(sqrt(d_y^2 + d_z^2), d_x)`, and `roll = atan2(d_y, d_z)`.
@@ -128,6 +129,8 @@ and results overlay, row-selection camera alignment, and PNG image export.
 - `angular_deflection`
 - `method`
 - `elapsed_sec`
+- `cadmetrics_version`
+- `cadmetrics_hash`
 - `warnings`
 
 ## Accuracy Target

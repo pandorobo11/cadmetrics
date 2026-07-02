@@ -79,6 +79,8 @@ def measure(
         angular_deflection=model.angular_deflection,
         method=_method_name(model, projected=False),
         elapsed_sec=perf_counter() - start,
+        cadmetrics_version=model.cadmetrics_version,
+        cadmetrics_hash=model.cadmetrics_hash,
         warnings=model.warnings,
     )
 
@@ -179,6 +181,8 @@ def _projected_row(
         angular_deflection=angular_deflection,
         method=method,
         elapsed_sec=elapsed_sec,
+        cadmetrics_version=model.cadmetrics_version,
+        cadmetrics_hash=model.cadmetrics_hash,
         warnings=warnings,
     )
 

@@ -317,6 +317,8 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
             "angular_deflection": "0.1",
             "method": "stl-mesh-projection",
             "elapsed_sec": "0.01",
+            "cadmetrics_version": row.cadmetrics_version,
+            "cadmetrics_hash": row.cadmetrics_hash,
             "warnings": "note",
         }
     ]

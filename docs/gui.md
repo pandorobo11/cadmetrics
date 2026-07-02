@@ -119,6 +119,7 @@ The result table uses the same columns as the CLI CSV output. Important fields i
 - `alpha_deg`, `beta_deg`
 - `roll_deg`, `pitch_deg`
 - `direction_x`, `direction_y`, `direction_z`
+- `cadmetrics_version`, `cadmetrics_hash`
 
 The yellow centroid marker is shown when a projected-area result row is selected. The red
 projection arrow is placed outside the model and aligned with the selected projected centroid

@@ -175,6 +175,8 @@ All calculation commands use the same CSV schema:
 | `angular_deflection` | effective STEP angular deflection, if applicable |
 | `method` | calculation backend summary |
 | `elapsed_sec` | elapsed time for the row |
+| `cadmetrics_version` | package version used for the calculation |
+| `cadmetrics_hash` | git commit hash used for the calculation, with `-dirty` when tracked files differ |
 | `warnings` | semicolon-separated warnings |
 
 ## Examples

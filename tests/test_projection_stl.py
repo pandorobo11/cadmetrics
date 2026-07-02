@@ -16,6 +16,8 @@ def test_cube_measurements() -> None:
     assert row.volume == pytest.approx(1.0)
     assert row.surface_area == pytest.approx(6.0)
     assert row.is_watertight is True
+    assert row.cadmetrics_version
+    assert row.cadmetrics_hash
 
 
 def test_cube_projected_area_default_direction() -> None:

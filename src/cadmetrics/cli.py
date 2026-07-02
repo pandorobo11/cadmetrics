@@ -52,6 +52,8 @@ CSV_FIELDS = [
     "angular_deflection",
     "method",
     "elapsed_sec",
+    "cadmetrics_version",
+    "cadmetrics_hash",
     "warnings",
 ]
 
@@ -356,6 +358,8 @@ def inspect(
     table.add_row("z_max", _format_optional(model.z_max))
     table.add_row("surface_area", _format_optional(model.surface_area))
     table.add_row("volume", _format_optional(model.volume))
+    table.add_row("cadmetrics_version", model.cadmetrics_version)
+    table.add_row("cadmetrics_hash", model.cadmetrics_hash)
     table.add_row("is_watertight", str(model.is_watertight))
     table.add_row("warnings", "; ".join(model.warnings))
     console.print(table)

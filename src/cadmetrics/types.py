@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
+from cadmetrics.version import cadmetrics_hash, cadmetrics_version
+
 
 FloatArray = NDArray[np.float64]
 IntArray = NDArray[np.int64]
@@ -26,6 +28,8 @@ class ModelData:
     is_watertight: bool | None
     mesh_deflection: float | None = None
     angular_deflection: float | None = None
+    cadmetrics_version: str = field(default_factory=cadmetrics_version)
+    cadmetrics_hash: str = field(default_factory=cadmetrics_hash)
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -92,6 +96,8 @@ class MeasurementRow:
     angular_deflection: float | None = None
     method: str | None = None
     elapsed_sec: float | None = None
+    cadmetrics_version: str = field(default_factory=cadmetrics_version)
+    cadmetrics_hash: str = field(default_factory=cadmetrics_hash)
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     def to_csv_row(self) -> dict[str, str | float | bool | None]:
@@ -125,6 +131,8 @@ class MeasurementRow:
             "angular_deflection": self.angular_deflection,
             "method": self.method,
             "elapsed_sec": self.elapsed_sec,
+            "cadmetrics_version": self.cadmetrics_version,
+            "cadmetrics_hash": self.cadmetrics_hash,
             "warnings": "; ".join(self.warnings),
         }
 

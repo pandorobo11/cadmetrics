@@ -13,6 +13,7 @@ drag-area checks.
 - Report equivalent alpha/beta, roll/pitch, and unit-vector direction values
 - Report projected-area centroids in 2D projection coordinates and 3D model coordinates
 - Report model XYZ coordinate bounds in the selected output unit
+- Report the cadmetrics package version and git hash used for each calculation
 - Export CSV from CLI and GUI
 - Inspect geometry in a local PySide6/PyVista GUI
 

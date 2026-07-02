@@ -54,6 +54,8 @@ TABLE_COLUMNS = [
     "angular_deflection",
     "method",
     "elapsed_sec",
+    "cadmetrics_version",
+    "cadmetrics_hash",
     "warnings",
 ]
 
@@ -1326,6 +1328,8 @@ if QtWidgets is not None:
                 f"Z[{_format_cell(model.z_min)}, {_format_cell(model.z_max)}]",
                 f"surface_area: {_format_cell(model.surface_area)}",
                 f"volume: {_format_cell(model.volume)}",
+                f"cadmetrics_version: {model.cadmetrics_version}",
+                f"cadmetrics_hash: {model.cadmetrics_hash}",
                 f"watertight: {_format_cell(model.is_watertight)}",
             ]
             if model.warnings:
@@ -1401,6 +1405,8 @@ def _overlay_text(
         )
         if row.method:
             lines.append(f"method: {row.method}")
+        lines.append(f"cadmetrics_version: {row.cadmetrics_version}")
+        lines.append(f"cadmetrics_hash: {row.cadmetrics_hash}")
         if row.warnings:
             lines.append(f"warnings: {'; '.join(row.warnings)}")
         return "\n".join(lines)
@@ -1421,6 +1427,8 @@ def _overlay_text(
                 f"Z[{_format_metric(model.z_min)}, {_format_metric(model.z_max)}]",
                 f"surface_area: {_format_metric(model.surface_area)}",
                 f"volume: {_format_metric(model.volume)}",
+                f"cadmetrics_version: {model.cadmetrics_version}",
+                f"cadmetrics_hash: {model.cadmetrics_hash}",
             ]
         )
     if request is not None:
