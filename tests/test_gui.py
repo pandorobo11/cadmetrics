@@ -11,6 +11,7 @@ import pytest
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
 from cadmetrics.gui.pyside_app import (
+    _default_camera_geometry,
     _overlay_text,
     _projection_arrow_geometry,
     _projection_camera_geometry,
@@ -99,6 +100,26 @@ def test_projection_camera_looks_along_direction() -> None:
 
     assert np.allclose(view_direction, direction)
     assert np.isclose(float(np.dot(view_up, direction)), 0.0)
+
+
+def test_default_camera_is_from_negative_x_negative_y_positive_z() -> None:
+    vertices = np.array(
+        [
+            [-1.0, -0.5, -0.5],
+            [-1.0, 0.5, 0.5],
+            [1.0, -0.5, 0.5],
+            [1.0, 0.5, -0.5],
+        ],
+        dtype=float,
+    )
+
+    position, focal_point, view_up = _default_camera_geometry(vertices)
+    offset = position - focal_point
+
+    assert offset[0] < 0.0
+    assert offset[1] < 0.0
+    assert offset[2] > 0.0
+    assert np.isclose(float(np.dot(view_up, focal_point - position)), 0.0)
 
 
 def test_overlay_text_includes_selected_result_values() -> None:

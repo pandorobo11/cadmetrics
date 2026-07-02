@@ -991,9 +991,24 @@ if QtWidgets is not None:
             )
             self._apply_mesh_shading()
             self._update_feature_edges()
-            self._plotter.reset_camera()
-            self._plotter.enable_parallel_projection()
+            self._set_default_model_camera(model)
             self._update_overlay()
+
+        def _set_default_model_camera(self, model: ModelData) -> None:
+            if self._plotter is None:
+                return
+            position, focal_point, view_up = _default_camera_geometry(model.vertices)
+            self._plotter.reset_camera()
+            self._plotter.camera_position = (
+                tuple(position),
+                tuple(focal_point),
+                tuple(view_up),
+            )
+            self._plotter.enable_parallel_projection()
+            try:
+                self._plotter.reset_camera_clipping_range()
+            except AttributeError:
+                pass
 
         def _configure_scene_lighting(self) -> None:
             if self._plotter is None:
@@ -1468,4 +1483,19 @@ def _projection_camera_geometry(
     distance = scale * 3.0
     _, view_up = projection_basis(unit_direction)
     position = center - unit_direction * distance
+    return position, center, view_up
+
+
+def _default_camera_geometry(vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    center = vertices.mean(axis=0)
+    from_direction = np.array([-1.0, -1.0, 1.0], dtype=float)
+    from_direction = from_direction / np.linalg.norm(from_direction)
+    spans = np.ptp(vertices, axis=0)
+    scale = max(float(spans.max()), 1.0)
+    distance = scale * 3.0
+    position = center + from_direction * distance
+    view_direction = (center - position) / np.linalg.norm(center - position)
+    up_hint = np.array([0.0, 0.0, 1.0], dtype=float)
+    view_up = up_hint - view_direction * float(np.dot(up_hint, view_direction))
+    view_up = view_up / np.linalg.norm(view_up)
     return position, center, view_up
