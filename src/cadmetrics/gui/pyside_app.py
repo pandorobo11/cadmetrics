@@ -35,15 +35,23 @@ TABLE_COLUMNS = [
     "direction_x",
     "direction_y",
     "direction_z",
+    "x_min",
+    "x_max",
+    "y_min",
+    "y_max",
+    "z_min",
+    "z_max",
+    "surface_area",
+    "volume",
+    "projected_area",
     "centroid_u",
     "centroid_v",
     "centroid_x",
     "centroid_y",
     "centroid_z",
-    "volume",
-    "surface_area",
-    "projected_area",
     "is_watertight",
+    "mesh_deflection",
+    "angular_deflection",
     "method",
     "elapsed_sec",
     "warnings",
@@ -1312,8 +1320,12 @@ if QtWidgets is not None:
                 f"file: {model.path.name}",
                 f"format/unit: {model.source_format}, {model.output_unit}",
                 f"mesh: {model.vertex_count} vertices, {model.face_count} faces",
-                f"volume: {_format_cell(model.volume)}",
+                "bounds: "
+                f"X[{_format_cell(model.x_min)}, {_format_cell(model.x_max)}], "
+                f"Y[{_format_cell(model.y_min)}, {_format_cell(model.y_max)}], "
+                f"Z[{_format_cell(model.z_min)}, {_format_cell(model.z_max)}]",
                 f"surface_area: {_format_cell(model.surface_area)}",
+                f"volume: {_format_cell(model.volume)}",
                 f"watertight: {_format_cell(model.is_watertight)}",
             ]
             if model.warnings:
@@ -1374,13 +1386,17 @@ def _overlay_text(
             )
         lines.extend(
             [
+                "bounds: "
+                f"X[{_format_metric(row.x_min)}, {_format_metric(row.x_max)}], "
+                f"Y[{_format_metric(row.y_min)}, {_format_metric(row.y_max)}], "
+                f"Z[{_format_metric(row.z_min)}, {_format_metric(row.z_max)}]",
+                f"surface_area: {_format_metric(row.surface_area)}",
+                f"volume: {_format_metric(row.volume)}",
                 f"projected_area: {_format_metric(row.projected_area)}",
                 "centroid: "
                 f"({_format_vector_value(row.centroid_x)}, "
                 f"{_format_vector_value(row.centroid_y)}, "
                 f"{_format_vector_value(row.centroid_z)})",
-                f"volume: {_format_metric(row.volume)}",
-                f"surface_area: {_format_metric(row.surface_area)}",
             ]
         )
         if row.method:
@@ -1399,8 +1415,12 @@ def _overlay_text(
                 f"file: {model.path.name}",
                 f"format: {model.source_format}",
                 f"unit: {model.output_unit}",
-                f"volume: {_format_metric(model.volume)}",
+                "bounds: "
+                f"X[{_format_metric(model.x_min)}, {_format_metric(model.x_max)}], "
+                f"Y[{_format_metric(model.y_min)}, {_format_metric(model.y_max)}], "
+                f"Z[{_format_metric(model.z_min)}, {_format_metric(model.z_max)}]",
                 f"surface_area: {_format_metric(model.surface_area)}",
+                f"volume: {_format_metric(model.volume)}",
             ]
         )
     if request is not None:

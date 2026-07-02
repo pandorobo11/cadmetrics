@@ -36,6 +36,30 @@ class ModelData:
     def face_count(self) -> int:
         return int(self.faces.shape[0])
 
+    @property
+    def x_min(self) -> float | None:
+        return _axis_min(self.vertices, 0)
+
+    @property
+    def x_max(self) -> float | None:
+        return _axis_max(self.vertices, 0)
+
+    @property
+    def y_min(self) -> float | None:
+        return _axis_min(self.vertices, 1)
+
+    @property
+    def y_max(self) -> float | None:
+        return _axis_max(self.vertices, 1)
+
+    @property
+    def z_min(self) -> float | None:
+        return _axis_min(self.vertices, 2)
+
+    @property
+    def z_max(self) -> float | None:
+        return _axis_max(self.vertices, 2)
+
 
 @dataclass(frozen=True)
 class MeasurementRow:
@@ -58,6 +82,12 @@ class MeasurementRow:
     centroid_x: float | None = None
     centroid_y: float | None = None
     centroid_z: float | None = None
+    x_min: float | None = None
+    x_max: float | None = None
+    y_min: float | None = None
+    y_max: float | None = None
+    z_min: float | None = None
+    z_max: float | None = None
     mesh_deflection: float | None = None
     angular_deflection: float | None = None
     method: str | None = None
@@ -76,14 +106,20 @@ class MeasurementRow:
             "direction_x": self.direction_x,
             "direction_y": self.direction_y,
             "direction_z": self.direction_z,
+            "x_min": self.x_min,
+            "x_max": self.x_max,
+            "y_min": self.y_min,
+            "y_max": self.y_max,
+            "z_min": self.z_min,
+            "z_max": self.z_max,
+            "surface_area": self.surface_area,
+            "volume": self.volume,
+            "projected_area": self.projected_area,
             "centroid_u": self.centroid_u,
             "centroid_v": self.centroid_v,
             "centroid_x": self.centroid_x,
             "centroid_y": self.centroid_y,
             "centroid_z": self.centroid_z,
-            "volume": self.volume,
-            "surface_area": self.surface_area,
-            "projected_area": self.projected_area,
             "is_watertight": self.is_watertight,
             "mesh_deflection": self.mesh_deflection,
             "angular_deflection": self.angular_deflection,
@@ -91,3 +127,15 @@ class MeasurementRow:
             "elapsed_sec": self.elapsed_sec,
             "warnings": "; ".join(self.warnings),
         }
+
+
+def _axis_min(vertices: FloatArray, axis: int) -> float | None:
+    if vertices.shape[0] == 0:
+        return None
+    return float(np.min(vertices[:, axis]))
+
+
+def _axis_max(vertices: FloatArray, axis: int) -> float | None:
+    if vertices.shape[0] == 0:
+        return None
+    return float(np.max(vertices[:, axis]))

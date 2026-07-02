@@ -29,6 +29,12 @@ def test_cube_projected_area_default_direction() -> None:
     assert row.centroid_x == pytest.approx(0.5)
     assert row.centroid_y == pytest.approx(0.5)
     assert row.centroid_z == pytest.approx(0.5)
+    assert row.x_min == pytest.approx(0.0)
+    assert row.x_max == pytest.approx(1.0)
+    assert row.y_min == pytest.approx(0.0)
+    assert row.y_max == pytest.approx(1.0)
+    assert row.z_min == pytest.approx(0.0)
+    assert row.z_max == pytest.approx(1.0)
     assert row.method == "stl-mesh-projection"
     assert row.elapsed_sec is not None
 
@@ -40,6 +46,8 @@ def test_axis_map_flips_loaded_model_coordinates() -> None:
     assert row.centroid_x == pytest.approx(-0.5)
     assert row.centroid_y == pytest.approx(0.5)
     assert row.centroid_z == pytest.approx(0.5)
+    assert row.x_min == pytest.approx(-1.0)
+    assert row.x_max == pytest.approx(0.0)
 
 
 def test_axis_map_rejects_duplicate_source_axes() -> None:

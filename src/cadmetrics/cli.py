@@ -33,14 +33,20 @@ CSV_FIELDS = [
     "direction_x",
     "direction_y",
     "direction_z",
+    "x_min",
+    "x_max",
+    "y_min",
+    "y_max",
+    "z_min",
+    "z_max",
+    "surface_area",
+    "volume",
+    "projected_area",
     "centroid_u",
     "centroid_v",
     "centroid_x",
     "centroid_y",
     "centroid_z",
-    "volume",
-    "surface_area",
-    "projected_area",
     "is_watertight",
     "mesh_deflection",
     "angular_deflection",
@@ -342,8 +348,14 @@ def inspect(
     table.add_row("source_format", model.source_format)
     table.add_row("vertices", str(model.vertex_count))
     table.add_row("faces", str(model.face_count))
-    table.add_row("volume", _format_optional(model.volume))
+    table.add_row("x_min", _format_optional(model.x_min))
+    table.add_row("x_max", _format_optional(model.x_max))
+    table.add_row("y_min", _format_optional(model.y_min))
+    table.add_row("y_max", _format_optional(model.y_max))
+    table.add_row("z_min", _format_optional(model.z_min))
+    table.add_row("z_max", _format_optional(model.z_max))
     table.add_row("surface_area", _format_optional(model.surface_area))
+    table.add_row("volume", _format_optional(model.volume))
     table.add_row("is_watertight", str(model.is_watertight))
     table.add_row("warnings", "; ".join(model.warnings))
     console.print(table)

@@ -164,11 +164,12 @@ All calculation commands use the same CSV schema:
 | `alpha_deg` | equivalent angle of attack |
 | `beta_deg` | equivalent sideslip angle |
 | `direction_x`, `direction_y`, `direction_z` | normalized projection direction |
+| `x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max` | model coordinate bounds in `output_unit` |
+| `surface_area` | surface area in `output_unit^2` |
+| `volume` | volume in `output_unit^3` |
+| `projected_area` | orthographic projected outline area in `output_unit^2` |
 | `centroid_u`, `centroid_v` | projected 2D centroid in the projection plane |
 | `centroid_x`, `centroid_y`, `centroid_z` | corresponding 3D marker position |
-| `volume` | volume in `output_unit^3` |
-| `surface_area` | surface area in `output_unit^2` |
-| `projected_area` | orthographic projected outline area in `output_unit^2` |
 | `is_watertight` | mesh watertightness when known |
 | `mesh_deflection` | effective STEP tessellation deflection, if applicable |
 | `angular_deflection` | effective STEP angular deflection, if applicable |

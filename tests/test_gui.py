@@ -10,11 +10,13 @@ import pytest
 
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
+from cadmetrics.cli import CSV_FIELDS
 from cadmetrics.gui.pyside_app import (
     _default_camera_geometry,
     _overlay_text,
     _projection_arrow_geometry,
     _projection_camera_geometry,
+    TABLE_COLUMNS,
 )
 from cadmetrics.types import MeasurementRow
 
@@ -261,6 +263,12 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
         centroid_x=0.0,
         centroid_y=0.0,
         centroid_z=0.0,
+        x_min=0.0,
+        x_max=1.0,
+        y_min=0.0,
+        y_max=1.0,
+        z_min=0.0,
+        z_max=1.0,
         volume=1.0,
         surface_area=6.0,
         projected_area=1.0,
@@ -275,7 +283,9 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
     write_rows_csv(output, [row])
 
     with output.open(newline="", encoding="utf-8") as handle:
-        rows = list(csv.DictReader(handle))
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+    assert reader.fieldnames == CSV_FIELDS
     assert rows == [
         {
             "file": "model.stl",
@@ -288,14 +298,20 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
             "direction_x": "1.0",
             "direction_y": "0.0",
             "direction_z": "0.0",
+            "x_min": "0.0",
+            "x_max": "1.0",
+            "y_min": "0.0",
+            "y_max": "1.0",
+            "z_min": "0.0",
+            "z_max": "1.0",
+            "surface_area": "6.0",
+            "volume": "1.0",
+            "projected_area": "1.0",
             "centroid_u": "0.0",
             "centroid_v": "0.0",
             "centroid_x": "0.0",
             "centroid_y": "0.0",
             "centroid_z": "0.0",
-            "volume": "1.0",
-            "surface_area": "6.0",
-            "projected_area": "1.0",
             "is_watertight": "True",
             "mesh_deflection": "0.001",
             "angular_deflection": "0.1",
@@ -304,6 +320,10 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
             "warnings": "note",
         }
     ]
+
+
+def test_gui_table_columns_match_cli_order() -> None:
+    assert TABLE_COLUMNS == CSV_FIELDS
 
 
 def _row(*, direction: str | None = None) -> MeasurementRow:
