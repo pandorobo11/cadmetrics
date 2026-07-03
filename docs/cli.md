@@ -74,7 +74,7 @@ cadmetrics measure model.step \
   --angular-deflection 0.1
 ```
 
-`--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-5` in the selected
+`--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the selected
 output length unit.
 
 ## project

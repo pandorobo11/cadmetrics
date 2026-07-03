@@ -83,7 +83,7 @@ STEP projected area depends on tessellation. The most important control is:
 The default is:
 
 ```text
-auto = STEP bounding-box diagonal * 1e-5
+auto = STEP bounding-box diagonal * 1e-4
 ```
 
 The value is expressed in the selected output length unit. Smaller values usually improve

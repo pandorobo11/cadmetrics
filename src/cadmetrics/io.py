@@ -234,7 +234,7 @@ def _resolve_mesh_deflection(
         text = value.strip().lower()
         if text == "auto":
             output_diagonal = native_diagonal * scale
-            return max(output_diagonal * 1.0e-5, 1.0e-9)
+            return max(output_diagonal * 1.0e-4, 1.0e-9)
         try:
             value = float(text)
         except ValueError as exc:

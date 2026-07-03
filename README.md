@@ -175,7 +175,7 @@ STL measurements are mesh-based. STEP volume and surface area use the OCP/OpenCa
 kernel when the `step` extra is installed. STEP projected area is calculated from a tessellated
 mesh, so the result depends on tessellation quality.
 
-The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-5` in the
+The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the
 selected output length unit. The current validation target is within `0.1%` against Fusion 360
 for representative closed solids.
 

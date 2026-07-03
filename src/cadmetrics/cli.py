@@ -70,7 +70,7 @@ def measure(
     mesh_deflection: str = typer.Option(
         "auto",
         "--mesh-deflection",
-        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-5.",
+        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-4.",
     ),
     angular_deflection: float = typer.Option(
         0.1,
@@ -134,7 +134,7 @@ def project(
     mesh_deflection: str = typer.Option(
         "auto",
         "--mesh-deflection",
-        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-5.",
+        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-4.",
     ),
     angular_deflection: float = typer.Option(
         0.1,
@@ -218,7 +218,7 @@ def sweep(
     mesh_deflection: str = typer.Option(
         "auto",
         "--mesh-deflection",
-        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-5.",
+        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-4.",
     ),
     angular_deflection: float = typer.Option(
         0.1,
@@ -316,7 +316,7 @@ def inspect(
     mesh_deflection: str = typer.Option(
         "auto",
         "--mesh-deflection",
-        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-5.",
+        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-4.",
     ),
     angular_deflection: float = typer.Option(
         0.1,

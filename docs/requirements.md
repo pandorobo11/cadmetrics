@@ -140,7 +140,7 @@ filters in Advanced settings.
 - Target validation tolerance: 0.1% against Fusion 360 for representative closed solids
 - Projected area depends on mesh/tessellation quality
 - `--mesh-deflection` defaults to `auto`, which uses the STEP bounding-box diagonal times
-  `1e-5` in the selected output length unit
+  `1e-4` in the selected output length unit
 - `--mesh-deflection` accepts an explicit positive number so STEP projected-area accuracy can
   be adjusted or fixed for reproducibility
 

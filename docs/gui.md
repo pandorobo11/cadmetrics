@@ -93,7 +93,7 @@ components enabled preserves the default behavior. STL component filtering is no
 is enabled by default and uses:
 
 ```text
-bounding-box diagonal * 1e-5
+bounding-box diagonal * 1e-4
 ```
 
 `Angular deflection` controls STEP angular tessellation tolerance. Its default is `0.1`.
