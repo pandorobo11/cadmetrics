@@ -43,7 +43,8 @@ from STL and STEP files.
 
 ## Units
 
-- Default input length unit: `m`
+- Default input length unit: `auto`
+- With `auto`, STEP units are read from the file and STL is assumed to be meters
 - Input unit can be specified
 - Output unit can be specified separately
 - Area and volume are reported in the selected output unit squared and cubed

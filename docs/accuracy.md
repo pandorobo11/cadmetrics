@@ -41,13 +41,14 @@ Representative local comparisons against B-Rep values:
 
 | sample | mesh deflection | volume difference | surface-area difference |
 |---|---:|---:|---:|
-| cube / box / frame | `auto` to `0.01` | about `0%` | about `0%` |
-| `sphere_r1` | `auto` | `-0.0051%` | `-0.0028%` |
-| `sphere_r1` | `0.001` | `-0.144%` | `-0.077%` |
-| `cylinder_x_r1_l2` | `auto` | `-0.0023%` | `-0.0012%` |
-| `cylinder_x_r1_l2` | `0.001` | `-0.041%` | `-0.021%` |
-| `satellite` | `auto` | `-0.0047%` | `-0.0017%` |
-| `satellite` | `0.001` | `-0.0415%` | `-0.0157%` |
+| cube / box / frame | `auto` to coarse explicit values | about `0%` | about `0%` |
+| `sphere_r1` | `D*1e-4` current `auto` | `-0.0507%` | `-0.0272%` |
+| `sphere_r1` | `D*3e-5` | `-0.0153%` | `-0.0083%` |
+| `sphere_r1` | `D*1e-5` | `-0.0051%` | `-0.0028%` |
+| `cylinder_x_r1_l2` | `D*1e-4` current `auto` | `-0.0230%` | `-0.0115%` |
+| `cylinder_x_r1_l2` | `D*3e-5` | `-0.0069%` | `-0.0034%` |
+| `satellite` | `D*1e-4` current `auto` | `-0.0379%` | `-0.0148%` |
+| `satellite` | `D*3e-5` | `-0.0130%` | `-0.0052%` |
 
 For intersecting STEP solids, tessellate after the STEP boolean union if mesh-based comparison
 is needed. Tessellating or exporting components independently and then summing STL metrics can
@@ -119,10 +120,18 @@ See [Fusion 360 Validation Notes](fusion_validation.md) for details.
 
 ## Practical Guidance
 
-Use the default settings for quick sweeps. Tighten `--mesh-deflection` when:
+Use the default settings for normal sweeps. Tighten `--mesh-deflection` when:
 
 - validating against CAD software
 - evaluating small curved features
 - comparing close projected-area differences
+
+Typical settings:
+
+| use case | `--mesh-deflection` | `--angular-deflection` |
+|---|---:|---:|
+| Fast preview | bounding-box diagonal * `1e-3` | `0.3` to `0.5` |
+| Normal projected-area work | bounding-box diagonal * `1e-4` | `0.1` |
+| CAD comparison / final validation | bounding-box diagonal * `3e-5` to `1e-5` | `0.05` to `0.1` |
 
 Keep the deflection fixed when comparing many versions of similar geometry.

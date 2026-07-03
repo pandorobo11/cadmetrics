@@ -29,16 +29,22 @@ The same satellite model was checked in Fusion 360 for `alpha=0..90 deg` in `15 
 increments.
 
 Fusion 360 displays area values rounded in scientific notation in the status bar. The
-cadmetrics values below were calculated with:
+cadmetrics values below were calculated with an explicit fine tessellation setting:
 
 ```bash
 uv run cadmetrics sweep samples/satellite/satellite.step \
   --output-unit mm \
+  --mesh-deflection 0.0359924 \
+  --angular-deflection 0.1 \
   --attitude alpha-beta \
   --alpha 0:90:15 \
   --beta 0 \
   --no-summary
 ```
+
+The explicit `--mesh-deflection` value is the satellite sample bounding-box diagonal times
+`1e-5` in millimeters. It is finer than the current default `auto` setting and is kept here so
+the historical Fusion comparison remains reproducible.
 
 | cadmetrics alpha | Fusion 360 display | cadmetrics |
 |---:|---:|---:|

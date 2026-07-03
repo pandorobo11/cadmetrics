@@ -18,8 +18,8 @@ Before tagging a release:
 6. Create and push a matching tag, for example:
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 Pushing a `v*` tag automatically builds the package and creates a GitHub Release with the
