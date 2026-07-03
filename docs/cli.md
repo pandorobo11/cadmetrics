@@ -148,7 +148,8 @@ cadmetrics inspect model.step
 ```
 
 This is useful for checking detected units, vertex and face counts, watertightness, and loader
-warnings before running a sweep.
+warnings before running a sweep. For STEP files, it also reports the number of selected solid
+components out of the total detected solid components.
 
 ## CSV Columns
 

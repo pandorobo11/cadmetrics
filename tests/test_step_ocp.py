@@ -11,7 +11,8 @@ from OCP.IFSelect import IFSelect_RetDone
 from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
 from OCP.TopoDS import TopoDS_Compound
 
-from cadmetrics.api import measure, project
+from cadmetrics.api import inspect_model, measure, project
+from cadmetrics.io import _usable_step_component_name
 
 
 def test_generated_step_box_measurements(tmp_path: Path) -> None:
@@ -52,3 +53,20 @@ def test_step_overlapping_solids_are_boolean_unioned_for_measurements(tmp_path: 
     assert measured.volume == pytest.approx(1.5)
     assert measured.surface_area == pytest.approx(8.0)
     assert measured.is_watertight is True
+
+    component_1 = measure(step_path, step_components=(1,))
+    assert component_1.volume == pytest.approx(1.0)
+    assert component_1.surface_area == pytest.approx(6.0)
+
+    inspected = inspect_model(step_path, step_components=(2,))
+    assert inspected.component_names == ("Component 1", "Component 2")
+    assert inspected.selected_components == (2,)
+    assert inspected.volume == pytest.approx(1.0)
+    assert inspected.surface_area == pytest.approx(6.0)
+
+
+def test_step_component_name_filter_rejects_internal_names() -> None:
+    assert _usable_step_component_name("wing") == "wing"
+    assert _usable_step_component_name("  horizontal tail:1  ") == "horizontal tail:1"
+    assert _usable_step_component_name("3") is None
+    assert _usable_step_component_name("Open CASCADE STEP translator 7.9 6") is None

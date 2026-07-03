@@ -20,6 +20,7 @@ For STEP input:
 - volume uses OCP/OpenCascade `VolumePropertiesGK` after boolean-unioning multiple solids
 - surface area uses the OCP/OpenCascade B-Rep model after boolean-unioning multiple solids
 - projected area uses a tessellated mesh generated from the B-Rep
+- the GUI can exclude selected STEP solid components before boolean union and measurement
 
 OCP does not expose a separate `SurfacePropertiesGK` function. Surface area uses
 `SurfaceProperties`; OCP's Python binding also exposes an adaptive-integration overload that
@@ -51,6 +52,17 @@ Representative local comparisons against B-Rep values:
 For intersecting STEP solids, tessellate after the STEP boolean union if mesh-based comparison
 is needed. Tessellating or exporting components independently and then summing STL metrics can
 double-count overlap volume and area.
+
+## Multi-Component STEP Files
+
+cadmetrics treats multiple STEP solids as one geometric model by default. The selected solids
+are boolean-unioned before B-Rep volume and surface-area measurement, so intersections between
+enabled solids are not double-counted when the union succeeds.
+
+The GUI's component filters operate before that union step. Turning off a component removes it
+from display, volume, surface-area, and projected-area calculations. Component labels use
+STEP/XCAF names when available and otherwise fall back to solid order in the loaded STEP file.
+Full assembly hierarchy is not preserved yet.
 
 ## Projected Area Definition
 

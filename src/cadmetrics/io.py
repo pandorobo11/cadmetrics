@@ -19,6 +19,7 @@ def load_model(
     output_unit: str = "m",
     mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
+    step_components: tuple[int, ...] | None = None,
 ) -> ModelData:
     model_path = Path(path)
     suffix = model_path.suffix.lower()
@@ -31,6 +32,7 @@ def load_model(
             output_unit=output_unit,
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
+            step_components=step_components,
         )
     raise ValueError(f"Unsupported file type '{model_path.suffix}'. Expected STL or STEP.")
 
@@ -83,9 +85,11 @@ def _load_step(
     output_unit: str,
     mesh_deflection: float | str,
     angular_deflection: float,
+    step_components: tuple[int, ...] | None,
 ) -> ModelData:
     try:
         from OCP.Bnd import Bnd_Box
+        from OCP.BRep import BRep_Builder
         from OCP.BRep import BRep_Tool
         from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
         from OCP.BRepBndLib import BRepBndLib
@@ -98,7 +102,7 @@ def _load_step(
         from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED, TopAbs_SOLID
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
-        from OCP.TopoDS import TopoDS
+        from OCP.TopoDS import TopoDS, TopoDS_Compound
     except ImportError as exc:
         raise RuntimeError(
             "STEP support requires the optional dependency: cadmetrics[step]."
@@ -112,8 +116,25 @@ def _load_step(
     if transferred == 0:
         raise ValueError(f"STEP file did not contain transferable roots: {path}")
 
-    shape = reader.OneShape()
+    original_shape = reader.OneShape()
     warnings: list[str] = []
+    solids = _extract_ocp_solids(
+        original_shape,
+        TopAbs_SOLID=TopAbs_SOLID,
+        TopExp_Explorer=TopExp_Explorer,
+        TopoDS=TopoDS,
+    )
+    component_names = _step_component_names_from_xcaf(path, expected_count=len(solids))
+    if not component_names:
+        component_names = tuple(f"Component {index}" for index in range(1, len(solids) + 1))
+    selected_components = _resolve_step_component_selection(step_components, len(solids))
+    shape = _shape_from_selected_components(
+        original_shape,
+        solids,
+        selected_components,
+        BRep_Builder=BRep_Builder,
+        TopoDS_Compound=TopoDS_Compound,
+    )
     shape, unioned = _boolean_union_ocp_solids(
         shape,
         BRepAlgoAPI_Fuse=BRepAlgoAPI_Fuse,
@@ -197,6 +218,8 @@ def _load_step(
         is_watertight=is_watertight,
         mesh_deflection=mesh_deflection_value,
         angular_deflection=angular_deflection,
+        component_names=component_names,
+        selected_components=selected_components,
         warnings=tuple(warnings),
     )
 
@@ -272,6 +295,182 @@ def _boolean_union_ocp_solids(
         fused = fuse.Shape()
 
     return fused, True
+
+
+def _extract_ocp_solids(
+    shape: Any,
+    *,
+    TopAbs_SOLID: Any,
+    TopExp_Explorer: Any,
+    TopoDS: Any,
+) -> list[Any]:
+    solids = []
+    explorer = TopExp_Explorer(shape, TopAbs_SOLID)
+    solid_method = getattr(TopoDS, "Solid_s", None) or getattr(TopoDS, "Solid")
+
+    while explorer.More():
+        solids.append(solid_method(explorer.Current()))
+        explorer.Next()
+    return solids
+
+
+def _resolve_step_component_selection(
+    step_components: tuple[int, ...] | None,
+    component_count: int,
+) -> tuple[int, ...]:
+    if component_count == 0:
+        if step_components:
+            raise ValueError("STEP component selection is only available for solid components.")
+        return ()
+    if not step_components:
+        return tuple(range(1, component_count + 1))
+
+    selected = tuple(dict.fromkeys(int(index) for index in step_components))
+    invalid = [index for index in selected if index < 1 or index > component_count]
+    if invalid:
+        raise ValueError(
+            "STEP component index out of range: "
+            f"{', '.join(str(index) for index in invalid)} "
+            f"(available: 1..{component_count})"
+        )
+    return selected
+
+
+def _shape_from_selected_components(
+    original_shape: Any,
+    solids: list[Any],
+    selected_components: tuple[int, ...],
+    *,
+    BRep_Builder: Any,
+    TopoDS_Compound: Any,
+) -> Any:
+    if not selected_components or len(selected_components) == len(solids):
+        return original_shape
+    if len(selected_components) == 1:
+        return solids[selected_components[0] - 1]
+
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for component_index in selected_components:
+        builder.Add(compound, solids[component_index - 1])
+    return compound
+
+
+def _step_component_names_from_xcaf(path: Path, *, expected_count: int) -> tuple[str, ...]:
+    if expected_count == 0:
+        return ()
+    try:
+        from OCP.IFSelect import IFSelect_RetDone
+        from OCP.STEPCAFControl import STEPCAFControl_Reader
+        from OCP.TCollection import TCollection_ExtendedString
+        from OCP.TDataStd import TDataStd_Name
+        from OCP.TDF import TDF_Label, TDF_LabelSequence
+        from OCP.TDocStd import TDocStd_Document
+        from OCP.TopAbs import TopAbs_SOLID
+        from OCP.TopExp import TopExp_Explorer
+        from OCP.XCAFApp import XCAFApp_Application
+        from OCP.XCAFDoc import XCAFDoc_DocumentTool
+    except ImportError:
+        return ()
+
+    try:
+        app = XCAFApp_Application.GetApplication_s()
+        doc = TDocStd_Document(TCollection_ExtendedString("MDTV-XCAF"))
+        app.NewDocument(TCollection_ExtendedString("MDTV-XCAF"), doc)
+        reader = STEPCAFControl_Reader()
+        reader.SetNameMode(True)
+        if reader.ReadFile(str(path)) != IFSelect_RetDone:
+            return ()
+        if not reader.Transfer(doc):
+            return ()
+        shape_tool = XCAFDoc_DocumentTool.ShapeTool_s(doc.Main())
+        free_shapes = TDF_LabelSequence()
+        shape_tool.GetFreeShapes(free_shapes)
+        name_id = TDataStd_Name.GetID_s()
+    except Exception:
+        return ()
+
+    def label_name(label: Any) -> str | None:
+        try:
+            attr = TDataStd_Name()
+            if label.FindAttribute(name_id, attr):
+                return _usable_step_component_name(attr.Get().ToExtString())
+        except Exception:
+            return None
+        return None
+
+    def referred_label(label: Any) -> Any | None:
+        try:
+            referred = TDF_Label()
+            if shape_tool.GetReferredShape_s(label, referred) and not referred.IsNull():
+                return referred
+        except Exception:
+            return None
+        return None
+
+    def solid_count(label: Any) -> int:
+        try:
+            shape = shape_tool.GetShape_s(label)
+            explorer = TopExp_Explorer(shape, TopAbs_SOLID)
+            count = 0
+            while explorer.More():
+                count += 1
+                explorer.Next()
+            return count
+        except Exception:
+            return 0
+
+    def collect(label: Any, inherited_names: tuple[str, ...]) -> list[str | None]:
+        own_name = label_name(label)
+        ref = referred_label(label)
+        ref_name = label_name(ref) if ref is not None else None
+        names = tuple(name for name in (*inherited_names, own_name, ref_name) if name)
+
+        components = TDF_LabelSequence()
+        try:
+            shape_tool.GetComponents_s(label, components)
+        except Exception:
+            components = TDF_LabelSequence()
+        if components.Length() > 0:
+            collected: list[str | None] = []
+            for index in range(1, components.Length() + 1):
+                collected.extend(collect(components.Value(index), names))
+            return collected
+
+        count = solid_count(label)
+        if count == 0 and ref is not None:
+            count = solid_count(ref)
+        if count == 0:
+            return []
+
+        base_name = names[-1] if names else None
+        if count == 1:
+            return [base_name]
+        if base_name is None:
+            return [None] * count
+        return [f"{base_name} #{index}" for index in range(1, count + 1)]
+
+    names: list[str | None] = []
+    for index in range(1, free_shapes.Length() + 1):
+        names.extend(collect(free_shapes.Value(index), ()))
+
+    if len(names) != expected_count:
+        return ()
+    return tuple(name or f"Component {index}" for index, name in enumerate(names, start=1))
+
+
+def _usable_step_component_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return None
+    if text.lower().startswith("open cascade step translator"):
+        return None
+    return text
 
 
 def _ocp_shape_metric(

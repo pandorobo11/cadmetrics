@@ -77,6 +77,16 @@ becomes cadmetrics `X`, `Y`, and `Z`. Use signs such as `-Z` when an axis is rev
 the combo boxes does not reload the model immediately; click `Apply`, browse a file, or run a
 calculation to use the new mapping.
 
+### Component Filters
+
+For multi-solid STEP files, `Components` lists the loaded solid components. cadmetrics uses
+STEP/XCAF names when they are available and falls back to `Component 1`, `Component 2`, and so
+on when a useful name is not stored in the file. Clear a component checkbox to exclude that
+solid from the displayed model and subsequent calculations, then click `Apply Selection`.
+
+The filters operate on STEP solid geometry after loading and before boolean union. Keeping all
+components enabled preserves the default behavior. STL component filtering is not supported.
+
 ### Tessellation
 
 `Mesh deflection` controls STEP tessellation used for projected-area calculations. `Auto`

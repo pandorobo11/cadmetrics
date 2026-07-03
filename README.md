@@ -16,6 +16,7 @@ drag-area checks.
 - Report the cadmetrics package version and git hash used for each calculation
 - Export CSV from CLI and GUI
 - Inspect geometry in a local PySide6/PyVista GUI
+- Toggle STEP solid components in the GUI advanced settings
 
 ## GUI Preview
 

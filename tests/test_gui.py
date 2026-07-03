@@ -186,6 +186,7 @@ def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:
         beta_start=-1.0,
         beta_end=1.0,
         beta_step=1.0,
+        step_components=(1, 3),
     )
 
     assert run_calculation(request) == expected
@@ -195,6 +196,7 @@ def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:
     assert captured["kwargs"]["beta"] == "-1.0:1.0:1.0"
     assert captured["kwargs"]["input_unit"] == "mm"
     assert captured["kwargs"]["output_unit"] == "m"
+    assert captured["kwargs"]["step_components"] == (1, 3)
 
 
 def test_gui_job_delegates_roll_pitch_sweep(monkeypatch) -> None:

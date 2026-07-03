@@ -28,6 +28,8 @@ class ModelData:
     is_watertight: bool | None
     mesh_deflection: float | None = None
     angular_deflection: float | None = None
+    component_names: tuple[str, ...] = field(default_factory=tuple)
+    selected_components: tuple[int, ...] = field(default_factory=tuple)
     cadmetrics_version: str = field(default_factory=cadmetrics_version)
     cadmetrics_hash: str = field(default_factory=cadmetrics_hash)
     warnings: tuple[str, ...] = field(default_factory=tuple)

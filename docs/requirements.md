@@ -34,6 +34,7 @@ from STL and STEP files.
 - STEP projected area is calculated from a tessellated mesh
 - Multiple solids are treated as one projected silhouette, so overlapping projected regions are
   counted once
+- The GUI can turn STEP solid components on or off before boolean union and calculation
 - Open or non-watertight meshes are accepted with warnings; volume may be unreliable
 - STEP assemblies and compounds are supported geometrically, but assembly metadata is not a
   first-version requirement
@@ -96,7 +97,8 @@ PyVista 3D view, unit controls, sweep execution, a progress bar, cancellation fo
 result table, and CSV export. GUI attitude input can be alpha/beta, roll/pitch, or unit-vector
 components. Angle modes use separate Start, End, and Step fields. Unit-vector mode is a single
 direction without sweep. The viewer supports transparency and mesh-edge toggles, a conditions
-and results overlay, row-selection camera alignment, and PNG image export.
+and results overlay, row-selection camera alignment, PNG image export, and STEP solid component
+filters in Advanced settings.
 
 ## CSV Columns
 

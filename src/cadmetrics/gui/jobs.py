@@ -21,6 +21,7 @@ class CalculationRequest:
     mesh_deflection: float | str = "auto"
     angular_deflection: float = 0.1
     axis_map: str = DEFAULT_AXIS_MAP
+    step_components: tuple[int, ...] | None = None
     roll_start: float = 0.0
     roll_end: float = 0.0
     roll_step: float = 1.0
@@ -49,6 +50,7 @@ def run_calculation(
         "mesh_deflection": request.mesh_deflection,
         "angular_deflection": request.angular_deflection,
         "axis_map": request.axis_map,
+        "step_components": request.step_components,
     }
     if request.attitude_mode == "alpha_beta":
         return sweep(

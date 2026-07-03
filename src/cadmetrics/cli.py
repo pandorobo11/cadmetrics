@@ -358,6 +358,11 @@ def inspect(
     table.add_row("z_max", _format_optional(model.z_max))
     table.add_row("surface_area", _format_optional(model.surface_area))
     table.add_row("volume", _format_optional(model.volume))
+    if model.component_names:
+        table.add_row(
+            "components",
+            f"{len(model.selected_components)} of {len(model.component_names)}",
+        )
     table.add_row("cadmetrics_version", model.cadmetrics_version)
     table.add_row("cadmetrics_hash", model.cadmetrics_hash)
     table.add_row("is_watertight", str(model.is_watertight))

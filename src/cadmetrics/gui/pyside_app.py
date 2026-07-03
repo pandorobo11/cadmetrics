@@ -164,6 +164,8 @@ if QtWidgets is not None:
             self._centroid_actor: Any | None = None
             self._overlay_actor: Any | None = None
             self._overlay_row: MeasurementRow | None = None
+            self._component_checkboxes: list[QtWidgets.QCheckBox] = []
+            self._component_filter_path: Path | None = None
 
             self._build_ui()
             self._set_running(False)
@@ -441,6 +443,45 @@ if QtWidgets is not None:
             axis_layout.addLayout(axis_select_row)
             axis_layout.addLayout(axis_apply_row)
             advanced_layout.addRow("Axis map", axis_widget)
+
+            component_widget = QtWidgets.QWidget()
+            component_layout = QtWidgets.QVBoxLayout(component_widget)
+            component_layout.setContentsMargins(0, 0, 0, 0)
+            component_layout.setSpacing(6)
+            self.component_summary = QtWidgets.QLabel("Load a multi-solid STEP file.")
+            self.component_summary.setStyleSheet("color: #5f6872;")
+            component_layout.addWidget(self.component_summary)
+            self.component_list_widget = QtWidgets.QWidget()
+            self.component_list_layout = QtWidgets.QVBoxLayout(self.component_list_widget)
+            self.component_list_layout.setContentsMargins(0, 0, 0, 0)
+            self.component_list_layout.setSpacing(2)
+            component_scroll = QtWidgets.QScrollArea()
+            component_scroll.setWidgetResizable(True)
+            component_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            component_scroll.setMaximumHeight(105)
+            component_scroll.setWidget(self.component_list_widget)
+            component_layout.addWidget(component_scroll)
+            component_button_row = QtWidgets.QHBoxLayout()
+            component_button_row.setContentsMargins(0, 0, 0, 0)
+            component_button_row.setSpacing(6)
+            self.component_all_button = QtWidgets.QPushButton("All")
+            self.component_none_button = QtWidgets.QPushButton("None")
+            self.component_apply_button = QtWidgets.QPushButton("Apply Selection")
+            for button in (
+                self.component_all_button,
+                self.component_none_button,
+                self.component_apply_button,
+            ):
+                button.setObjectName("secondaryButton")
+            self.component_all_button.clicked.connect(lambda: self._set_all_components(True))
+            self.component_none_button.clicked.connect(lambda: self._set_all_components(False))
+            self.component_apply_button.clicked.connect(self._apply_component_selection)
+            component_button_row.addWidget(self.component_all_button)
+            component_button_row.addWidget(self.component_none_button)
+            component_button_row.addWidget(self.component_apply_button, 1)
+            component_layout.addLayout(component_button_row)
+            advanced_layout.addRow("Components", component_widget)
+            self._sync_component_controls(False)
 
             self.mesh_deflection = FlexibleDoubleSpinBox()
             self.mesh_deflection.setRange(1.0e-8, 1.0)
@@ -809,6 +850,7 @@ if QtWidgets is not None:
             )
             if file_name:
                 self.file_edit.setText(file_name)
+                self._clear_component_filters()
                 self._load_model()
 
         def _request(self) -> CalculationRequest:
@@ -841,6 +883,7 @@ if QtWidgets is not None:
                 vector_y=self.vector_y.value(),
                 vector_z=self.vector_z.value(),
                 axis_map=self._axis_map(),
+                step_components=self._selected_step_components(path),
             )
 
         def _axis_map(self) -> str:
@@ -858,6 +901,12 @@ if QtWidgets is not None:
                 return
             self._load_model()
 
+        def _apply_component_selection(self) -> None:
+            if not self.file_edit.text().strip():
+                self._show_error("Select a model file before applying the component selection.")
+                return
+            self._load_model()
+
         def _load_model(self) -> bool:
             try:
                 request = self._request()
@@ -868,10 +917,12 @@ if QtWidgets is not None:
                     mesh_deflection=request.mesh_deflection,
                     angular_deflection=request.angular_deflection,
                     axis_map=request.axis_map,
+                    step_components=request.step_components,
                 )
             except Exception as exc:
                 self._show_error(str(exc))
                 return False
+            self._populate_component_filters(self._model)
             self._show_model_info(self._model)
             self._plot_model(self._model)
             self._update_projection_vector()
@@ -964,6 +1015,84 @@ if QtWidgets is not None:
                 self._show_error(str(exc))
                 return
             self.status.setText(f"Saved CSV: {path}")
+
+        def _clear_component_filters(self) -> None:
+            self._component_filter_path = None
+            self._component_checkboxes = []
+            while self.component_list_layout.count():
+                item = self.component_list_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+            self.component_summary.setText("Load a multi-solid STEP file.")
+            self._sync_component_controls(False)
+
+        def _populate_component_filters(self, model: ModelData) -> None:
+            current_selected = set(self._selected_step_components(model.path) or ())
+            if not current_selected:
+                current_selected = set(model.selected_components)
+            while self.component_list_layout.count():
+                item = self.component_list_layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+            self._component_checkboxes = []
+            self._component_filter_path = model.path
+            component_count = len(model.component_names)
+            if component_count <= 1:
+                message = (
+                    "Single STEP component."
+                    if model.source_format == "step"
+                    else "Component filters are available for STEP files."
+                )
+                self.component_summary.setText(message)
+                self._sync_component_controls(False)
+                return
+
+            selected = set(model.selected_components) if model.selected_components else current_selected
+            self.component_summary.setText(
+                f"{len(selected)} of {component_count} components enabled."
+            )
+            for index, name in enumerate(model.component_names, start=1):
+                checkbox = QtWidgets.QCheckBox(f"{index}: {name}")
+                checkbox.setProperty("component_index", index)
+                checkbox.setChecked(index in selected)
+                checkbox.toggled.connect(self._sync_component_summary)
+                self.component_list_layout.addWidget(checkbox)
+                self._component_checkboxes.append(checkbox)
+            self.component_list_layout.addStretch(1)
+            self._sync_component_controls(True)
+
+        def _selected_step_components(self, path: Path) -> tuple[int, ...] | None:
+            if not self._component_checkboxes:
+                return None
+            if self._component_filter_path is None or path != self._component_filter_path:
+                return None
+            selected = tuple(
+                int(checkbox.property("component_index"))
+                for checkbox in self._component_checkboxes
+                if checkbox.isChecked()
+            )
+            if not selected:
+                raise ValueError("Select at least one STEP component.")
+            return selected
+
+        def _set_all_components(self, checked: bool) -> None:
+            for checkbox in self._component_checkboxes:
+                checkbox.setChecked(checked)
+            self._sync_component_summary()
+
+        def _sync_component_summary(self) -> None:
+            total = len(self._component_checkboxes)
+            if total == 0:
+                return
+            selected = sum(1 for checkbox in self._component_checkboxes if checkbox.isChecked())
+            self.component_summary.setText(f"{selected} of {total} components enabled.")
+
+        def _sync_component_controls(self, enabled: bool) -> None:
+            self.component_all_button.setEnabled(enabled)
+            self.component_none_button.setEnabled(enabled)
+            self.component_apply_button.setEnabled(enabled)
 
         def _plot_model(self, model: ModelData) -> None:
             if self._plotter is None:
@@ -1332,6 +1461,12 @@ if QtWidgets is not None:
                 f"cadmetrics_hash: {model.cadmetrics_hash}",
                 f"watertight: {_format_cell(model.is_watertight)}",
             ]
+            if model.component_names:
+                lines.insert(
+                    3,
+                    "components: "
+                    f"{len(model.selected_components)} of {len(model.component_names)} selected",
+                )
             if model.warnings:
                 lines.append(f"warnings: {'; '.join(model.warnings)}")
             self.model_info.setText("\n".join(lines))
