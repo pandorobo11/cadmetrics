@@ -24,3 +24,9 @@ git push origin v0.2.0
 
 Pushing a `v*` tag automatically builds the package and creates a GitHub Release with the
 wheel and source distribution attached.
+
+During `uv build`, `hatch_build.py` embeds the current git hash into the package as
+`cadmetrics._build.GIT_HASH`. This lets installed wheels report `cadmetrics_hash` even though
+the wheel does not contain a `.git` directory. If a wheel is built outside a git checkout,
+cadmetrics falls back to an embedded hash from the source distribution when one is present, or
+`unknown` otherwise.

@@ -1,6 +1,6 @@
 [project]
 name = "cadmetrics"
-version = "0.2.0"
+version = "0.3.0"
 description = "CLI and Python API for CAD volume, surface area, and projected area metrics."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -45,6 +45,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
 
 [tool.ruff]
 line-length = 100
