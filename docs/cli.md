@@ -60,6 +60,8 @@ Calculate volume and surface area:
 cadmetrics measure samples/unit_cube/unit_cube_ascii.stl
 ```
 
+Without `--out`, `measure` prints a readable table to the terminal.
+
 Write CSV:
 
 ```bash
@@ -97,6 +99,9 @@ Calculate projected area with alpha and beta:
 ```bash
 cadmetrics project model.step --attitude alpha-beta --alpha 10 --beta 0
 ```
+
+Without `--out`, `project` prints a readable table to the terminal. Use `--out` when CSV output
+is needed.
 
 Calculate projected area with roll and pitch:
 

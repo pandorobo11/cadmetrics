@@ -103,7 +103,10 @@ def measure(
             step_metric_source=step_metrics,
         )
     )
-    _emit_rows([row], out)
+    if out is None:
+        _emit_measurement_table(row, title=str(file))
+    else:
+        _emit_rows([row], out)
 
 
 @app.command()
@@ -185,7 +188,10 @@ def project(
             step_metric_source=step_metrics,
         )
     )
-    _emit_rows([row], out)
+    if out is None:
+        _emit_measurement_table(row, title=str(file))
+    else:
+        _emit_rows([row], out)
 
 
 @app.command()
@@ -411,6 +417,45 @@ def _emit_rows(rows: list[MeasurementRow], out: Path | None) -> None:
         for row in rows:
             writer.writerow(row.to_csv_row())
     console.print(f"Wrote {len(rows)} row(s) to {out}")
+
+
+def _emit_measurement_table(row: MeasurementRow, *, title: str) -> None:
+    table = Table(title=title)
+    table.add_column("field")
+    table.add_column("value")
+    table.add_row("input_unit", row.input_unit)
+    table.add_row("output_unit", row.output_unit)
+    table.add_row("x_min", _format_optional(row.x_min))
+    table.add_row("x_max", _format_optional(row.x_max))
+    table.add_row("y_min", _format_optional(row.y_min))
+    table.add_row("y_max", _format_optional(row.y_max))
+    table.add_row("z_min", _format_optional(row.z_min))
+    table.add_row("z_max", _format_optional(row.z_max))
+    table.add_row("surface_area", _format_optional(row.surface_area))
+    table.add_row("volume", _format_optional(row.volume))
+    if row.projected_area is not None:
+        table.add_row("projected_area", _format_optional(row.projected_area))
+        table.add_row("centroid_u", _format_optional(row.centroid_u))
+        table.add_row("centroid_v", _format_optional(row.centroid_v))
+        table.add_row("centroid_x", _format_optional(row.centroid_x))
+        table.add_row("centroid_y", _format_optional(row.centroid_y))
+        table.add_row("centroid_z", _format_optional(row.centroid_z))
+        table.add_row("roll_deg", _format_optional(row.roll_deg))
+        table.add_row("pitch_deg", _format_optional(row.pitch_deg))
+        table.add_row("alpha_deg", _format_optional(row.alpha_deg))
+        table.add_row("beta_deg", _format_optional(row.beta_deg))
+        table.add_row("direction_x", _format_optional(row.direction_x))
+        table.add_row("direction_y", _format_optional(row.direction_y))
+        table.add_row("direction_z", _format_optional(row.direction_z))
+    table.add_row("is_watertight", str(row.is_watertight))
+    table.add_row("mesh_deflection", _format_optional(row.mesh_deflection))
+    table.add_row("angular_deflection", _format_optional(row.angular_deflection))
+    table.add_row("method", row.method or "")
+    table.add_row("elapsed_sec", _format_optional(row.elapsed_sec))
+    table.add_row("cadmetrics_version", row.cadmetrics_version)
+    table.add_row("cadmetrics_hash", row.cadmetrics_hash)
+    table.add_row("warnings", "; ".join(row.warnings))
+    console.print(table)
 
 
 def _emit_sweep_summary(rows: list[MeasurementRow]) -> None:
