@@ -172,8 +172,9 @@ GUI present these as explicit `alpha-beta`, `roll-pitch`, and `vector` input mod
 ## Accuracy Notes
 
 STL measurements are mesh-based. STEP volume and surface area use the OCP/OpenCascade CAD
-kernel when the `step` extra is installed. STEP projected area is calculated from a tessellated
-mesh, so the result depends on tessellation quality.
+kernel when the `step` extra is installed. For STL-like comparisons, STEP volume and surface
+area can be calculated from the tessellated mesh with `--step-metrics mesh`. STEP projected
+area is always calculated from a tessellated mesh, so the result depends on tessellation quality.
 
 The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the
 selected output length unit. The current validation target is within `0.1%` against Fusion 360

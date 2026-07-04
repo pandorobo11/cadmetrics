@@ -28,6 +28,7 @@ def inspect_model(
     mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
     axis_map: str = DEFAULT_AXIS_MAP,
+    step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
 ) -> ModelData:
     model = load_model(
@@ -36,6 +37,7 @@ def inspect_model(
         output_unit=output_unit,
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
+        step_metric_source=step_metric_source,
         step_components=step_components,
     )
     return transform_model_axes(model, axis_map)
@@ -49,6 +51,7 @@ def measure(
     mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
     axis_map: str = DEFAULT_AXIS_MAP,
+    step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
 ) -> MeasurementRow:
     start = perf_counter()
@@ -59,6 +62,7 @@ def measure(
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
         axis_map=axis_map,
+        step_metric_source=step_metric_source,
         step_components=step_components,
     )
     return MeasurementRow(
@@ -101,6 +105,7 @@ def project(
     mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
     axis_map: str = DEFAULT_AXIS_MAP,
+    step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
 ) -> MeasurementRow:
     start = perf_counter()
@@ -111,6 +116,7 @@ def project(
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
         axis_map=axis_map,
+        step_metric_source=step_metric_source,
         step_components=step_components,
     )
     orientation = Orientation(roll_deg=roll_deg, alpha_deg=alpha_deg, beta_deg=beta_deg)
@@ -221,6 +227,7 @@ def sweep(
     angular_deflection: float = 0.1,
     progress_callback: Callable[[int, int, Orientation], None] | None = None,
     axis_map: str = DEFAULT_AXIS_MAP,
+    step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
 ) -> list[MeasurementRow]:
     model = inspect_model(
@@ -230,6 +237,7 @@ def sweep(
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
         axis_map=axis_map,
+        step_metric_source=step_metric_source,
         step_components=step_components,
     )
     rows: list[MeasurementRow] = []
@@ -260,5 +268,7 @@ def sweep(
 
 def _method_name(model: ModelData, *, projected: bool) -> str:
     if model.source_format == "step":
+        if model.step_metric_source == "mesh":
+            return "step-mesh+mesh-projection" if projected else "step-mesh"
         return "step-brep+mesh-projection" if projected else "step-brep"
     return "stl-mesh-projection" if projected else "stl-mesh"

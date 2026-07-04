@@ -31,6 +31,8 @@ from STL and STEP files.
 - STEP volume should use OCP/OpenCascade `VolumePropertiesGK`
 - STEP multiple-solid input should be boolean-unioned before volume and surface-area
   calculation so intersecting solids do not double-count overlap volume
+- STEP volume and surface area can optionally be calculated from the tessellated mesh for
+  STL-like comparison workflows
 - STEP projected area is calculated from a tessellated mesh
 - Multiple solids are treated as one projected silhouette, so overlapping projected regions are
   counted once

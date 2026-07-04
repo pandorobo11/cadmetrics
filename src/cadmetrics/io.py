@@ -19,6 +19,7 @@ def load_model(
     output_unit: str = "m",
     mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
+    step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
 ) -> ModelData:
     model_path = Path(path)
@@ -32,6 +33,7 @@ def load_model(
             output_unit=output_unit,
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
+            step_metric_source=step_metric_source,
             step_components=step_components,
         )
     raise ValueError(f"Unsupported file type '{model_path.suffix}'. Expected STL or STEP.")
@@ -85,6 +87,7 @@ def _load_step(
     output_unit: str,
     mesh_deflection: float | str,
     angular_deflection: float,
+    step_metric_source: str,
     step_components: tuple[int, ...] | None,
 ) -> ModelData:
     try:
@@ -109,6 +112,7 @@ def _load_step(
         ) from exc
 
     reader = STEPControl_Reader()
+    metric_source = _normalize_step_metric_source(step_metric_source)
     status = reader.ReadFile(str(path))
     if status != IFSelect_RetDone:
         raise ValueError(f"Could not read STEP file: {path}")
@@ -171,8 +175,8 @@ def _load_step(
         mesh_deflection_value / scale if scale != 0.0 else mesh_deflection_value
     )
 
-    volume = _ocp_volume_metric_gk(shape, GProp_GProps=GProp_GProps, BRepGProp=BRepGProp)
-    surface_area = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "SurfaceProperties")
+    brep_volume = _ocp_volume_metric_gk(shape, GProp_GProps=GProp_GProps, BRepGProp=BRepGProp)
+    brep_surface_area = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "SurfaceProperties")
 
     BRepMesh_IncrementalMesh(shape, native_mesh_deflection, False, angular_deflection, True)
     vertices, faces = _tessellate_ocp_shape(
@@ -185,10 +189,21 @@ def _load_step(
         TopoDS=TopoDS,
     )
 
+    if metric_source == "mesh":
+        volume, surface_area, mesh_watertight = _mesh_volume_and_surface_area(vertices, faces)
+        warnings.append("STEP volume and surface area were calculated from the tessellated mesh.")
+        if not mesh_watertight:
+            warnings.append("STEP tessellated mesh is not watertight; mesh volume may be unreliable.")
+    else:
+        volume = brep_volume
+        surface_area = brep_surface_area
+        mesh_watertight = None
+
+    metric_label = "mesh" if metric_source == "mesh" else "exact"
     if volume is None:
-        warnings.append("Could not calculate exact STEP volume.")
+        warnings.append(f"Could not calculate {metric_label} STEP volume.")
     if surface_area is None:
-        warnings.append("Could not calculate exact STEP surface area.")
+        warnings.append(f"Could not calculate {metric_label} STEP surface area.")
 
     scaled_volume = (
         abs(volume) * volume_scale(resolved_input_unit, output_unit)
@@ -201,7 +216,9 @@ def _load_step(
         else None
     )
     is_watertight = None
-    if scaled_volume is not None:
+    if metric_source == "mesh":
+        is_watertight = mesh_watertight
+    elif scaled_volume is not None:
         is_watertight = scaled_volume > 0.0
         if not is_watertight:
             warnings.append("STEP shape has zero volume; it may be open or surface-only geometry.")
@@ -218,6 +235,7 @@ def _load_step(
         is_watertight=is_watertight,
         mesh_deflection=mesh_deflection_value,
         angular_deflection=angular_deflection,
+        step_metric_source=metric_source,
         component_names=component_names,
         selected_components=selected_components,
         warnings=tuple(warnings),
@@ -242,6 +260,32 @@ def _resolve_mesh_deflection(
     if value <= 0.0:
         raise ValueError("mesh_deflection must be greater than zero")
     return float(value)
+
+
+def _normalize_step_metric_source(value: str) -> str:
+    text = value.strip().lower().replace("_", "-")
+    if text in {"brep", "b-rep", "exact", "kernel"}:
+        return "brep"
+    if text in {"mesh", "tessellated", "stl"}:
+        return "mesh"
+    raise ValueError("step_metric_source must be 'brep' or 'mesh'")
+
+
+def _mesh_volume_and_surface_area(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+) -> tuple[float | None, float | None, bool]:
+    try:
+        import trimesh
+    except ImportError as exc:
+        raise RuntimeError("Mesh metric mode requires the 'trimesh' dependency.") from exc
+
+    if vertices.size == 0 or faces.size == 0:
+        return None, None, False
+
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+    mesh.merge_vertices()
+    return abs(float(mesh.volume)), float(mesh.area), bool(mesh.is_watertight)
 
 
 def _ocp_bounding_box_diagonal(

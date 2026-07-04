@@ -19,6 +19,8 @@ For STEP input:
 
 - volume uses OCP/OpenCascade `VolumePropertiesGK` after boolean-unioning multiple solids
 - surface area uses the OCP/OpenCascade B-Rep model after boolean-unioning multiple solids
+- `--step-metrics mesh` can instead calculate STEP volume and surface area from the
+  tessellated mesh after boolean union
 - projected area uses a tessellated mesh generated from the B-Rep
 - the GUI can exclude selected STEP solid components before boolean union and measurement
 
@@ -29,8 +31,9 @@ accepts an error tolerance, but cadmetrics currently keeps the default exact-sur
 ## STEP B-Rep vs STL-Like Mesh Values
 
 It is possible to tessellate a STEP model and then calculate volume and surface area from the
-triangle mesh, as if the model had been converted to STL. cadmetrics keeps B-Rep volume and
-surface area as the default for STEP because those values avoid tessellation error.
+triangle mesh, as if the model had been converted to STL. Use `--step-metrics mesh` for this
+mode. cadmetrics keeps B-Rep volume and surface area as the default for STEP because those
+values avoid tessellation error.
 
 The mesh-based values are useful for debugging STL comparisons, but they are approximations.
 Planar solids usually match exactly because their faces can be represented by triangles without

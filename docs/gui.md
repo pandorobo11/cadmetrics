@@ -89,6 +89,11 @@ components enabled preserves the default behavior. STL component filtering is no
 
 ### Tessellation
 
+`STEP metrics` controls how STEP volume and surface area are calculated:
+
+- `B-Rep`: default CAD-kernel values
+- `Mesh`: values calculated from the tessellated mesh, useful for STL-like comparisons
+
 `Mesh deflection` controls STEP tessellation used for projected-area calculations. `Auto`
 is enabled by default and uses:
 

@@ -483,6 +483,11 @@ if QtWidgets is not None:
             advanced_layout.addRow("Components", component_widget)
             self._sync_component_controls(False)
 
+            self.step_metrics = QtWidgets.QComboBox()
+            self.step_metrics.addItem("B-Rep", "brep")
+            self.step_metrics.addItem("Mesh", "mesh")
+            advanced_layout.addRow("STEP metrics", self.step_metrics)
+
             self.mesh_deflection = FlexibleDoubleSpinBox()
             self.mesh_deflection.setRange(1.0e-8, 1.0)
             self.mesh_deflection.setDecimals(8)
@@ -867,6 +872,7 @@ if QtWidgets is not None:
                 output_unit=self.output_unit.currentText(),
                 mesh_deflection=mesh_deflection,
                 angular_deflection=self.angular_deflection.value(),
+                step_metric_source=self.step_metrics.currentData(),
                 roll_start=self.roll_start.value(),
                 roll_end=self.roll_end.value(),
                 roll_step=self.roll_step.value(),
@@ -916,6 +922,7 @@ if QtWidgets is not None:
                     output_unit=request.output_unit,
                     mesh_deflection=request.mesh_deflection,
                     angular_deflection=request.angular_deflection,
+                    step_metric_source=request.step_metric_source,
                     axis_map=request.axis_map,
                     step_components=request.step_components,
                 )
@@ -1450,6 +1457,7 @@ if QtWidgets is not None:
             lines = [
                 f"file: {model.path.name}",
                 f"format/unit: {model.source_format}, {model.output_unit}",
+                f"metrics: {model.step_metric_source or 'mesh'}",
                 f"mesh: {model.vertex_count} vertices, {model.face_count} faces",
                 "bounds: "
                 f"X[{_format_cell(model.x_min)}, {_format_cell(model.x_max)}], "

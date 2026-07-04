@@ -70,12 +70,17 @@ Useful STEP options:
 
 ```bash
 cadmetrics measure model.step \
+  --step-metrics brep \
   --mesh-deflection auto \
   --angular-deflection 0.1
 ```
 
 `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the selected
 output length unit.
+
+`--step-metrics brep` is the default and reports STEP volume/surface area from the CAD kernel.
+Use `--step-metrics mesh` when you want STEP volume/surface area to be calculated from the
+tessellated mesh, for example when comparing with an exported STL.
 
 ## project
 

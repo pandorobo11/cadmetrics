@@ -83,6 +83,11 @@ def measure(
         "--axis-map",
         help="Map cadmetrics X,Y,Z to input axes, e.g. x,y,z or x,-z,y.",
     ),
+    step_metrics: str = typer.Option(
+        "brep",
+        "--step-metrics",
+        help="STEP volume/surface metric source: 'brep' for CAD-kernel values or 'mesh' for tessellated mesh values.",
+    ),
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
 ) -> None:
     """Calculate volume and surface area."""
@@ -95,6 +100,7 @@ def measure(
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
             axis_map=axis_map,
+            step_metric_source=step_metrics,
         )
     )
     _emit_rows([row], out)
@@ -147,6 +153,11 @@ def project(
         "--axis-map",
         help="Map cadmetrics X,Y,Z to input axes, e.g. x,y,z or x,-z,y.",
     ),
+    step_metrics: str = typer.Option(
+        "brep",
+        "--step-metrics",
+        help="STEP volume/surface metric source: 'brep' for CAD-kernel values or 'mesh' for tessellated mesh values.",
+    ),
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
 ) -> None:
     """Calculate projected area for one attitude or vector direction."""
@@ -171,6 +182,7 @@ def project(
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
             axis_map=axis_map,
+            step_metric_source=step_metrics,
         )
     )
     _emit_rows([row], out)
@@ -231,6 +243,11 @@ def sweep(
         "--axis-map",
         help="Map cadmetrics X,Y,Z to input axes, e.g. x,y,z or x,-z,y.",
     ),
+    step_metrics: str = typer.Option(
+        "brep",
+        "--step-metrics",
+        help="STEP volume/surface metric source: 'brep' for CAD-kernel values or 'mesh' for tessellated mesh values.",
+    ),
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
     summary: bool = typer.Option(True, "--summary/--no-summary", help="Print sweep summary."),
 ) -> None:
@@ -278,6 +295,7 @@ def sweep(
                 mesh_deflection=mesh_deflection,
                 angular_deflection=angular_deflection,
                 axis_map=axis_map,
+                step_metric_source=step_metrics,
             )
         )
         rows = [row]
@@ -295,6 +313,7 @@ def sweep(
                     mesh_deflection=mesh_deflection,
                     angular_deflection=angular_deflection,
                     axis_map=axis_map,
+                    step_metric_source=step_metrics,
                     progress_callback=on_progress,
                 ),
             )
@@ -329,6 +348,11 @@ def inspect(
         "--axis-map",
         help="Map cadmetrics X,Y,Z to input axes, e.g. x,y,z or x,-z,y.",
     ),
+    step_metrics: str = typer.Option(
+        "brep",
+        "--step-metrics",
+        help="STEP volume/surface metric source: 'brep' for CAD-kernel values or 'mesh' for tessellated mesh values.",
+    ),
 ) -> None:
     """Show loaded model information."""
 
@@ -340,6 +364,7 @@ def inspect(
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
             axis_map=axis_map,
+            step_metric_source=step_metrics,
         )
     )
     table = Table(title=str(model.path))
@@ -348,6 +373,8 @@ def inspect(
     table.add_row("input_unit", model.input_unit)
     table.add_row("output_unit", model.output_unit)
     table.add_row("source_format", model.source_format)
+    if model.step_metric_source:
+        table.add_row("step_metrics", model.step_metric_source)
     table.add_row("vertices", str(model.vertex_count))
     table.add_row("faces", str(model.face_count))
     table.add_row("x_min", _format_optional(model.x_min))
