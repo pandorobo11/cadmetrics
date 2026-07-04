@@ -83,5 +83,15 @@ def test_vector_direction_reports_equivalent_attitudes() -> None:
     assert row.direction_z == pytest.approx(0.0)
     assert row.alpha_deg == pytest.approx(0.0)
     assert row.beta_deg == pytest.approx(-90.0)
+    assert row.roll_deg == pytest.approx(-90.0)
+    assert row.pitch_deg == pytest.approx(90.0)
+
+
+def test_positive_roll_uses_positive_x_right_hand_rule() -> None:
+    row = project(DATA_DIR / "unit_cube.stl", roll_deg=90, alpha_deg=90)
+
+    assert row.direction_x == pytest.approx(0.0)
+    assert row.direction_y == pytest.approx(-1.0)
+    assert row.direction_z == pytest.approx(0.0)
     assert row.roll_deg == pytest.approx(90.0)
     assert row.pitch_deg == pytest.approx(90.0)

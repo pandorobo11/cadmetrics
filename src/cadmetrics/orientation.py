@@ -25,8 +25,8 @@ def rotation_matrix(orientation: Orientation) -> FloatArray:
     rx = np.array(
         [
             [1.0, 0.0, 0.0],
-            [0.0, cos(roll), -sin(roll)],
-            [0.0, sin(roll), cos(roll)],
+            [0.0, cos(roll), sin(roll)],
+            [0.0, -sin(roll), cos(roll)],
         ],
         dtype=float,
     )
@@ -68,13 +68,13 @@ def roll_pitch_from_direction(direction: FloatArray) -> tuple[float, float]:
     """Return roll/pitch angles for a projection direction.
 
     Pitch is the angle away from +X. Roll is the azimuth around +X, measured so
-    +Z is roll=0 and +Y is roll=90.
+    +Z is roll=0 and -Y is roll=90.
     """
 
     unit = normalize_vector(direction)
     radial = sqrt(float(unit[1] ** 2 + unit[2] ** 2))
     pitch = degrees(atan2(radial, float(unit[0])))
-    roll = 0.0 if radial == 0.0 else degrees(atan2(float(unit[1]), float(unit[2])))
+    roll = 0.0 if radial == 0.0 else degrees(atan2(-float(unit[1]), float(unit[2])))
     return _clean_zero(roll), _clean_zero(pitch)
 
 

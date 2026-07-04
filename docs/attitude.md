@@ -71,18 +71,18 @@ Examples:
 
 ## Roll and Pitch
 
-In `roll-pitch` mode, `pitch` is the angle away from the +X direction. `roll` is the azimuth
-around +X, measured from +Z toward +Y.
+In `roll-pitch` mode, `pitch` is the angle away from the +X direction. Positive `roll` is the
+right-hand rotation around the +X axis, measured from +Z toward -Y.
 
 The equivalent output values are:
 
 ```text
 pitch = atan2(sqrt(d_y^2 + d_z^2), d_x)
-roll  = atan2(d_y, d_z)
+roll  = atan2(-d_y, d_z)
 ```
 
-This representation is useful when thinking of a direction cone from +X and a rotation around
-that cone.
+This representation is useful when thinking of a direction cone from +X and a roll angle around
+that cone using the aircraft-style positive direction.
 
 ## Unit Vector
 

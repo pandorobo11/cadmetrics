@@ -70,7 +70,9 @@ from STL and STEP files.
 - Output rows report the cadmetrics package version and git hash used for calculation.
 - With normalized projection direction `d = (d_x, d_y, d_z)`, equivalent output angles are
   `alpha = atan2(d_z, d_x)`, `beta = asin(-d_y)`,
-  `pitch = atan2(sqrt(d_y^2 + d_z^2), d_x)`, and `roll = atan2(d_y, d_z)`.
+  `pitch = atan2(sqrt(d_y^2 + d_z^2), d_x)`, and `roll = atan2(-d_y, d_z)`.
+- Positive roll is the right-hand rotation around the +X axis, so `roll=90 deg` maps the
+  roll/pitch direction from +Z toward -Y.
 
 ## CLI Shape
 

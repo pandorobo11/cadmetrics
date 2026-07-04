@@ -66,7 +66,7 @@ def test_project_cli_accepts_roll_pitch_mode(runner: CliRunner) -> None:
     row = _csv_rows(result.output)[0]
     assert float(row["roll_deg"]) == pytest.approx(90.0)
     assert float(row["pitch_deg"]) == pytest.approx(90.0)
-    assert float(row["direction_y"]) == pytest.approx(1.0)
+    assert float(row["direction_y"]) == pytest.approx(-1.0)
 
 
 def test_project_cli_accepts_vector_mode(runner: CliRunner) -> None:
