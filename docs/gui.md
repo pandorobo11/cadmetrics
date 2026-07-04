@@ -68,21 +68,22 @@ The selected file is loaded and displayed immediately after browsing.
 ## Advanced
 
 `Advanced` is collapsed by default because these settings are usually changed less often.
-Expand it when the loaded CAD axes or STEP tessellation settings need adjustment.
+Expand it when the loaded CAD axes, component selection, STEP metric source, or tessellation
+settings need adjustment. Changes in this section are applied together with `Apply Settings`.
 
 ### Axis Map
 
 `Axis map` remaps the loaded model axes before calculation and display. Choose which input axis
 becomes cadmetrics `X`, `Y`, and `Z`. Use signs such as `-Z` when an axis is reversed. Changing
-the combo boxes does not reload the model immediately; click `Apply`, browse a file, or run a
-calculation to use the new mapping.
+the combo boxes does not reload the model immediately; click `Apply Settings`, browse a file,
+or run a calculation to use the new mapping.
 
 ### Component Filters
 
 For multi-solid STEP files, `Components` lists the loaded solid components. cadmetrics uses
 STEP/XCAF names when they are available and falls back to `Component 1`, `Component 2`, and so
 on when a useful name is not stored in the file. Clear a component checkbox to exclude that
-solid from the displayed model and subsequent calculations, then click `Apply Selection`.
+solid from the displayed model and subsequent calculations, then click `Apply Settings`.
 
 The filters operate on STEP solid geometry after loading and before boolean union. Keeping all
 components enabled preserves the default behavior. STL component filtering is not supported.
