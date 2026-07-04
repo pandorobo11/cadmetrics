@@ -17,6 +17,7 @@ from STL and STEP files.
 - Provide a CLI entry point named `cadmetrics`
 - Provide an optional PySide6 GUI entry point named `cadmetrics-gui`
 - Support STL ASCII/Binary and STEP input
+- Support CLI/API calculation from multiple files when all files are the same format
 - Calculate volume and surface area
 - Calculate orthographic projected outline area
 - Sweep all combinations of roll, angle of attack, and sideslip ranges
@@ -27,10 +28,15 @@ from STL and STEP files.
 
 - STL is treated as mesh geometry. Self-intersecting or overlapping STL components are not
   repaired automatically; volume and surface area may double-count overlaps in those cases.
+- Multi-file STL input is supported by concatenating triangle meshes. It does not perform STL
+  boolean union or overlap repair.
 - STEP volume and surface area should use B-Rep calculations when the `step` extra is installed
 - STEP volume should use OCP/OpenCascade `VolumePropertiesGK`
 - STEP multiple-solid input should be boolean-unioned before volume and surface-area
   calculation so intersecting solids do not double-count overlap volume
+- Multi-file STEP input should be loaded as one combined model and boolean-unioned before volume
+  and surface-area calculation when possible.
+- Mixed STEP/STL multi-file input is out of scope and should be rejected.
 - STEP volume and surface area can optionally be calculated from the tessellated mesh for
   STL-like comparison workflows
 - STEP projected area is calculated from a tessellated mesh
@@ -84,6 +90,7 @@ cadmetrics project model.stl --attitude vector --direction 1,0,0 --out projected
 cadmetrics sweep model.step --attitude alpha-beta --alpha -10:20:1 --beta -5:5:1 --out sweep.csv
 cadmetrics sweep model.step --attitude roll-pitch --roll 0:90:5 --pitch 0:30:5 --out sweep.csv
 cadmetrics inspect model.step
+cadmetrics project body.step wing.step tail.step --attitude alpha-beta --alpha 10 --out projected.csv
 ```
 
 Default `--unit` is `auto`: STEP units are read from the file, and STL is assumed to be meters.
@@ -104,6 +111,9 @@ components. Angle modes use separate Start, End, and Step fields. Unit-vector mo
 direction without sweep. The viewer supports transparency and mesh-edge toggles, a conditions
 and results overlay, row-selection camera alignment, PNG image export, and STEP solid component
 filters in Advanced settings.
+
+The GUI currently loads one file at a time. Multi-file assembly input is a CLI/API feature; GUI
+multi-file selection is deferred unless the single-file workflow needs it.
 
 ## CSV Columns
 

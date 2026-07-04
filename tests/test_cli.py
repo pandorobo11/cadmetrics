@@ -48,6 +48,24 @@ def test_measure_cli_out_still_writes_csv(runner: CliRunner, tmp_path: Path) -> 
     assert row["method"] == "stl-mesh"
 
 
+def test_measure_cli_accepts_multiple_files_as_assembly(
+    runner: CliRunner,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "assembly.csv"
+    path = DATA_DIR / "unit_cube.stl"
+    result = runner.invoke(
+        app,
+        ["measure", str(path), str(path), "--out", str(output)],
+    )
+
+    assert result.exit_code == 0, result.output
+    row = _csv_rows(output.read_text(encoding="utf-8"))[0]
+    assert float(row["volume"]) == pytest.approx(2.0)
+    assert float(row["surface_area"]) == pytest.approx(12.0)
+    assert row["method"] == "stl-mesh-assembly"
+
+
 def test_project_cli_stdout_uses_rich_table(runner: CliRunner) -> None:
     result = runner.invoke(
         app,

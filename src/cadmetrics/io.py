@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +14,7 @@ STL_SUFFIXES = {".stl"}
 
 
 def load_model(
-    path: str | Path,
+    path: str | Path | Sequence[str | Path],
     *,
     input_unit: str = "auto",
     output_unit: str = "m",
@@ -22,7 +23,20 @@ def load_model(
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
 ) -> ModelData:
-    model_path = Path(path)
+    paths = _normalize_model_paths(path)
+    if len(paths) > 1:
+        if step_components is not None:
+            raise ValueError("STEP component selection is not available for multi-file assemblies.")
+        return _load_assembly(
+            paths,
+            input_unit=input_unit,
+            output_unit=output_unit,
+            mesh_deflection=mesh_deflection,
+            angular_deflection=angular_deflection,
+            step_metric_source=step_metric_source,
+        )
+
+    model_path = paths[0]
     suffix = model_path.suffix.lower()
     if suffix in STL_SUFFIXES:
         return _load_stl(model_path, input_unit=input_unit, output_unit=output_unit)
@@ -37,6 +51,42 @@ def load_model(
             step_components=step_components,
         )
     raise ValueError(f"Unsupported file type '{model_path.suffix}'. Expected STL or STEP.")
+
+
+def _normalize_model_paths(path: str | Path | Sequence[str | Path]) -> tuple[Path, ...]:
+    if isinstance(path, str | Path):
+        return (Path(path),)
+    paths = tuple(Path(item) for item in path)
+    if not paths:
+        raise ValueError("At least one STL or STEP file is required.")
+    return paths
+
+
+def _load_assembly(
+    paths: tuple[Path, ...],
+    *,
+    input_unit: str,
+    output_unit: str,
+    mesh_deflection: float | str,
+    angular_deflection: float,
+    step_metric_source: str,
+) -> ModelData:
+    suffixes = {path.suffix.lower() for path in paths}
+    if suffixes <= STL_SUFFIXES:
+        return _load_stl_assembly(paths, input_unit=input_unit, output_unit=output_unit)
+    if suffixes <= STEP_SUFFIXES:
+        return _load_step_assembly(
+            paths,
+            input_unit=input_unit,
+            output_unit=output_unit,
+            mesh_deflection=mesh_deflection,
+            angular_deflection=angular_deflection,
+            step_metric_source=step_metric_source,
+        )
+    if suffixes & STL_SUFFIXES and suffixes & STEP_SUFFIXES:
+        raise ValueError("Cannot assemble mixed STEP and STL inputs.")
+    suffix_list = ", ".join(sorted(suffixes))
+    raise ValueError(f"Unsupported file types for assembly: {suffix_list}")
 
 
 def _load_stl(path: Path, *, input_unit: str, output_unit: str) -> ModelData:
@@ -77,6 +127,40 @@ def _load_stl(path: Path, *, input_unit: str, output_unit: str) -> ModelData:
         mesh_deflection=None,
         angular_deflection=None,
         warnings=tuple(warnings),
+    )
+
+
+def _load_stl_assembly(
+    paths: tuple[Path, ...],
+    *,
+    input_unit: str,
+    output_unit: str,
+) -> ModelData:
+    models = [_load_stl(path, input_unit=input_unit, output_unit=output_unit) for path in paths]
+    vertices, faces = _combine_meshes(
+        [(model.vertices, model.faces) for model in models]
+    )
+    volume, surface_area, is_watertight = _mesh_volume_and_surface_area(vertices, faces)
+    warnings = [
+        "STL assembly meshes were concatenated without boolean union; overlapping volume and surface area may double-count."
+    ]
+    for model in models:
+        warnings.extend(model.warnings)
+
+    return ModelData(
+        path=_assembly_path(paths),
+        source_format="stl",
+        vertices=vertices,
+        faces=faces,
+        input_unit=models[0].input_unit,
+        output_unit=normalize_unit(output_unit),
+        volume=volume,
+        surface_area=surface_area,
+        is_watertight=is_watertight,
+        mesh_deflection=None,
+        angular_deflection=None,
+        is_assembly=True,
+        warnings=tuple(dict.fromkeys(warnings)),
     )
 
 
@@ -242,6 +326,191 @@ def _load_step(
     )
 
 
+def _load_step_assembly(
+    paths: tuple[Path, ...],
+    *,
+    input_unit: str,
+    output_unit: str,
+    mesh_deflection: float | str,
+    angular_deflection: float,
+    step_metric_source: str,
+) -> ModelData:
+    try:
+        from OCP.Bnd import Bnd_Box
+        from OCP.BRep import BRep_Builder
+        from OCP.BRep import BRep_Tool
+        from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
+        from OCP.BRepBndLib import BRepBndLib
+        from OCP.BRepGProp import BRepGProp
+        from OCP.BRepMesh import BRepMesh_IncrementalMesh
+        from OCP.GProp import GProp_GProps
+        from OCP.IFSelect import IFSelect_RetDone
+        from OCP.STEPControl import STEPControl_Reader
+        from OCP.TColStd import TColStd_SequenceOfAsciiString
+        from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED, TopAbs_SOLID
+        from OCP.TopExp import TopExp_Explorer
+        from OCP.TopLoc import TopLoc_Location
+        from OCP.TopoDS import TopoDS, TopoDS_Compound
+    except ImportError as exc:
+        raise RuntimeError(
+            "STEP support requires the optional dependency: cadmetrics[step]."
+        ) from exc
+
+    metric_source = _normalize_step_metric_source(step_metric_source)
+    warnings: list[str] = []
+    detected_units: list[str] = []
+    component_names: list[str] = []
+    selected_components: list[int] = []
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+
+    for path in paths:
+        reader = STEPControl_Reader()
+        status = reader.ReadFile(str(path))
+        if status != IFSelect_RetDone:
+            raise ValueError(f"Could not read STEP file: {path}")
+        transferred = reader.TransferRoots()
+        if transferred == 0:
+            raise ValueError(f"STEP file did not contain transferable roots: {path}")
+
+        original_shape = reader.OneShape()
+        solids = _extract_ocp_solids(
+            original_shape,
+            TopAbs_SOLID=TopAbs_SOLID,
+            TopExp_Explorer=TopExp_Explorer,
+            TopoDS=TopoDS,
+        )
+        if input_unit.strip().lower() == "auto":
+            detected = _detect_step_length_unit(
+                reader,
+                TColStd_SequenceOfAsciiString=TColStd_SequenceOfAsciiString,
+            )
+            if detected is None:
+                detected = "m"
+                warnings.append(f"Could not detect STEP length unit for {path.name}; assuming m.")
+            detected_units.append(detected)
+
+        names = _step_component_names_from_xcaf(path, expected_count=len(solids))
+        if not names:
+            names = tuple(f"Component {index}" for index in range(1, len(solids) + 1))
+        for name in names:
+            component_names.append(f"{path.name}: {name}")
+            selected_components.append(len(selected_components) + 1)
+
+        if solids:
+            for solid in solids:
+                builder.Add(compound, solid)
+        else:
+            builder.Add(compound, original_shape)
+
+    if input_unit.strip().lower() == "auto":
+        unique_units = set(detected_units)
+        if len(unique_units) > 1:
+            raise ValueError(
+                "Cannot assemble STEP files with different detected units: "
+                f"{', '.join(sorted(unique_units))}. "
+                "Use files with a common unit or specify --unit explicitly."
+            )
+        resolved_input_unit = detected_units[0] if detected_units else "m"
+    else:
+        resolved_input_unit = input_unit
+
+    shape, unioned = _boolean_union_ocp_solids(
+        compound,
+        BRepAlgoAPI_Fuse=BRepAlgoAPI_Fuse,
+        TopAbs_SOLID=TopAbs_SOLID,
+        TopExp_Explorer=TopExp_Explorer,
+        TopoDS=TopoDS,
+    )
+    if unioned is None:
+        warnings.append(
+            "Could not boolean-union STEP assembly solids; volume and surface area may double-count overlaps."
+        )
+
+    scale = length_scale(resolved_input_unit, output_unit)
+    native_diagonal = _ocp_bounding_box_diagonal(
+        shape,
+        Bnd_Box=Bnd_Box,
+        BRepBndLib=BRepBndLib,
+    )
+    mesh_deflection_value = _resolve_mesh_deflection(
+        mesh_deflection,
+        native_diagonal=native_diagonal,
+        scale=scale,
+    )
+    native_mesh_deflection = (
+        mesh_deflection_value / scale if scale != 0.0 else mesh_deflection_value
+    )
+
+    brep_volume = _ocp_volume_metric_gk(shape, GProp_GProps=GProp_GProps, BRepGProp=BRepGProp)
+    brep_surface_area = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "SurfaceProperties")
+
+    BRepMesh_IncrementalMesh(shape, native_mesh_deflection, False, angular_deflection, True)
+    vertices, faces = _tessellate_ocp_shape(
+        shape,
+        BRep_Tool=BRep_Tool,
+        TopAbs_FACE=TopAbs_FACE,
+        TopAbs_REVERSED=TopAbs_REVERSED,
+        TopExp_Explorer=TopExp_Explorer,
+        TopLoc_Location=TopLoc_Location,
+        TopoDS=TopoDS,
+    )
+
+    if metric_source == "mesh":
+        volume, surface_area, mesh_watertight = _mesh_volume_and_surface_area(vertices, faces)
+        warnings.append("STEP volume and surface area were calculated from the tessellated mesh.")
+        if not mesh_watertight:
+            warnings.append("STEP tessellated mesh is not watertight; mesh volume may be unreliable.")
+    else:
+        volume = brep_volume
+        surface_area = brep_surface_area
+        mesh_watertight = None
+
+    metric_label = "mesh" if metric_source == "mesh" else "exact"
+    if volume is None:
+        warnings.append(f"Could not calculate {metric_label} STEP volume.")
+    if surface_area is None:
+        warnings.append(f"Could not calculate {metric_label} STEP surface area.")
+
+    scaled_volume = (
+        abs(volume) * volume_scale(resolved_input_unit, output_unit)
+        if volume is not None
+        else None
+    )
+    scaled_surface_area = (
+        surface_area * area_scale(resolved_input_unit, output_unit)
+        if surface_area is not None
+        else None
+    )
+    is_watertight = None
+    if metric_source == "mesh":
+        is_watertight = mesh_watertight
+    elif scaled_volume is not None:
+        is_watertight = scaled_volume > 0.0
+        if not is_watertight:
+            warnings.append("STEP shape has zero volume; it may be open or surface-only geometry.")
+
+    return ModelData(
+        path=_assembly_path(paths),
+        source_format="step",
+        vertices=vertices * scale,
+        faces=faces,
+        input_unit=normalize_unit(resolved_input_unit),
+        output_unit=normalize_unit(output_unit),
+        volume=scaled_volume,
+        surface_area=scaled_surface_area,
+        is_watertight=is_watertight,
+        mesh_deflection=mesh_deflection_value,
+        angular_deflection=angular_deflection,
+        step_metric_source=metric_source,
+        is_assembly=True,
+        component_names=tuple(component_names),
+        selected_components=tuple(selected_components),
+        warnings=tuple(dict.fromkeys(warnings)),
+    )
+
+
 def _resolve_mesh_deflection(
     value: float | str,
     *,
@@ -286,6 +555,23 @@ def _mesh_volume_and_surface_area(
     mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
     mesh.merge_vertices()
     return abs(float(mesh.volume)), float(mesh.area), bool(mesh.is_watertight)
+
+
+def _combine_meshes(meshes: Sequence[tuple[np.ndarray, np.ndarray]]) -> tuple[np.ndarray, np.ndarray]:
+    vertices: list[np.ndarray] = []
+    faces: list[np.ndarray] = []
+    offset = 0
+    for mesh_vertices, mesh_faces in meshes:
+        vertices.append(mesh_vertices)
+        faces.append(mesh_faces + offset)
+        offset += int(mesh_vertices.shape[0])
+    if not vertices:
+        return np.empty((0, 3), dtype=float), np.empty((0, 3), dtype=np.int64)
+    return np.vstack(vertices), np.vstack(faces).astype(np.int64, copy=False)
+
+
+def _assembly_path(paths: Sequence[Path]) -> Path:
+    return Path("; ".join(str(path) for path in paths))
 
 
 def _ocp_bounding_box_diagonal(

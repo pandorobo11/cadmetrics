@@ -20,6 +20,17 @@ def test_cube_measurements() -> None:
     assert row.cadmetrics_hash
 
 
+def test_stl_assembly_concatenates_mesh_measurements() -> None:
+    path = DATA_DIR / "unit_cube.stl"
+    row = measure([path, path])
+
+    assert row.volume == pytest.approx(2.0)
+    assert row.surface_area == pytest.approx(12.0)
+    assert row.is_watertight is False
+    assert row.method == "stl-mesh-assembly"
+    assert "without boolean union" in "; ".join(row.warnings)
+
+
 def test_cube_projected_area_default_direction() -> None:
     row = project(DATA_DIR / "unit_cube.stl")
     assert row.projected_area == pytest.approx(1.0)
@@ -39,6 +50,16 @@ def test_cube_projected_area_default_direction() -> None:
     assert row.z_max == pytest.approx(1.0)
     assert row.method == "stl-mesh-projection"
     assert row.elapsed_sec is not None
+
+
+def test_stl_assembly_projects_combined_silhouette_once() -> None:
+    path = DATA_DIR / "unit_cube.stl"
+    row = project([path, path])
+
+    assert row.projected_area == pytest.approx(1.0)
+    assert row.volume == pytest.approx(2.0)
+    assert row.surface_area == pytest.approx(12.0)
+    assert row.method == "stl-mesh-assembly-projection"
 
 
 def test_axis_map_flips_loaded_model_coordinates() -> None:

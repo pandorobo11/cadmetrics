@@ -8,6 +8,8 @@ Understanding the difference is important when comparing results with CAD softwa
 STL files are mesh geometry. Volume, surface area, and projected area are calculated from the
 mesh. Self-intersecting or overlapping STL components are not repaired automatically; in those
 cases volume and surface area can double-count overlaps or otherwise become unreliable.
+When multiple STL files are passed in one command, their meshes are concatenated into one
+calculation model with the same limitation.
 
 STEP files use the optional `step` extra:
 
@@ -23,6 +25,10 @@ For STEP input:
   tessellated mesh after boolean union
 - projected area uses a tessellated mesh generated from the B-Rep
 - the GUI can exclude selected STEP solid components before boolean union and measurement
+
+When multiple STEP files are passed in one command, cadmetrics loads their solids into one
+compound and applies the same boolean-union step before measurement. STEP and STL files cannot
+be mixed in one calculation model.
 
 OCP does not expose a separate `SurfacePropertiesGK` function. Surface area uses
 `SurfaceProperties`; OCP's Python binding also exposes an adaptive-integration overload that
@@ -67,6 +73,10 @@ The GUI's component filters operate before that union step. Turning off a compon
 from display, volume, surface-area, and projected-area calculations. Component labels use
 STEP/XCAF names when available and otherwise fall back to solid order in the loaded STEP file.
 Full assembly hierarchy is not preserved yet.
+
+The same geometry rule applies to multi-file STEP input. Each STEP file contributes its detected
+solids to one combined model. With `--unit auto`, all detected STEP units must match; otherwise,
+specify a common `--unit` explicitly after confirming the files use the same source unit.
 
 ## Projected Area Definition
 

@@ -7,6 +7,7 @@ drag-area checks.
 ## Features
 
 - Read STL ASCII/Binary and STEP (`.step`, `.stp`)
+- Combine multiple STL files or multiple STEP files into one calculation model
 - Calculate volume and surface area
 - Calculate orthographic projected outline area with overlapping projected regions removed
 - Sweep alpha/beta or roll/pitch angle ranges
@@ -106,6 +107,18 @@ cadmetrics sweep samples/satellite/satellite.step \
   --out sweep.csv
 ```
 
+Combine same-format files as one model:
+
+```bash
+cadmetrics project fuselage.step wing.step tail.step \
+  --attitude alpha-beta \
+  --alpha 10
+```
+
+STEP files are boolean-unioned before measurement when possible. STL files are concatenated as
+meshes without boolean repair, so overlapping STL parts can double-count volume and surface area.
+STEP and STL files cannot be mixed in one calculation.
+
 Launch the desktop GUI:
 
 ```bash
@@ -153,6 +166,8 @@ from cadmetrics import measure, project, sweep
 metrics = measure("model.stl")
 single = project("model.stl", alpha_deg=10)
 rows = sweep("model.stl", alpha="-10:20:1", beta="-5:5:1", roll="0")
+
+assembly = project(["fuselage.step", "wing.step", "tail.step"], alpha_deg=10)
 ```
 
 The Python API keeps lower-level `alpha`, `beta`, `roll`, and `direction` arguments. The CLI and
@@ -172,9 +187,12 @@ GUI present these as explicit `alpha-beta`, `roll-pitch`, and `vector` input mod
 ## Accuracy Notes
 
 STL measurements are mesh-based. STEP volume and surface area use the OCP/OpenCascade CAD
-kernel when the `step` extra is installed. For STL-like comparisons, STEP volume and surface
-area can be calculated from the tessellated mesh with `--step-metrics mesh`. STEP projected
-area is always calculated from a tessellated mesh, so the result depends on tessellation quality.
+kernel when the `step` extra is installed. Multi-file STEP inputs are boolean-unioned before
+measurement when possible. Multi-file STL inputs are mesh-concatenated without boolean repair, so
+overlapping STL parts can double-count volume and surface area. For STL-like comparisons, STEP
+volume and surface area can be calculated from the tessellated mesh with `--step-metrics mesh`.
+STEP projected area is always calculated from a tessellated mesh, so the result depends on
+tessellation quality.
 
 The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the
 selected output length unit. The current validation target is within `0.1%` against Fusion 360

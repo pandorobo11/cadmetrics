@@ -29,6 +29,7 @@ class ModelData:
     mesh_deflection: float | None = None
     angular_deflection: float | None = None
     step_metric_source: str | None = None
+    is_assembly: bool = False
     component_names: tuple[str, ...] = field(default_factory=tuple)
     selected_components: tuple[int, ...] = field(default_factory=tuple)
     cadmetrics_version: str = field(default_factory=cadmetrics_version)

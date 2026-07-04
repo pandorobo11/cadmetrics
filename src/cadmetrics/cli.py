@@ -60,7 +60,7 @@ CSV_FIELDS = [
 
 @app.command()
 def measure(
-    file: Path = typer.Argument(..., exists=True, readable=True, help="STL or STEP file."),
+    file: list[Path] = typer.Argument(..., exists=True, readable=True, help="STL or STEP file(s)."),
     unit: str = typer.Option(
         "auto",
         "--unit",
@@ -104,14 +104,14 @@ def measure(
         )
     )
     if out is None:
-        _emit_measurement_table(row, title=str(file))
+        _emit_measurement_table(row, title=_format_input_files(file))
     else:
         _emit_rows([row], out)
 
 
 @app.command()
 def project(
-    file: Path = typer.Argument(..., exists=True, readable=True, help="STL or STEP file."),
+    file: list[Path] = typer.Argument(..., exists=True, readable=True, help="STL or STEP file(s)."),
     attitude: str | None = typer.Option(
         None,
         "--attitude",
@@ -189,14 +189,14 @@ def project(
         )
     )
     if out is None:
-        _emit_measurement_table(row, title=str(file))
+        _emit_measurement_table(row, title=_format_input_files(file))
     else:
         _emit_rows([row], out)
 
 
 @app.command()
 def sweep(
-    file: Path = typer.Argument(..., exists=True, readable=True, help="STL or STEP file."),
+    file: list[Path] = typer.Argument(..., exists=True, readable=True, help="STL or STEP file(s)."),
     attitude: str | None = typer.Option(
         None,
         "--attitude",
@@ -331,7 +331,7 @@ def sweep(
 
 @app.command()
 def inspect(
-    file: Path = typer.Argument(..., exists=True, readable=True, help="STL or STEP file."),
+    file: list[Path] = typer.Argument(..., exists=True, readable=True, help="STL or STEP file(s)."),
     unit: str = typer.Option(
         "auto",
         "--unit",
@@ -373,12 +373,13 @@ def inspect(
             step_metric_source=step_metrics,
         )
     )
-    table = Table(title=str(model.path))
+    table = Table(title=_format_input_files(file))
     table.add_column("field")
     table.add_column("value")
     table.add_row("input_unit", model.input_unit)
     table.add_row("output_unit", model.output_unit)
     table.add_row("source_format", model.source_format)
+    table.add_row("assembly", str(model.is_assembly))
     if model.step_metric_source:
         table.add_row("step_metrics", model.step_metric_source)
     table.add_row("vertices", str(model.vertex_count))
@@ -419,12 +420,19 @@ def _emit_rows(rows: list[MeasurementRow], out: Path | None) -> None:
     console.print(f"Wrote {len(rows)} row(s) to {out}")
 
 
+def _format_input_files(files: list[Path]) -> str:
+    if len(files) == 1:
+        return str(files[0])
+    return " + ".join(str(file) for file in files)
+
+
 def _emit_measurement_table(row: MeasurementRow, *, title: str) -> None:
     table = Table(title=title)
     table.add_column("field")
     table.add_column("value")
     table.add_row("input_unit", row.input_unit)
     table.add_row("output_unit", row.output_unit)
+    table.add_row("assembly", str("assembly" in (row.method or "")))
     table.add_row("x_min", _format_optional(row.x_min))
     table.add_row("x_max", _format_optional(row.x_max))
     table.add_row("y_min", _format_optional(row.y_min))

@@ -101,6 +101,41 @@ def test_step_overlapping_solids_are_boolean_unioned_for_measurements(tmp_path: 
     assert inspected.surface_area == pytest.approx(6.0)
 
 
+def test_step_assembly_files_are_boolean_unioned_for_measurements(tmp_path: Path) -> None:
+    step_a = tmp_path / "box_a.step"
+    step_b = tmp_path / "box_b.step"
+    box_a = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    box_b = BRepPrimAPI_MakeBox(gp_Pnt(500.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
+
+    writer_a = STEPControl_Writer()
+    writer_a.Transfer(box_a, STEPControl_AsIs)
+    assert writer_a.Write(str(step_a)) == IFSelect_RetDone
+    writer_b = STEPControl_Writer()
+    writer_b.Transfer(box_b, STEPControl_AsIs)
+    assert writer_b.Write(str(step_b)) == IFSelect_RetDone
+
+    measured = measure([step_a, step_b])
+    assert measured.volume == pytest.approx(1.5)
+    assert measured.surface_area == pytest.approx(8.0)
+    assert measured.is_watertight is True
+    assert measured.method == "step-brep-assembly"
+
+    projected = project([step_a, step_b])
+    assert projected.projected_area == pytest.approx(1.0)
+    assert projected.method == "step-brep-assembly+mesh-projection"
+
+
+def test_mixed_step_and_stl_assembly_is_rejected(tmp_path: Path) -> None:
+    step_path = tmp_path / "box.step"
+    shape = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    writer = STEPControl_Writer()
+    writer.Transfer(shape, STEPControl_AsIs)
+    assert writer.Write(str(step_path)) == IFSelect_RetDone
+
+    with pytest.raises(ValueError, match="mixed STEP and STL"):
+        measure([step_path, Path("tests/data/unit_cube.stl")])
+
+
 def test_step_component_name_filter_rejects_internal_names() -> None:
     assert _usable_step_component_name("wing") == "wing"
     assert _usable_step_component_name("  horizontal tail:1  ") == "horizontal tail:1"

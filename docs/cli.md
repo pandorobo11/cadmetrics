@@ -40,6 +40,28 @@ Supported explicit units are:
 m, mm, cm, in, ft
 ```
 
+## Multi-File Assemblies
+
+`measure`, `project`, `sweep`, and `inspect` accept more than one input file. When multiple files
+are provided, cadmetrics treats them as one calculation model:
+
+```bash
+cadmetrics project fuselage.step wing.step tail.step \
+  --attitude alpha-beta \
+  --alpha 10
+```
+
+Only same-format inputs are supported in one command:
+
+- multiple STEP files are combined and boolean-unioned before STEP volume and surface-area
+  measurement when possible
+- multiple STL files are concatenated as triangle meshes
+- mixed STEP/STL input is rejected
+
+For STL assemblies, cadmetrics does not run mesh boolean repair. If STL parts overlap,
+volume and surface area can double-count the overlap. Projected area still uses the combined
+silhouette, so overlapping projected regions are counted once.
+
 ## Axis Mapping
 
 Use `--axis-map` when the input model's axes do not match the cadmetrics convention. The value
@@ -83,6 +105,12 @@ output length unit.
 `--step-metrics brep` is the default and reports STEP volume/surface area from the CAD kernel.
 Use `--step-metrics mesh` when you want STEP volume/surface area to be calculated from the
 tessellated mesh, for example when comparing with an exported STL.
+
+Measure a same-format multi-file model:
+
+```bash
+cadmetrics measure body.step wing.step tail.step
+```
 
 ## project
 
@@ -161,13 +189,19 @@ This is useful for checking detected units, vertex and face counts, watertightne
 warnings before running a sweep. For STEP files, it also reports the number of detected solid
 components. Component on/off filtering is currently a GUI advanced feature.
 
+Inspect a multi-file assembly before calculating:
+
+```bash
+cadmetrics inspect body.step wing.step tail.step
+```
+
 ## CSV Columns
 
 All calculation commands use the same CSV schema:
 
 | column | description |
 |---|---|
-| `file` | input path |
+| `file` | input path, or semicolon-separated paths for multi-file assemblies |
 | `input_unit` | unit used when reading the model |
 | `output_unit` | unit used for output values |
 | `roll_deg` | equivalent roll angle |

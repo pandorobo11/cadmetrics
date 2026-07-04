@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from time import perf_counter
 from typing import Callable
@@ -21,7 +22,7 @@ from cadmetrics.types import MeasurementRow, ModelData
 
 
 def inspect_model(
-    path: str | Path,
+    path: str | Path | Sequence[str | Path],
     *,
     input_unit: str = "auto",
     output_unit: str = "m",
@@ -44,7 +45,7 @@ def inspect_model(
 
 
 def measure(
-    path: str | Path,
+    path: str | Path | Sequence[str | Path],
     *,
     input_unit: str = "auto",
     output_unit: str = "m",
@@ -94,7 +95,7 @@ def measure(
 
 
 def project(
-    path: str | Path,
+    path: str | Path | Sequence[str | Path],
     *,
     roll_deg: float = 0.0,
     alpha_deg: float = 0.0,
@@ -216,7 +217,7 @@ def _centroid_model_coordinates(
 
 
 def sweep(
-    path: str | Path,
+    path: str | Path | Sequence[str | Path],
     *,
     roll: str | int | float = 0.0,
     alpha: str | int | float = 0.0,
@@ -268,7 +269,11 @@ def sweep(
 
 def _method_name(model: ModelData, *, projected: bool) -> str:
     if model.source_format == "step":
+        assembly = "-assembly" if model.is_assembly else ""
         if model.step_metric_source == "mesh":
-            return "step-mesh+mesh-projection" if projected else "step-mesh"
-        return "step-brep+mesh-projection" if projected else "step-brep"
-    return "stl-mesh-projection" if projected else "stl-mesh"
+            base = f"step-mesh{assembly}"
+        else:
+            base = f"step-brep{assembly}"
+        return f"{base}+mesh-projection" if projected else base
+    base = "stl-mesh-assembly" if model.is_assembly else "stl-mesh"
+    return f"{base}-projection" if projected else base
