@@ -214,6 +214,7 @@ All calculation commands use the same CSV schema:
 | `direction_x`, `direction_y`, `direction_z` | normalized projection direction |
 | `x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max` | model coordinate bounds in `output_unit` |
 | `surface_area` | surface area in `output_unit^2` |
+| `base_area` | exterior face area at cadmetrics-coordinate `Xmax` in `output_unit^2`; `0` with a warning when no face is found |
 | `volume` | volume in `output_unit^3` |
 | `projected_area` | orthographic projected outline area in `output_unit^2` |
 | `centroid_u`, `centroid_v` | projected 2D centroid in the projection plane |

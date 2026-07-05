@@ -28,6 +28,7 @@ def test_sample_files_load(sample_name: str) -> None:
         projected = project(path)
 
         assert measured.surface_area is not None
+        assert measured.base_area is not None
         assert projected.projected_area is not None
 
 
@@ -41,8 +42,30 @@ def test_box_sample_exact_metrics(kind: str) -> None:
 
     assert measured.volume == pytest.approx(6.0)
     assert measured.surface_area == pytest.approx(22.0)
+    assert measured.base_area == pytest.approx(6.0)
     assert projected.projected_area == pytest.approx(6.0)
     assert measured.is_watertight is True
+
+
+@pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl", "step"])
+def test_cylinder_sample_xmax_base_area(kind: str) -> None:
+    if kind == "step" and not HAS_OCP:
+        pytest.skip("STEP sample checks require cadmetrics[step]")
+    path = ROOT / SAMPLES["cylinder_x_r1_l2"]["files"][kind]
+    measured = measure(path)
+
+    assert measured.base_area == pytest.approx(3.141592653589793, rel=1.0e-3)
+
+
+@pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl", "step"])
+def test_sphere_sample_has_no_xmax_base_face(kind: str) -> None:
+    if kind == "step" and not HAS_OCP:
+        pytest.skip("STEP sample checks require cadmetrics[step]")
+    path = ROOT / SAMPLES["sphere_r1"]["files"][kind]
+    measured = measure(path)
+
+    assert measured.base_area == pytest.approx(0.0)
+    assert "base_area set to 0" in "; ".join(measured.warnings)
 
 
 @pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl", "step"])
@@ -64,6 +87,7 @@ def test_intersecting_boxes_stl_keeps_raw_component_measurements(kind: str) -> N
 
     assert measured.volume == pytest.approx(expected["volume_stl"])
     assert measured.surface_area == pytest.approx(expected["surface_area_stl"])
+    assert measured.base_area == pytest.approx(expected["base_area_stl"])
     assert projected.projected_area == pytest.approx(expected["projected_area_x"])
     assert measured.is_watertight is True
 
@@ -79,6 +103,7 @@ def test_intersecting_boxes_step_uses_boolean_union_for_measurements() -> None:
 
     assert measured.volume == pytest.approx(expected["volume_step"])
     assert measured.surface_area == pytest.approx(expected["surface_area_step"])
+    assert measured.base_area == pytest.approx(expected["base_area_step"])
     assert projected.projected_area == pytest.approx(expected["projected_area_x"])
     assert measured.is_watertight is True
 
@@ -93,6 +118,7 @@ def test_frame_sample_preserves_hole_in_z_projection(kind: str) -> None:
 
     assert measured.volume == pytest.approx(0.8)
     assert measured.surface_area == pytest.approx(17.6)
+    assert measured.base_area == pytest.approx(0.3)
     assert projected.projected_area == pytest.approx(8.0)
     assert measured.is_watertight is True
 
@@ -103,6 +129,7 @@ def test_open_cube_sample_warns_about_non_watertight_mesh(kind: str) -> None:
     measured = measure(path)
 
     assert measured.surface_area == pytest.approx(5.0)
+    assert measured.base_area == pytest.approx(1.0)
     assert measured.is_watertight is False
     assert measured.warnings
 
@@ -149,6 +176,7 @@ def test_multi_file_step_component_filter_sample() -> None:
     projected = project(paths)
     assert measured.volume == pytest.approx(expected["volume"])
     assert measured.surface_area == pytest.approx(expected["surface_area"])
+    assert measured.base_area == pytest.approx(expected["base_area"])
     assert projected.projected_area == pytest.approx(expected["projected_area_x"])
 
     selected = tuple(expected["selected_components"])
@@ -156,4 +184,5 @@ def test_multi_file_step_component_filter_sample() -> None:
     selected_projected = project(paths, step_components=selected)
     assert selected_measured.volume == pytest.approx(expected["selected_volume"])
     assert selected_measured.surface_area == pytest.approx(expected["selected_surface_area"])
+    assert selected_measured.base_area == pytest.approx(expected["selected_base_area"])
     assert selected_projected.projected_area == pytest.approx(expected["selected_projected_area_x"])

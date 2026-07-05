@@ -25,6 +25,7 @@ class ModelData:
     output_unit: str
     volume: float | None
     surface_area: float | None
+    base_area: float | None
     is_watertight: bool | None
     mesh_deflection: float | None = None
     angular_deflection: float | None = None
@@ -81,6 +82,7 @@ class MeasurementRow:
     surface_area: float | None
     projected_area: float | None
     is_watertight: bool | None
+    base_area: float | None = None
     pitch_deg: float | None = None
     direction_x: float | None = None
     direction_y: float | None = None
@@ -127,6 +129,7 @@ class MeasurementRow:
             "z_min": self.z_min,
             "z_max": self.z_max,
             "surface_area": self.surface_area,
+            "base_area": self.base_area,
             "volume": self.volume,
             "projected_area": self.projected_area,
             "centroid_u": self.centroid_u,

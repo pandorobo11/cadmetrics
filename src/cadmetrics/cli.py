@@ -42,6 +42,7 @@ CSV_FIELDS = [
     "z_min",
     "z_max",
     "surface_area",
+    "base_area",
     "volume",
     "projected_area",
     "centroid_u",
@@ -393,6 +394,7 @@ def inspect(
     table.add_row("z_min", _format_optional(model.z_min))
     table.add_row("z_max", _format_optional(model.z_max))
     table.add_row("surface_area", _format_optional(model.surface_area))
+    table.add_row("base_area", _format_optional(model.base_area))
     table.add_row("volume", _format_optional(model.volume))
     if model.component_names:
         table.add_row(
@@ -442,6 +444,7 @@ def _emit_measurement_table(row: MeasurementRow, *, title: str) -> None:
     table.add_row("z_min", _format_optional(row.z_min))
     table.add_row("z_max", _format_optional(row.z_max))
     table.add_row("surface_area", _format_optional(row.surface_area))
+    table.add_row("base_area", _format_optional(row.base_area))
     table.add_row("volume", _format_optional(row.volume))
     if row.projected_area is not None:
         table.add_row("projected_area", _format_optional(row.projected_area))

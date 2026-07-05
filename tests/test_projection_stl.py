@@ -15,6 +15,7 @@ def test_cube_measurements() -> None:
     row = measure(DATA_DIR / "unit_cube.stl")
     assert row.volume == pytest.approx(1.0)
     assert row.surface_area == pytest.approx(6.0)
+    assert row.base_area == pytest.approx(1.0)
     assert row.is_watertight is True
     assert row.cadmetrics_version
     assert row.cadmetrics_hash
@@ -26,6 +27,7 @@ def test_stl_assembly_concatenates_mesh_measurements() -> None:
 
     assert row.volume == pytest.approx(2.0)
     assert row.surface_area == pytest.approx(12.0)
+    assert row.base_area == pytest.approx(2.0)
     assert row.is_watertight is False
     assert row.method == "stl-mesh-assembly"
     assert "without boolean union" in "; ".join(row.warnings)
@@ -59,6 +61,7 @@ def test_stl_assembly_projects_combined_silhouette_once() -> None:
     assert row.projected_area == pytest.approx(1.0)
     assert row.volume == pytest.approx(2.0)
     assert row.surface_area == pytest.approx(12.0)
+    assert row.base_area == pytest.approx(2.0)
     assert row.method == "stl-mesh-assembly-projection"
 
 
@@ -71,6 +74,7 @@ def test_axis_map_flips_loaded_model_coordinates() -> None:
     assert row.centroid_z == pytest.approx(0.5)
     assert row.x_min == pytest.approx(-1.0)
     assert row.x_max == pytest.approx(0.0)
+    assert row.base_area == pytest.approx(1.0)
 
 
 def test_axis_map_rejects_duplicate_source_axes() -> None:

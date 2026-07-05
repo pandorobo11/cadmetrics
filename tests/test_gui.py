@@ -146,6 +146,7 @@ def test_overlay_text_includes_selected_result_values() -> None:
         centroid_z=6.0,
         volume=4.0,
         surface_area=5.0,
+        base_area=7.0,
         projected_area=6.0,
         is_watertight=True,
         method="stl-mesh-projection",
@@ -155,6 +156,7 @@ def test_overlay_text_includes_selected_result_values() -> None:
 
     assert "cadmetrics result" in text
     assert "model.stl" in text
+    assert "base_area: 7" in text
     assert "projected_area: 6" in text
     assert "roll/pitch: 1, 4 deg" in text
     assert "alpha/beta: 2, 3 deg" in text
@@ -328,6 +330,7 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
         z_max=1.0,
         volume=1.0,
         surface_area=6.0,
+        base_area=1.0,
         projected_area=1.0,
         is_watertight=True,
         mesh_deflection=0.001,
@@ -364,6 +367,7 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
             "z_min": "0.0",
             "z_max": "1.0",
             "surface_area": "6.0",
+            "base_area": "1.0",
             "volume": "1.0",
             "projected_area": "1.0",
             "centroid_u": "0.0",

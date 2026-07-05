@@ -40,6 +40,7 @@ def inspect_model(
         angular_deflection=angular_deflection,
         step_metric_source=step_metric_source,
         step_components=step_components,
+        base_axis_map=axis_map,
     )
     return transform_model_axes(model, axis_map)
 
@@ -76,6 +77,7 @@ def measure(
         pitch_deg=None,
         volume=model.volume,
         surface_area=model.surface_area,
+        base_area=model.base_area,
         projected_area=None,
         is_watertight=model.is_watertight,
         x_min=model.x_min,
@@ -176,6 +178,7 @@ def _projected_row(
         pitch_deg=pitch_deg,
         volume=volume,
         surface_area=surface_area,
+        base_area=model.base_area,
         projected_area=projection_metrics.area,
         is_watertight=is_watertight,
         direction_x=float(projection_direction[0]),

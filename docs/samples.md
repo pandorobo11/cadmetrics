@@ -30,10 +30,10 @@ meter-based expected values as the STL fixtures.
 
 | name | purpose | key expected values |
 |---|---|---|
-| `unit_cube` | simplest closed solid | volume `1`, surface `6`, +X projection `1` |
-| `box_1x2x3` | direction and attitude sanity check | volume `6`, surface `22`, +X projection `6` |
-| `sphere_r1` | attitude-invariant reference | volume `4/3*pi`, surface `4*pi`, projection `pi` |
-| `cylinder_x_r1_l2` | axis-sensitive curved shape | volume `2*pi`, surface `6*pi`, +X projection `pi` |
+| `unit_cube` | simplest closed solid | volume `1`, surface `6`, base `1`, +X projection `1` |
+| `box_1x2x3` | direction and attitude sanity check | volume `6`, surface `22`, base `6`, +X projection `6` |
+| `sphere_r1` | attitude-invariant reference | volume `4/3*pi`, surface `4*pi`, base `0`, projection `pi` |
+| `cylinder_x_r1_l2` | axis-sensitive curved shape | volume `2*pi`, surface `6*pi`, base `pi`, +X projection `pi` |
 | `two_boxes_overlap_projection` | projected-overlap removal | volume `2`, surface `12`, +X projection `1` |
 | `two_boxes_intersecting` | STEP boolean-union vs raw STL overlap behavior | STEP volume `1.5`, STEP surface `8`, STL volume `2`, STL surface `12`, +X projection `1` |
 | `multi_file_step_components` | multi-file STEP component filtering | all components: volume `4`, surface `24`; components `2,3`: volume `2`, surface `12` |

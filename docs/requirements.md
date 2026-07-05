@@ -19,6 +19,7 @@ from STL and STEP files.
 - Support STL ASCII/Binary and STEP input
 - Support CLI/API calculation from multiple files when all files are the same format
 - Calculate volume and surface area
+- Calculate exterior base-face area at cadmetrics-coordinate `Xmax`
 - Calculate orthographic projected outline area
 - Sweep all combinations of roll, angle of attack, and sideslip ranges
 - Write CSV output
@@ -39,6 +40,9 @@ from STL and STEP files.
 - Mixed STEP/STL multi-file input is out of scope and should be rejected.
 - STEP volume and surface area can optionally be calculated from the tessellated mesh for
   STL-like comparison workflows
+- STEP base area should use B-Rep face area at `Xmax` when possible, with tessellated mesh
+  fallback on internal calculation failure
+- STL base area should use triangle faces on the `Xmax` plane
 - STEP projected area is calculated from a tessellated mesh
 - Multiple solids are treated as one projected silhouette, so overlapping projected regions are
   counted once

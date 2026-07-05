@@ -21,6 +21,7 @@ For STEP input:
 
 - volume uses OCP/OpenCascade `VolumePropertiesGK` after boolean-unioning multiple solids
 - surface area uses the OCP/OpenCascade B-Rep model after boolean-unioning multiple solids
+- base area uses B-Rep face area for exterior faces at cadmetrics-coordinate `Xmax`
 - `--step-metrics mesh` can instead calculate STEP volume and surface area from the
   tessellated mesh after boolean union
 - projected area uses a tessellated mesh generated from the B-Rep
@@ -33,6 +34,11 @@ be mixed in one calculation model.
 OCP does not expose a separate `SurfacePropertiesGK` function. Surface area uses
 `SurfaceProperties`; OCP's Python binding also exposes an adaptive-integration overload that
 accepts an error tolerance, but cadmetrics currently keeps the default exact-surface call.
+
+`base_area` is the sum of exterior face areas whose coordinates lie on `Xmax` after applying the
+selected axis map. Curved bodies that only touch `Xmax` at a point or line report `0` with a
+warning because they do not have a finite base face there. For STL input, the same definition is
+approximated by summing triangle faces on the `Xmax` plane.
 
 ## STEP B-Rep vs STL-Like Mesh Values
 

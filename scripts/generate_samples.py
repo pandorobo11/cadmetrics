@@ -82,6 +82,7 @@ def sample_specs() -> list[SampleSpec]:
             expected={
                 "volume": 1.0,
                 "surface_area": 6.0,
+                "base_area": 1.0,
                 "projected_area_x": 1.0,
                 "is_watertight": True,
             },
@@ -94,6 +95,7 @@ def sample_specs() -> list[SampleSpec]:
             expected={
                 "volume": 6.0,
                 "surface_area": 22.0,
+                "base_area": 6.0,
                 "projected_area_x": 6.0,
                 "projected_area_y": 3.0,
                 "projected_area_z": 2.0,
@@ -108,6 +110,7 @@ def sample_specs() -> list[SampleSpec]:
             expected={
                 "volume": 4.0 * pi / 3.0,
                 "surface_area": 4.0 * pi,
+                "base_area": 0.0,
                 "projected_area_x": pi,
                 "is_watertight": True,
             },
@@ -123,6 +126,7 @@ def sample_specs() -> list[SampleSpec]:
             expected={
                 "volume": 2.0 * pi,
                 "surface_area": 6.0 * pi,
+                "base_area": pi,
                 "projected_area_x": pi,
                 "projected_area_y": 4.0,
                 "projected_area_z": 4.0,
@@ -141,6 +145,7 @@ def sample_specs() -> list[SampleSpec]:
             expected={
                 "volume": 2.0,
                 "surface_area": 12.0,
+                "base_area": 1.0,
                 "projected_area_x": 1.0,
                 "is_watertight": True,
             },
@@ -153,8 +158,10 @@ def sample_specs() -> list[SampleSpec]:
             expected={
                 "volume_stl": 2.0,
                 "surface_area_stl": 12.0,
+                "base_area_stl": 1.0,
                 "volume_step": 1.5,
                 "surface_area_step": 8.0,
+                "base_area_step": 1.0,
                 "projected_area_x": 1.0,
                 "is_watertight": True,
             },
@@ -167,6 +174,7 @@ def sample_specs() -> list[SampleSpec]:
             expected={
                 "volume": None,
                 "surface_area": 5.0,
+                "base_area": 1.0,
                 "projected_area_x": 1.0,
                 "is_watertight": False,
             },
@@ -179,6 +187,7 @@ def sample_specs() -> list[SampleSpec]:
             expected={
                 "volume": 0.8,
                 "surface_area": 17.6,
+                "base_area": 0.3,
                 "projected_area_x": 0.3,
                 "projected_area_z": 8.0,
                 "is_watertight": True,
@@ -350,9 +359,11 @@ def add_multi_file_step_component_filter_sample(metadata: dict[str, object]) -> 
             "selected_components": [2, 3],
             "selected_volume": 2.0,
             "selected_surface_area": 12.0,
+            "selected_base_area": 2.0,
             "selected_projected_area_x": 2.0,
             "volume": 4.0,
             "surface_area": 24.0,
+            "base_area": 4.0,
             "projected_area_x": 4.0,
             "is_watertight": True,
         },

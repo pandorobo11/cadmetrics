@@ -44,6 +44,7 @@ TABLE_COLUMNS = [
     "z_min",
     "z_max",
     "surface_area",
+    "base_area",
     "volume",
     "projected_area",
     "centroid_u",
@@ -1489,6 +1490,7 @@ if QtWidgets is not None:
                 f"Y[{_format_cell(model.y_min)}, {_format_cell(model.y_max)}], "
                 f"Z[{_format_cell(model.z_min)}, {_format_cell(model.z_max)}]",
                 f"surface_area: {_format_cell(model.surface_area)}",
+                f"base_area: {_format_cell(model.base_area)}",
                 f"volume: {_format_cell(model.volume)}",
                 f"cadmetrics_version: {model.cadmetrics_version}",
                 f"cadmetrics_hash: {model.cadmetrics_hash}",
@@ -1608,6 +1610,7 @@ def _overlay_text(
                 f"Y[{_format_metric(row.y_min)}, {_format_metric(row.y_max)}], "
                 f"Z[{_format_metric(row.z_min)}, {_format_metric(row.z_max)}]",
                 f"surface_area: {_format_metric(row.surface_area)}",
+                f"base_area: {_format_metric(row.base_area)}",
                 f"volume: {_format_metric(row.volume)}",
                 f"projected_area: {_format_metric(row.projected_area)}",
                 "centroid: "
@@ -1639,6 +1642,7 @@ def _overlay_text(
                 f"Y[{_format_metric(model.y_min)}, {_format_metric(model.y_max)}], "
                 f"Z[{_format_metric(model.z_min)}, {_format_metric(model.z_max)}]",
                 f"surface_area: {_format_metric(model.surface_area)}",
+                f"base_area: {_format_metric(model.base_area)}",
                 f"volume: {_format_metric(model.volume)}",
                 f"cadmetrics_version: {model.cadmetrics_version}",
                 f"cadmetrics_hash: {model.cadmetrics_hash}",

@@ -143,6 +143,7 @@ The result table uses the same columns as the CLI CSV output. Important fields i
 
 - `x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max`
 - `surface_area`
+- `base_area`
 - `volume`
 - `projected_area`
 - `centroid_u`, `centroid_v`

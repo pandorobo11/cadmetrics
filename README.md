@@ -1,6 +1,6 @@
 # cadmetrics
 
-`cadmetrics` calculates volume, surface area, and projected area for STL and STEP files.
+`cadmetrics` calculates volume, surface area, Xmax base-face area, and projected area for STL and STEP files.
 It provides a CLI, Python API, and PySide6 desktop GUI for aerodynamic projected-area and
 drag-area checks.
 
@@ -9,6 +9,7 @@ drag-area checks.
 - Read STL ASCII/Binary and STEP (`.step`, `.stp`)
 - Combine multiple STL files or multiple STEP files into one calculation model
 - Calculate volume and surface area
+- Calculate Xmax base-face area
 - Calculate orthographic projected outline area with overlapping projected regions removed
 - Sweep alpha/beta or roll/pitch angle ranges
 - Report equivalent alpha/beta, roll/pitch, and unit-vector direction values
@@ -190,11 +191,12 @@ by `inspect_model([...]).component_names`.
 
 ## Accuracy Notes
 
-STL measurements are mesh-based. STEP volume and surface area use the OCP/OpenCascade CAD
-kernel when the `step` extra is installed. Multi-file STEP inputs are boolean-unioned before
-measurement when possible. Multi-file STL inputs are mesh-concatenated without boolean repair, so
-overlapping STL parts can double-count volume and surface area. For STL-like comparisons, STEP
-volume and surface area can be calculated from the tessellated mesh with `--step-metrics mesh`.
+STL measurements are mesh-based. STEP volume, surface area, and Xmax base-face area use the
+OCP/OpenCascade CAD kernel when the `step` extra is installed. Multi-file STEP inputs are
+boolean-unioned before measurement when possible. Multi-file STL inputs are mesh-concatenated
+without boolean repair, so overlapping STL parts can double-count volume, surface area, and base
+area. For STL-like comparisons, STEP volume and surface area can be calculated from the
+tessellated mesh with `--step-metrics mesh`.
 STEP projected area is always calculated from a tessellated mesh, so the result depends on
 tessellation quality.
 

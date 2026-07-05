@@ -44,6 +44,7 @@ def test_measure_cli_out_still_writes_csv(runner: CliRunner, tmp_path: Path) -> 
     assert result.exit_code == 0, result.output
     row = _csv_rows(output.read_text(encoding="utf-8"))[0]
     assert float(row["surface_area"]) == pytest.approx(6.0)
+    assert float(row["base_area"]) == pytest.approx(1.0)
     assert float(row["volume"]) == pytest.approx(1.0)
     assert row["method"] == "stl-mesh"
 

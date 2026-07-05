@@ -27,6 +27,7 @@ def test_generated_step_box_measurements(tmp_path: Path) -> None:
     measured = measure(step_path)
     assert measured.volume == pytest.approx(6.0)
     assert measured.surface_area == pytest.approx(22.0)
+    assert measured.base_area == pytest.approx(6.0)
     assert measured.is_watertight is True
     assert measured.mesh_deflection == pytest.approx((1.0**2 + 2.0**2 + 3.0**2) ** 0.5 * 1.0e-4)
 
@@ -146,6 +147,7 @@ def test_step_assembly_files_accept_global_component_selection(tmp_path: Path) -
     measured = measure([step_a, step_b], step_components=(2, 3))
     assert measured.volume == pytest.approx(2.0)
     assert measured.surface_area == pytest.approx(12.0)
+    assert measured.base_area == pytest.approx(2.0)
     assert measured.method == "step-brep-assembly"
     assert measured.step_components == (2, 3)
     assert measured.step_component_names == (
@@ -161,6 +163,42 @@ def test_step_assembly_files_accept_global_component_selection(tmp_path: Path) -
         "body.step: Component 2",
         "wing.step: Component 1",
     )
+
+
+def test_step_base_area_uses_axis_mapped_xmax(tmp_path: Path) -> None:
+    step_path = tmp_path / "asymmetric_ends.step"
+    small_end = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    large_end = BRepPrimAPI_MakeBox(
+        gp_Pnt(1000.0, 0.0, 0.0),
+        1000.0,
+        2000.0,
+        1000.0,
+    ).Shape()
+    _write_step_compound(step_path, [small_end, large_end])
+
+    positive_x = measure(step_path)
+    negative_x = measure(step_path, axis_map="-x,y,z")
+
+    assert positive_x.base_area == pytest.approx(2.0)
+    assert negative_x.base_area == pytest.approx(1.0)
+
+
+def test_step_base_area_falls_back_to_mesh_when_exact_calculation_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    step_path = tmp_path / "box.step"
+    shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()
+    writer = STEPControl_Writer()
+    writer.Transfer(shape, STEPControl_AsIs)
+    assert writer.Write(str(step_path)) == IFSelect_RetDone
+
+    monkeypatch.setattr("cadmetrics.io._ocp_xmax_base_area", lambda *args, **kwargs: (0.0, False, True))
+
+    measured = measure(step_path)
+
+    assert measured.base_area == pytest.approx(6.0)
+    assert "mesh fallback" in "; ".join(measured.warnings)
 
 
 def test_step_assembly_component_selection_can_exclude_an_entire_file(tmp_path: Path) -> None:
