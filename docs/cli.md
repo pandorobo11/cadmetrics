@@ -203,6 +203,8 @@ All calculation commands use the same CSV schema:
 | column | description |
 |---|---|
 | `file` | input path, or semicolon-separated paths for multi-file assemblies |
+| `step_components` | selected STEP component indexes, comma-separated; empty for STL or STEP files without solid component metadata |
+| `step_component_names` | selected STEP component names, semicolon-separated |
 | `input_unit` | unit used when reading the model |
 | `output_unit` | unit used for output values |
 | `roll_deg` | equivalent roll angle |

@@ -92,6 +92,9 @@ components enabled preserves the default behavior. For multi-file STEP assemblie
 grouped by file name and share one global index sequence. STL component filtering is not
 supported.
 
+Saved CSV results include `step_components` and `step_component_names`, so calculations can be
+traced back to the component checkboxes that were enabled.
+
 ### Tessellation
 
 `STEP metrics` controls how STEP volume and surface area are calculated:

@@ -24,6 +24,8 @@ ATTITUDE_MODES = ("alpha-beta", "roll-pitch", "vector")
 
 CSV_FIELDS = [
     "file",
+    "step_components",
+    "step_component_names",
     "input_unit",
     "output_unit",
     "roll_deg",

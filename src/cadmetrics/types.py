@@ -96,6 +96,8 @@ class MeasurementRow:
     y_max: float | None = None
     z_min: float | None = None
     z_max: float | None = None
+    step_components: tuple[int, ...] = field(default_factory=tuple)
+    step_component_names: tuple[str, ...] = field(default_factory=tuple)
     mesh_deflection: float | None = None
     angular_deflection: float | None = None
     method: str | None = None
@@ -107,6 +109,8 @@ class MeasurementRow:
     def to_csv_row(self) -> dict[str, str | float | bool | None]:
         return {
             "file": self.file,
+            "step_components": ",".join(str(index) for index in self.step_components),
+            "step_component_names": "; ".join(self.step_component_names),
             "input_unit": self.input_unit,
             "output_unit": self.output_unit,
             "roll_deg": self.roll_deg,

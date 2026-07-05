@@ -346,6 +346,8 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
     assert rows == [
         {
             "file": "model.stl",
+            "step_components": "",
+            "step_component_names": "",
             "input_unit": "m",
             "output_unit": "m",
             "roll_deg": "0.0",

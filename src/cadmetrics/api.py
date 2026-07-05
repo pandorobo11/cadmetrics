@@ -84,6 +84,8 @@ def measure(
         y_max=model.y_max,
         z_min=model.z_min,
         z_max=model.z_max,
+        step_components=model.selected_components,
+        step_component_names=_selected_component_names(model),
         mesh_deflection=model.mesh_deflection,
         angular_deflection=model.angular_deflection,
         method=_method_name(model, projected=False),
@@ -190,6 +192,8 @@ def _projected_row(
         y_max=model.y_max,
         z_min=model.z_min,
         z_max=model.z_max,
+        step_components=model.selected_components,
+        step_component_names=_selected_component_names(model),
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
         method=method,
@@ -265,6 +269,14 @@ def sweep(
         if progress_callback is not None:
             progress_callback(index, total, orientation)
     return rows
+
+
+def _selected_component_names(model: ModelData) -> tuple[str, ...]:
+    return tuple(
+        model.component_names[index - 1]
+        for index in model.selected_components
+        if 1 <= index <= len(model.component_names)
+    )
 
 
 def _method_name(model: ModelData, *, projected: bool) -> str:

@@ -147,10 +147,20 @@ def test_step_assembly_files_accept_global_component_selection(tmp_path: Path) -
     assert measured.volume == pytest.approx(2.0)
     assert measured.surface_area == pytest.approx(12.0)
     assert measured.method == "step-brep-assembly"
+    assert measured.step_components == (2, 3)
+    assert measured.step_component_names == (
+        "body.step: Component 2",
+        "wing.step: Component 1",
+    )
 
     projected = project([step_a, step_b], step_components=(2, 3))
     assert projected.projected_area == pytest.approx(2.0)
     assert projected.method == "step-brep-assembly+mesh-projection"
+    assert projected.step_components == (2, 3)
+    assert projected.step_component_names == (
+        "body.step: Component 2",
+        "wing.step: Component 1",
+    )
 
 
 def test_step_assembly_component_selection_can_exclude_an_entire_file(tmp_path: Path) -> None:

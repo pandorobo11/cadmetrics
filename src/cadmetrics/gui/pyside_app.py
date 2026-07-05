@@ -26,6 +26,8 @@ UNIT_OPTIONS = ["auto", "m", "mm", "cm", "in", "ft"]
 OUTPUT_UNIT_OPTIONS = ["m", "mm", "cm", "in", "ft"]
 TABLE_COLUMNS = [
     "file",
+    "step_components",
+    "step_component_names",
     "input_unit",
     "output_unit",
     "roll_deg",
