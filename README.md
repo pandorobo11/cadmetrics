@@ -161,17 +161,21 @@ See [Attitude Definition](docs/attitude.md) for formulas and examples.
 ## Python API
 
 ```python
-from cadmetrics import measure, project, sweep
+from cadmetrics import inspect_model, measure, project, sweep
 
 metrics = measure("model.stl")
 single = project("model.stl", alpha_deg=10)
 rows = sweep("model.stl", alpha="-10:20:1", beta="-5:5:1", roll="0")
 
 assembly = project(["fuselage.step", "wing.step", "tail.step"], alpha_deg=10)
+components = inspect_model(["fuselage.step", "wing.step"]).component_names
+filtered = project(["fuselage.step", "wing.step"], step_components=(1, 3))
 ```
 
 The Python API keeps lower-level `alpha`, `beta`, `roll`, and `direction` arguments. The CLI and
 GUI present these as explicit `alpha-beta`, `roll-pitch`, and `vector` input modes.
+For multi-file STEP component filtering, `step_components` uses the 1-based global order reported
+by `inspect_model([...]).component_names`.
 
 ## Documentation
 
@@ -202,8 +206,9 @@ See [Accuracy Notes](docs/accuracy.md) for details.
 
 ## Project Status
 
-The first milestone focuses on a practical local workflow for one model at a time. Deferred
-items include multi-model display, geometry repair, and Excel/HTML reports.
+The first milestone focuses on a practical local workflow for one combined calculation model at a
+time. Deferred items include separate multi-model display, geometry repair, and Excel/HTML
+reports.
 
 ## License
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from cadmetrics.api import measure, project
+from cadmetrics.api import inspect_model, measure, project
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -128,3 +128,32 @@ def test_satellite_step_matches_fusion_validation_values() -> None:
         rel=1.0e-3,
     )
     assert measured.is_watertight is True
+
+
+def test_multi_file_step_component_filter_sample() -> None:
+    if not HAS_OCP:
+        pytest.skip("STEP sample checks require cadmetrics[step]")
+
+    sample = SAMPLES["multi_file_step_components"]
+    paths = [
+        ROOT / sample["files"]["box_pair_a_step"],
+        ROOT / sample["files"]["box_pair_b_step"],
+    ]
+    expected = sample["expected"]
+
+    inspected = inspect_model(paths)
+    assert len(inspected.component_names) == expected["component_count"]
+    assert inspected.selected_components == tuple(range(1, expected["component_count"] + 1))
+
+    measured = measure(paths)
+    projected = project(paths)
+    assert measured.volume == pytest.approx(expected["volume"])
+    assert measured.surface_area == pytest.approx(expected["surface_area"])
+    assert projected.projected_area == pytest.approx(expected["projected_area_x"])
+
+    selected = tuple(expected["selected_components"])
+    selected_measured = measure(paths, step_components=selected)
+    selected_projected = project(paths, step_components=selected)
+    assert selected_measured.volume == pytest.approx(expected["selected_volume"])
+    assert selected_measured.surface_area == pytest.approx(expected["selected_surface_area"])
+    assert selected_projected.projected_area == pytest.approx(expected["selected_projected_area_x"])

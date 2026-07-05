@@ -48,6 +48,30 @@
         "step": "samples/frame_with_hole/frame_with_hole.step"
       }
     },
+    "multi_file_step_components": {
+      "description": "Two STEP files with two unit-cube components each for GUI multi-file filtering.",
+      "expected": {
+        "component_count": 4,
+        "is_watertight": true,
+        "projected_area_x": 4.0,
+        "selected_components": [
+          2,
+          3
+        ],
+        "selected_projected_area_x": 2.0,
+        "selected_surface_area": 12.0,
+        "selected_volume": 2.0,
+        "surface_area": 24.0,
+        "volume": 4.0
+      },
+      "files": {
+        "ascii_stl": null,
+        "binary_stl": null,
+        "box_pair_a_step": "samples/multi_file_step_components/box_pair_a.step",
+        "box_pair_b_step": "samples/multi_file_step_components/box_pair_b.step",
+        "step": null
+      }
+    },
     "open_cube_missing_face": {
       "description": "1 x 1 x 1 cube STL with the +Z face removed.",
       "expected": {

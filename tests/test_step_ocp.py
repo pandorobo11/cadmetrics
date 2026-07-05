@@ -125,6 +125,62 @@ def test_step_assembly_files_are_boolean_unioned_for_measurements(tmp_path: Path
     assert projected.method == "step-brep-assembly+mesh-projection"
 
 
+def test_step_assembly_files_accept_global_component_selection(tmp_path: Path) -> None:
+    step_a = tmp_path / "body.step"
+    step_b = tmp_path / "wing.step"
+    box_a1 = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    box_a2 = BRepPrimAPI_MakeBox(gp_Pnt(0.0, 2000.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
+    box_b1 = BRepPrimAPI_MakeBox(gp_Pnt(0.0, 4000.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
+
+    _write_step_compound(step_a, [box_a1, box_a2])
+    _write_step_compound(step_b, [box_b1])
+
+    inspected = inspect_model([step_a, step_b])
+    assert inspected.component_names == (
+        "body.step: Component 1",
+        "body.step: Component 2",
+        "wing.step: Component 1",
+    )
+    assert inspected.selected_components == (1, 2, 3)
+
+    measured = measure([step_a, step_b], step_components=(2, 3))
+    assert measured.volume == pytest.approx(2.0)
+    assert measured.surface_area == pytest.approx(12.0)
+    assert measured.method == "step-brep-assembly"
+
+    projected = project([step_a, step_b], step_components=(2, 3))
+    assert projected.projected_area == pytest.approx(2.0)
+    assert projected.method == "step-brep-assembly+mesh-projection"
+
+
+def test_step_assembly_component_selection_can_exclude_an_entire_file(tmp_path: Path) -> None:
+    step_a = tmp_path / "body.step"
+    step_b = tmp_path / "wing.step"
+    _write_step_compound(step_a, [BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()])
+    _write_step_compound(
+        step_b,
+        [BRepPrimAPI_MakeBox(gp_Pnt(0.0, 2000.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()],
+    )
+
+    measured = measure([step_a, step_b], step_components=(2,))
+
+    assert measured.volume == pytest.approx(1.0)
+    assert measured.surface_area == pytest.approx(6.0)
+    assert measured.is_watertight is True
+
+
+def test_step_assembly_component_selection_rejects_empty_and_out_of_range(tmp_path: Path) -> None:
+    step_a = tmp_path / "body.step"
+    step_b = tmp_path / "wing.step"
+    _write_step_compound(step_a, [BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()])
+    _write_step_compound(step_b, [BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()])
+
+    with pytest.raises(ValueError, match="Select at least one STEP component"):
+        measure([step_a, step_b], step_components=())
+    with pytest.raises(ValueError, match="STEP component index out of range"):
+        measure([step_a, step_b], step_components=(3,))
+
+
 def test_mixed_step_and_stl_assembly_is_rejected(tmp_path: Path) -> None:
     step_path = tmp_path / "box.step"
     shape = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
@@ -141,3 +197,14 @@ def test_step_component_name_filter_rejects_internal_names() -> None:
     assert _usable_step_component_name("  horizontal tail:1  ") == "horizontal tail:1"
     assert _usable_step_component_name("3") is None
     assert _usable_step_component_name("Open CASCADE STEP translator 7.9 6") is None
+
+
+def _write_step_compound(path: Path, shapes) -> None:
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for shape in shapes:
+        builder.Add(compound, shape)
+    writer = STEPControl_Writer()
+    writer.Transfer(compound, STEPControl_AsIs)
+    assert writer.Write(str(path)) == IFSelect_RetDone

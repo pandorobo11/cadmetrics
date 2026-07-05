@@ -104,16 +104,14 @@ uv sync --extra gui
 cadmetrics-gui
 ```
 
-It supports one loaded model at a time, immediate shape display after Browse file selection, a
-PyVista 3D view, unit controls, sweep execution, a progress bar, cancellation for sweep jobs, a
-result table, and CSV export. GUI attitude input can be alpha/beta, roll/pitch, or unit-vector
-components. Angle modes use separate Start, End, and Step fields. Unit-vector mode is a single
-direction without sweep. The viewer supports transparency and mesh-edge toggles, a conditions
-and results overlay, row-selection camera alignment, PNG image export, and STEP solid component
-filters in Advanced settings.
-
-The GUI currently loads one file at a time. Multi-file assembly input is a CLI/API feature; GUI
-multi-file selection is deferred unless the single-file workflow needs it.
+It supports one combined calculation model at a time, immediate shape display after Browse file
+selection, a PyVista 3D view, unit controls, sweep execution, a progress bar, cancellation for
+sweep jobs, a result table, and CSV export. GUI file selection can load one file or a same-format
+multi-file assembly. GUI attitude input can be alpha/beta, roll/pitch, or unit-vector components.
+Angle modes use separate Start, End, and Step fields. Unit-vector mode is a single direction
+without sweep. The viewer supports transparency and mesh-edge toggles, a conditions and results
+overlay, row-selection camera alignment, PNG image export, and STEP solid component filters in
+Advanced settings for single STEP files and same-format multi-file STEP assemblies.
 
 ## CSV Columns
 
@@ -161,6 +159,6 @@ multi-file selection is deferred unless the single-file workflow needs it.
 
 ## Deferred
 
-- Multiple model display
+- Multiple model display as separate independently styled objects
 - Excel and HTML report output
 - Geometry repair

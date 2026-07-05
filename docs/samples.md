@@ -18,6 +18,10 @@ Most samples include:
 `open_cube_missing_face` intentionally has no STEP file because it is a non-watertight STL
 fixture for warning behavior.
 
+`multi_file_step_components` intentionally has no STL file because it is a GUI/API fixture for
+selecting components across multiple STEP files. In the GUI, select both
+`box_pair_a.step` and `box_pair_b.step` at the same time.
+
 STEP files declare millimeter units. Analytic STEP samples are generated at 1000x their
 meter dimensions so `cadmetrics` with default `--unit auto --output-unit m` reports the same
 meter-based expected values as the STL fixtures.
@@ -32,6 +36,7 @@ meter-based expected values as the STL fixtures.
 | `cylinder_x_r1_l2` | axis-sensitive curved shape | volume `2*pi`, surface `6*pi`, +X projection `pi` |
 | `two_boxes_overlap_projection` | projected-overlap removal | volume `2`, surface `12`, +X projection `1` |
 | `two_boxes_intersecting` | STEP boolean-union vs raw STL overlap behavior | STEP volume `1.5`, STEP surface `8`, STL volume `2`, STL surface `12`, +X projection `1` |
+| `multi_file_step_components` | multi-file STEP component filtering | all components: volume `4`, surface `24`; components `2,3`: volume `2`, surface `12` |
 | `open_cube_missing_face` | non-watertight STL warning | surface `5`, +X projection `1`, `is_watertight=false` |
 | `frame_with_hole` | hole and concave outline behavior | volume `0.8`, surface `17.6`, +Z projection `8` |
 | `satellite` | manually added Fusion 360 validation model | see [Fusion validation notes](fusion_validation.md) |

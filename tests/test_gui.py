@@ -12,7 +12,10 @@ from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
 from cadmetrics.cli import CSV_FIELDS
 from cadmetrics.gui.pyside_app import (
+    _component_display_groups,
     _default_camera_geometry,
+    _format_file_selection,
+    _format_model_file_label,
     _overlay_text,
     _projection_arrow_geometry,
     _projection_camera_geometry,
@@ -248,6 +251,56 @@ def test_gui_job_delegates_single_vector(monkeypatch) -> None:
 
     assert len(rows) == 1
     assert [kwargs["direction"] for _, kwargs in captured] == ["1.0,1.0,0.0"]
+
+
+def test_gui_job_passes_multiple_files_as_one_assembly(monkeypatch) -> None:
+    captured = {}
+    paths = (Path("body.stl"), Path("wing.stl"))
+
+    def fake_sweep(path, **kwargs):
+        captured["path"] = path
+        captured["kwargs"] = kwargs
+        return [_row()]
+
+    monkeypatch.setattr("cadmetrics.gui.jobs.sweep", fake_sweep)
+    request = CalculationRequest(
+        file=paths,
+        attitude_mode="alpha_beta",
+        alpha_start=0.0,
+        alpha_end=0.0,
+        beta_start=0.0,
+        beta_end=0.0,
+        step_components=(2,),
+    )
+
+    assert run_calculation(request) == [_row()]
+    assert captured["path"] == paths
+    assert captured["kwargs"]["step_components"] == (2,)
+
+
+def test_gui_formats_multiple_file_selection_labels() -> None:
+    paths = (Path("/tmp/body.step"), Path("/tmp/wing.step"), Path("/tmp/tail.step"))
+
+    assert _format_file_selection(paths) == "body.step + 2 more"
+    assert _format_model_file_label(Path("; ".join(str(path) for path in paths))) == (
+        "body.step + wing.step + tail.step"
+    )
+
+
+def test_gui_groups_multi_file_step_components_by_file() -> None:
+    groups = _component_display_groups(
+        (
+            "body.step: Component 1",
+            "body.step: Component 2",
+            "wing.step: Component 1",
+        ),
+        grouped=True,
+    )
+
+    assert groups == [
+        ("body.step", [(1, "Component 1"), (2, "Component 2")]),
+        ("wing.step", [(3, "Component 1")]),
+    ]
 
 
 def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:

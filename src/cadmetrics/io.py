@@ -25,8 +25,6 @@ def load_model(
 ) -> ModelData:
     paths = _normalize_model_paths(path)
     if len(paths) > 1:
-        if step_components is not None:
-            raise ValueError("STEP component selection is not available for multi-file assemblies.")
         return _load_assembly(
             paths,
             input_unit=input_unit,
@@ -34,6 +32,7 @@ def load_model(
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
             step_metric_source=step_metric_source,
+            step_components=step_components,
         )
 
     model_path = paths[0]
@@ -70,6 +69,7 @@ def _load_assembly(
     mesh_deflection: float | str,
     angular_deflection: float,
     step_metric_source: str,
+    step_components: tuple[int, ...] | None,
 ) -> ModelData:
     suffixes = {path.suffix.lower() for path in paths}
     if suffixes <= STL_SUFFIXES:
@@ -82,6 +82,7 @@ def _load_assembly(
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
             step_metric_source=step_metric_source,
+            step_components=step_components,
         )
     if suffixes & STL_SUFFIXES and suffixes & STEP_SUFFIXES:
         raise ValueError("Cannot assemble mixed STEP and STL inputs.")
@@ -334,6 +335,7 @@ def _load_step_assembly(
     mesh_deflection: float | str,
     angular_deflection: float,
     step_metric_source: str,
+    step_components: tuple[int, ...] | None,
 ) -> ModelData:
     try:
         from OCP.Bnd import Bnd_Box
@@ -360,10 +362,8 @@ def _load_step_assembly(
     warnings: list[str] = []
     detected_units: list[str] = []
     component_names: list[str] = []
-    selected_components: list[int] = []
-    builder = BRep_Builder()
-    compound = TopoDS_Compound()
-    builder.MakeCompound(compound)
+    solids_by_component: list[Any] = []
+    non_solid_shapes: list[Any] = []
 
     for path in paths:
         reader = STEPControl_Reader()
@@ -394,15 +394,31 @@ def _load_step_assembly(
         names = _step_component_names_from_xcaf(path, expected_count=len(solids))
         if not names:
             names = tuple(f"Component {index}" for index in range(1, len(solids) + 1))
-        for name in names:
+        for name, solid in zip(names, solids, strict=True):
             component_names.append(f"{path.name}: {name}")
-            selected_components.append(len(selected_components) + 1)
+            solids_by_component.append(solid)
 
         if solids:
-            for solid in solids:
-                builder.Add(compound, solid)
-        else:
-            builder.Add(compound, original_shape)
+            continue
+        if step_components is None:
+            non_solid_shapes.append(original_shape)
+
+    selected_components = _resolve_step_component_selection(
+        step_components,
+        len(solids_by_component),
+    )
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    if solids_by_component:
+        for component_index in selected_components:
+            builder.Add(compound, solids_by_component[component_index - 1])
+    elif non_solid_shapes:
+        for shape_item in non_solid_shapes:
+            builder.Add(compound, shape_item)
+        warnings.append("STEP assembly did not contain solid components.")
+    else:
+        warnings.append("STEP assembly did not contain solid components.")
 
     if input_unit.strip().lower() == "auto":
         unique_units = set(detected_units)
@@ -649,13 +665,15 @@ def _resolve_step_component_selection(
     component_count: int,
 ) -> tuple[int, ...]:
     if component_count == 0:
-        if step_components:
+        if step_components is not None:
             raise ValueError("STEP component selection is only available for solid components.")
         return ()
-    if not step_components:
+    if step_components is None:
         return tuple(range(1, component_count + 1))
 
     selected = tuple(dict.fromkeys(int(index) for index in step_components))
+    if not selected:
+        raise ValueError("Select at least one STEP component.")
     invalid = [index for index in selected if index < 1 or index > component_count]
     if invalid:
         raise ValueError(

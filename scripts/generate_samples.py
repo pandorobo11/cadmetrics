@@ -65,6 +65,7 @@ def main() -> None:
             "files": files,
         }
 
+    add_multi_file_step_component_filter_sample(metadata)
     add_satellite_metadata(metadata)
 
     (SAMPLES_DIR / "metadata.json").write_text(
@@ -316,6 +317,62 @@ def frame_with_hole_mesh() -> trimesh.Trimesh:
     mesh = trimesh.Trimesh(vertices=np.asarray(vertices), faces=np.asarray(faces), process=False)
     mesh.merge_vertices()
     return mesh
+
+
+def add_multi_file_step_component_filter_sample(metadata: dict[str, object]) -> None:
+    sample_name = "multi_file_step_components"
+    sample_dir = SAMPLES_DIR / sample_name
+    sample_dir.mkdir(exist_ok=True)
+    box_pair_a_path = sample_dir / "box_pair_a.step"
+    box_pair_b_path = sample_dir / "box_pair_b.step"
+    write_step(
+        step_compound(
+            [
+                make_box_shape_m(0.0, 0.0, 0.0, 1.0, 1.0, 1.0),
+                make_box_shape_m(0.0, 2.0, 0.0, 1.0, 1.0, 1.0),
+            ]
+        ),
+        box_pair_a_path,
+    )
+    write_step(
+        step_compound(
+            [
+                make_box_shape_m(0.0, 4.0, 0.0, 1.0, 1.0, 1.0),
+                make_box_shape_m(0.0, 6.0, 0.0, 1.0, 1.0, 1.0),
+            ]
+        ),
+        box_pair_b_path,
+    )
+    metadata["samples"][sample_name] = {
+        "description": "Two STEP files with two unit-cube components each for GUI multi-file filtering.",
+        "expected": {
+            "component_count": 4,
+            "selected_components": [2, 3],
+            "selected_volume": 2.0,
+            "selected_surface_area": 12.0,
+            "selected_projected_area_x": 2.0,
+            "volume": 4.0,
+            "surface_area": 24.0,
+            "projected_area_x": 4.0,
+            "is_watertight": True,
+        },
+        "files": {
+            "ascii_stl": None,
+            "binary_stl": None,
+            "step": None,
+            "box_pair_a_step": str(box_pair_a_path.relative_to(ROOT)),
+            "box_pair_b_step": str(box_pair_b_path.relative_to(ROOT)),
+        },
+    }
+
+
+def step_compound(shapes: list[object]) -> object:
+    compound = TopoDS_Compound()
+    builder = BRep_Builder()
+    builder.MakeCompound(compound)
+    for shape in shapes:
+        builder.Add(compound, shape)
+    return compound
 
 
 def add_satellite_metadata(metadata: dict[str, object]) -> None:

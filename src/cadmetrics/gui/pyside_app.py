@@ -11,7 +11,7 @@ import numpy as np
 from cadmetrics.api import inspect_model
 from cadmetrics.coordinates import AXIS_CHOICES
 from cadmetrics.gui.export import write_rows_csv
-from cadmetrics.gui.jobs import CalculationRequest, run_calculation
+from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath, run_calculation
 from cadmetrics.orientation import Orientation, parse_vector, projection_direction_for_orientation
 from cadmetrics.projection import projection_basis
 from cadmetrics.types import MeasurementRow, ModelData
@@ -165,7 +165,8 @@ if QtWidgets is not None:
             self._overlay_actor: Any | None = None
             self._overlay_row: MeasurementRow | None = None
             self._component_checkboxes: list[QtWidgets.QCheckBox] = []
-            self._component_filter_path: Path | None = None
+            self._component_filter_path: tuple[Path, ...] | None = None
+            self._file_paths: tuple[Path, ...] = ()
 
             self._build_ui()
             self._set_running(False)
@@ -396,7 +397,7 @@ if QtWidgets is not None:
 
             setup_layout = self._make_section(panel_layout, "Setup")
             self.file_edit = QtWidgets.QLineEdit()
-            self.file_edit.setPlaceholderText("STL or STEP file")
+            self.file_edit.setPlaceholderText("STL or STEP file(s)")
             browse = QtWidgets.QPushButton("Browse")
             browse.setObjectName("secondaryButton")
             browse.clicked.connect(self._browse_file)
@@ -843,26 +844,28 @@ if QtWidgets is not None:
             return self._plotter
 
         def _browse_file(self) -> None:
-            file_name, _ = QtWidgets.QFileDialog.getOpenFileName(
+            file_names, _ = QtWidgets.QFileDialog.getOpenFileNames(
                 self,
-                "Open CAD file",
+                "Open CAD file(s)",
                 "",
                 "CAD Files (*.stl *.step *.stp);;All Files (*)",
             )
-            if file_name:
-                self.file_edit.setText(file_name)
+            if file_names:
+                self._set_file_paths(tuple(Path(name) for name in file_names))
                 self._clear_component_filters()
                 self._load_model()
 
         def _request(self) -> CalculationRequest:
-            path = Path(self.file_edit.text()).expanduser()
-            if not path.exists():
-                raise ValueError(f"File does not exist: {path}")
+            paths = self._current_file_paths()
+            for path in paths:
+                if not path.exists():
+                    raise ValueError(f"File does not exist: {path}")
+            model_path: GuiModelPath = paths[0] if len(paths) == 1 else paths
             mesh_deflection: float | str = (
                 "auto" if self.mesh_deflection_auto.isChecked() else self.mesh_deflection.value()
             )
             return CalculationRequest(
-                file=path,
+                file=model_path,
                 attitude_mode=self.attitude_mode.currentData(),
                 input_unit=self.input_unit.currentText(),
                 output_unit=self.output_unit.currentText(),
@@ -885,8 +888,24 @@ if QtWidgets is not None:
                 vector_y=self.vector_y.value(),
                 vector_z=self.vector_z.value(),
                 axis_map=self._axis_map(),
-                step_components=self._selected_step_components(path),
+                step_components=self._selected_step_components(paths),
             )
+
+        def _set_file_paths(self, paths: tuple[Path, ...]) -> None:
+            self._file_paths = tuple(path.expanduser() for path in paths)
+            label = _format_file_selection(self._file_paths)
+            self.file_edit.setText(label)
+            self.file_edit.setToolTip("\n".join(str(path) for path in self._file_paths))
+
+        def _current_file_paths(self) -> tuple[Path, ...]:
+            text = self.file_edit.text().strip()
+            if self._file_paths and text == _format_file_selection(self._file_paths):
+                return self._file_paths
+            if not text:
+                raise ValueError("Select one or more model files.")
+            self._file_paths = ()
+            self.file_edit.setToolTip("")
+            return (Path(text).expanduser(),)
 
         def _axis_map(self) -> str:
             return ",".join(
@@ -1025,7 +1044,8 @@ if QtWidgets is not None:
             self._sync_component_controls(False)
 
         def _populate_component_filters(self, model: ModelData) -> None:
-            current_selected = set(self._selected_step_components(model.path) or ())
+            paths = self._model_paths(model)
+            current_selected = set(self._selected_step_components(paths) or ())
             if not current_selected:
                 current_selected = set(model.selected_components)
             while self.component_list_layout.count():
@@ -1034,7 +1054,7 @@ if QtWidgets is not None:
                 if widget is not None:
                     widget.deleteLater()
             self._component_checkboxes = []
-            self._component_filter_path = model.path
+            self._component_filter_path = paths
             component_count = len(model.component_names)
             if component_count <= 1:
                 message = (
@@ -1050,20 +1070,29 @@ if QtWidgets is not None:
             self.component_summary.setText(
                 f"{len(selected)} of {component_count} components enabled."
             )
-            for index, name in enumerate(model.component_names, start=1):
-                checkbox = QtWidgets.QCheckBox(f"{index}: {name}")
-                checkbox.setProperty("component_index", index)
-                checkbox.setChecked(index in selected)
-                checkbox.toggled.connect(self._sync_component_summary)
-                self.component_list_layout.addWidget(checkbox)
-                self._component_checkboxes.append(checkbox)
+            groups = _component_display_groups(
+                model.component_names,
+                grouped=model.is_assembly and model.source_format == "step",
+            )
+            for group_name, components in groups:
+                if group_name is not None:
+                    group_label = QtWidgets.QLabel(group_name)
+                    group_label.setStyleSheet("color: #5f6872; font-weight: 600; padding-top: 4px;")
+                    self.component_list_layout.addWidget(group_label)
+                for index, name in components:
+                    checkbox = QtWidgets.QCheckBox(f"{index}: {name}")
+                    checkbox.setProperty("component_index", index)
+                    checkbox.setChecked(index in selected)
+                    checkbox.toggled.connect(self._sync_component_summary)
+                    self.component_list_layout.addWidget(checkbox)
+                    self._component_checkboxes.append(checkbox)
             self.component_list_layout.addStretch(1)
             self._sync_component_controls(True)
 
-        def _selected_step_components(self, path: Path) -> tuple[int, ...] | None:
+        def _selected_step_components(self, paths: tuple[Path, ...]) -> tuple[int, ...] | None:
             if not self._component_checkboxes:
                 return None
-            if self._component_filter_path is None or path != self._component_filter_path:
+            if self._component_filter_path is None or paths != self._component_filter_path:
                 return None
             selected = tuple(
                 int(checkbox.property("component_index"))
@@ -1089,6 +1118,11 @@ if QtWidgets is not None:
         def _sync_component_controls(self, enabled: bool) -> None:
             self.component_all_button.setEnabled(enabled)
             self.component_none_button.setEnabled(enabled)
+
+        def _model_paths(self, model: ModelData) -> tuple[Path, ...]:
+            if self._file_paths and str(model.path) == "; ".join(str(path) for path in self._file_paths):
+                return self._file_paths
+            return (model.path,)
 
         def _plot_model(self, model: ModelData) -> None:
             if self._plotter is None:
@@ -1444,7 +1478,7 @@ if QtWidgets is not None:
 
         def _show_model_info(self, model: ModelData) -> None:
             lines = [
-                f"file: {model.path.name}",
+                f"file: {_format_model_file_label(model.path)}",
                 f"format/unit: {model.source_format}, {model.output_unit}",
                 f"metrics: {model.step_metric_source or 'mesh'}",
                 f"mesh: {model.vertex_count} vertices, {model.face_count} faces",
@@ -1464,6 +1498,8 @@ if QtWidgets is not None:
                     "components: "
                     f"{len(model.selected_components)} of {len(model.component_names)} selected",
                 )
+            if model.is_assembly:
+                lines.insert(1, "assembly: True")
             if model.warnings:
                 lines.append(f"warnings: {'; '.join(model.warnings)}")
             self.model_info.setText("\n".join(lines))
@@ -1499,6 +1535,49 @@ def _format_cell(value: object) -> str:
     return str(value)
 
 
+def _format_file_selection(paths: tuple[Path, ...]) -> str:
+    if len(paths) == 0:
+        return ""
+    if len(paths) == 1:
+        return str(paths[0])
+    first = paths[0].name
+    return f"{first} + {len(paths) - 1} more"
+
+
+def _format_model_file_label(path: Path) -> str:
+    text = str(path)
+    parts = [part.strip() for part in text.split(";") if part.strip()]
+    if len(parts) <= 1:
+        return path.name
+    names = [Path(part).name for part in parts]
+    if len(names) <= 3:
+        return " + ".join(names)
+    return f"{names[0]} + {len(names) - 1} more"
+
+
+def _component_display_groups(
+    component_names: tuple[str, ...],
+    *,
+    grouped: bool,
+) -> list[tuple[str | None, list[tuple[int, str]]]]:
+    if not grouped:
+        return [(None, list(enumerate(component_names, start=1)))]
+
+    groups: list[tuple[str | None, list[tuple[int, str]]]] = []
+    group_index_by_name: dict[str | None, int] = {}
+    for index, full_name in enumerate(component_names, start=1):
+        if ": " in full_name:
+            group_name, component_name = full_name.split(": ", 1)
+        else:
+            group_name = None
+            component_name = full_name
+        if group_name not in group_index_by_name:
+            group_index_by_name[group_name] = len(groups)
+            groups.append((group_name, []))
+        groups[group_index_by_name[group_name]][1].append((index, component_name))
+    return groups
+
+
 def _overlay_text(
     row: MeasurementRow | None,
     *,
@@ -1508,7 +1587,7 @@ def _overlay_text(
     if row is not None:
         lines = [
             "cadmetrics result",
-            f"file: {Path(row.file).name}",
+            f"file: {_format_model_file_label(Path(row.file))}",
             f"unit: {row.output_unit}",
             f"roll/pitch: {_format_angle(row.roll_deg)}, {_format_angle(row.pitch_deg)} deg",
             f"alpha/beta: {_format_angle(row.alpha_deg)}, {_format_angle(row.beta_deg)} deg",
@@ -1550,7 +1629,7 @@ def _overlay_text(
     if model is not None:
         lines.extend(
             [
-                f"file: {model.path.name}",
+                f"file: {_format_model_file_label(model.path)}",
                 f"format: {model.source_format}",
                 f"unit: {model.output_unit}",
                 "bounds: "
@@ -1563,6 +1642,8 @@ def _overlay_text(
                 f"cadmetrics_hash: {model.cadmetrics_hash}",
             ]
         )
+        if model.is_assembly:
+            lines.insert(2, "assembly: True")
     if request is not None:
         lines.append(f"input: {request.attitude_mode}")
         if request.attitude_mode == "roll_pitch":

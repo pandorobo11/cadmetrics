@@ -10,11 +10,12 @@ from cadmetrics.types import MeasurementRow
 
 AttitudeInputMode = Literal["alpha_beta", "roll_pitch", "vector"]
 ProgressCallback = Callable[[int, int, str], None]
+GuiModelPath = Path | tuple[Path, ...]
 
 
 @dataclass(frozen=True)
 class CalculationRequest:
-    file: Path
+    file: GuiModelPath
     attitude_mode: AttitudeInputMode = "alpha_beta"
     input_unit: str = "auto"
     output_unit: str = "m"

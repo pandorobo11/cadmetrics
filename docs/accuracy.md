@@ -75,8 +75,10 @@ STEP/XCAF names when available and otherwise fall back to solid order in the loa
 Full assembly hierarchy is not preserved yet.
 
 The same geometry rule applies to multi-file STEP input. Each STEP file contributes its detected
-solids to one combined model. With `--unit auto`, all detected STEP units must match; otherwise,
-specify a common `--unit` explicitly after confirming the files use the same source unit.
+solids to one combined model. Python API component filtering uses the global 1-based component
+order reported by `inspect_model([...]).component_names`; the GUI shows the same order grouped by
+file name. With `--unit auto`, all detected STEP units must match; otherwise, specify a common
+`--unit` explicitly after confirming the files use the same source unit.
 
 ## Projected Area Definition
 

@@ -1,6 +1,6 @@
 # GUI Usage
 
-The PySide6 GUI is a local desktop tool for loading one STL or STEP file, checking the shape,
+The PySide6 GUI is a local desktop tool for loading STL or STEP geometry, checking the shape,
 running projected-area sweeps, and saving CSV results.
 
 ## Install
@@ -40,13 +40,13 @@ open dist/Cadmetrics.app
 
 ![cadmetrics GUI showing a satellite STEP sweep](assets/gui-main.png)
 
-The screenshot shows the default single-model workflow: a STEP sample loaded in the 3D view,
-the advanced axis/tessellation controls collapsed, an alpha sweep configured, and the results
-area below the viewer.
+The screenshot shows the default workflow: a STEP sample loaded in the 3D view, the advanced
+axis/tessellation controls collapsed, an alpha sweep configured, and the results area below the
+viewer.
 
 ## Basic Workflow
 
-1. Click `Browse` and choose an STL or STEP file.
+1. Click `Browse` and choose one or more STL files, or one or more STEP files.
 2. Confirm input and output units.
 3. Adjust tessellation settings if needed.
 4. Choose the attitude input mode.
@@ -54,7 +54,9 @@ area below the viewer.
 6. Select rows in the result table to update the camera and overlay.
 7. Save results with `Save CSV`.
 
-The selected file is loaded and displayed immediately after browsing.
+The selected geometry is loaded and displayed immediately after browsing. When multiple files are
+selected, the GUI treats them as one calculation model. STEP and STL files cannot be mixed in the
+same selection.
 
 ## Setup
 
@@ -86,7 +88,9 @@ on when a useful name is not stored in the file. Clear a component checkbox to e
 solid from the displayed model and subsequent calculations, then click `Apply Settings`.
 
 The filters operate on STEP solid geometry after loading and before boolean union. Keeping all
-components enabled preserves the default behavior. STL component filtering is not supported.
+components enabled preserves the default behavior. For multi-file STEP assemblies, components are
+grouped by file name and share one global index sequence. STL component filtering is not
+supported.
 
 ### Tessellation
 
@@ -151,8 +155,8 @@ when available.
 
 ## Current Scope
 
-The first GUI milestone supports one loaded model at a time. The following items are deferred:
+The GUI supports one combined calculation model at a time. The following items are deferred:
 
-- multiple model display
+- multiple model display as separate independently styled objects
 - geometry repair
 - Excel and HTML reports

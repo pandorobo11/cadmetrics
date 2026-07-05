@@ -187,7 +187,8 @@ cadmetrics inspect model.step
 
 This is useful for checking detected units, vertex and face counts, watertightness, and loader
 warnings before running a sweep. For STEP files, it also reports the number of detected solid
-components. Component on/off filtering is currently a GUI advanced feature.
+components. Component on/off filtering is available in the GUI and Python API; the CLI currently
+loads all STEP components.
 
 Inspect a multi-file assembly before calculating:
 
