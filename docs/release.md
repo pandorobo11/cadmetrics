@@ -25,6 +25,10 @@ git push origin vX.Y.Z
 Pushing a `v*` tag automatically builds the package and creates a GitHub Release with the
 wheel and source distribution attached.
 
+CI also runs a package smoke job on Ubuntu. It builds the wheel, installs the base package,
+installs the `step` extra and reads a STEP sample, then installs the `gui` extra and imports the
+GUI dependencies without launching the desktop app.
+
 During `uv build`, `hatch_build.py` embeds the current git hash into the package as
 `cadmetrics._build.GIT_HASH`. This lets installed wheels report `cadmetrics_hash` even though
 the wheel does not contain a `.git` directory. If a wheel is built outside a git checkout,

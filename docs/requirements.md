@@ -21,7 +21,7 @@ from STL and STEP files.
 - Calculate volume and surface area
 - Calculate exterior base-face area at cadmetrics-coordinate `Xmax`
 - Calculate orthographic projected outline area
-- Sweep all combinations of roll, angle of attack, and sideslip ranges
+- Sweep all combinations for the selected attitude mode: alpha/beta or roll/pitch
 - Write CSV output
 - Publish a Python API
 
@@ -48,7 +48,8 @@ from STL and STEP files.
 - STEP projected area is calculated from a tessellated mesh
 - Multiple solids are treated as one projected silhouette, so overlapping projected regions are
   counted once
-- The GUI can turn STEP solid components on or off before boolean union and calculation
+- The GUI and Python API can turn STEP solid components on or off before boolean union and
+  calculation. The CLI currently loads all STEP components.
 - Open or non-watertight meshes are accepted with warnings; volume may be unreliable
 - STEP assemblies and compounds are supported geometrically, but assembly metadata is not a
   first-version requirement
@@ -68,7 +69,8 @@ from STL and STEP files.
 - Default coordinate convention: X aft, Y right, Z up
 - Users can remap input model axes by choosing the signed source axis used for cadmetrics X, Y,
   and Z
-- CLI accepts single angle values or inclusive `start:end:step` ranges
+- CLI `project` accepts single angle values, and CLI `sweep` accepts inclusive
+  `start:end:step` ranges
 - CLI and GUI projected-area input modes are alpha/beta, roll/pitch, and unit vector
 - Alpha/beta mode sweeps every combination of alpha and beta
 - Roll/pitch mode sweeps every combination of roll and pitch
@@ -122,6 +124,8 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 ## CSV Columns
 
 - `file`
+- `step_components`
+- `step_component_names`
 - `input_unit`
 - `output_unit`
 - `roll_deg`
@@ -138,6 +142,7 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 - `z_min`
 - `z_max`
 - `surface_area`
+- `base_area`
 - `volume`
 - `projected_area`
 - `centroid_u`
@@ -153,6 +158,15 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 - `cadmetrics_version`
 - `cadmetrics_hash`
 - `warnings`
+
+## Performance Notes
+
+- Large curved STEP files can be slow because cadmetrics currently tessellates STEP geometry
+  during load so the GUI can display the model and projected area can be calculated.
+- Future performance options may include skipping display mesh generation for measure-only
+  workflows and caching GUI loads when only view settings change.
+- These options are design notes only; the current behavior keeps one loaded model representation
+  for inspect, measure, project, sweep, and GUI display consistency.
 
 ## Accuracy Target
 

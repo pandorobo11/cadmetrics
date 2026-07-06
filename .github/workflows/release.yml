@@ -43,9 +43,24 @@ jobs:
 
       - name: Smoke install wheel
         run: |
+          WHEEL="$(ls dist/cadmetrics-*.whl)"
           python -m venv /tmp/cadmetrics-smoke
-          /tmp/cadmetrics-smoke/bin/python -m pip install dist/*.whl
+          /tmp/cadmetrics-smoke/bin/python -m pip install "$WHEEL"
           /tmp/cadmetrics-smoke/bin/cadmetrics --help
+
+      - name: Smoke install step extra
+        run: |
+          WHEEL="$(ls dist/cadmetrics-*.whl)"
+          python -m venv /tmp/cadmetrics-smoke-step
+          /tmp/cadmetrics-smoke-step/bin/python -m pip install "$WHEEL[step]"
+          /tmp/cadmetrics-smoke-step/bin/cadmetrics inspect samples/unit_cube/unit_cube.step
+
+      - name: Smoke install gui extra
+        run: |
+          WHEEL="$(ls dist/cadmetrics-*.whl)"
+          python -m venv /tmp/cadmetrics-smoke-gui
+          /tmp/cadmetrics-smoke-gui/bin/python -m pip install "$WHEEL[gui]"
+          /tmp/cadmetrics-smoke-gui/bin/python -c "import PySide6, pyvista, pyvistaqt; import cadmetrics.gui.pyside_app as app; assert app.QtWidgets is not None"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

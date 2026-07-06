@@ -120,6 +120,22 @@ cadmetrics project model.step --mesh-deflection 0.001
 `--angular-deflection` defaults to `0.1`. It is an angular tolerance, so cadmetrics does not
 scale it with model size.
 
+## Large STEP Performance Notes
+
+Large STEP files with curved faces can spend most of their load time in tessellation. cadmetrics
+currently tessellates STEP geometry even for `measure` and `inspect`, because the same loaded
+model representation is used for projected area, GUI display, coordinate bounds, watertightness,
+and optional mesh-based STEP metrics.
+
+Two possible future optimizations are intentionally not implemented yet:
+
+- measure-only loading could skip display/projected-area mesh generation when no projected area
+  or GUI view is needed
+- the GUI could cache loaded STEP geometry and avoid reloading when only display settings change
+
+For now, use coarser `--mesh-deflection` and `--angular-deflection` values for quick previews,
+then tighten them for final projected-area validation.
+
 ## Watertightness
 
 Open or non-watertight STL meshes are accepted with warnings. Surface area and projected area
