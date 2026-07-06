@@ -209,8 +209,9 @@ See [Accuracy Notes](docs/accuracy.md) for details.
 ## Project Status
 
 The first milestone focuses on a practical local workflow for one combined calculation model at a
-time. Deferred items include separate multi-model display and Excel/HTML reports. Geometry repair
-is out of scope; repair invalid CAD or mesh geometry in CAD/mesh tools before using cadmetrics.
+time. Separate multi-model display is deferred. Excel/HTML reports and geometry repair are out of
+scope; use CSV output and repair invalid CAD or mesh geometry in CAD/mesh tools before using
+cadmetrics.
 
 ## License
 

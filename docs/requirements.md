@@ -166,4 +166,3 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 ## Deferred
 
 - Multiple model display as separate independently styled objects
-- Excel and HTML report output
