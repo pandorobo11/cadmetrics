@@ -162,7 +162,3 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
   `1e-4` in the selected output length unit
 - `--mesh-deflection` accepts an explicit positive number so STEP projected-area accuracy can
   be adjusted or fixed for reproducibility
-
-## Deferred
-
-- Multiple model display as separate independently styled objects

@@ -209,9 +209,9 @@ See [Accuracy Notes](docs/accuracy.md) for details.
 ## Project Status
 
 The first milestone focuses on a practical local workflow for one combined calculation model at a
-time. Separate multi-model display is deferred. Excel/HTML reports and geometry repair are out of
-scope; use CSV output and repair invalid CAD or mesh geometry in CAD/mesh tools before using
-cadmetrics.
+time. Multiple input files are treated as one combined model. Excel/HTML reports and geometry
+repair are out of scope; use CSV output and repair invalid CAD or mesh geometry in CAD/mesh tools
+before using cadmetrics.
 
 ## License
 
