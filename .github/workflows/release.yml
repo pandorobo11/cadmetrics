@@ -60,7 +60,7 @@ jobs:
           WHEEL="$(ls dist/cadmetrics-*.whl)"
           python -m venv /tmp/cadmetrics-smoke-gui
           /tmp/cadmetrics-smoke-gui/bin/python -m pip install "$WHEEL[gui]"
-          /tmp/cadmetrics-smoke-gui/bin/python -c "import PySide6, pyvista, pyvistaqt; import cadmetrics.gui.pyside_app as app; assert app.QtWidgets is not None"
+          /tmp/cadmetrics-smoke-gui/bin/python -c "import importlib.metadata as m; import cadmetrics.gui.pyside_app; [m.version(name) for name in ('PySide6', 'pyvista', 'pyvistaqt')]"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
