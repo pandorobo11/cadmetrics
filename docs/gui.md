@@ -162,5 +162,7 @@ when available.
 The GUI supports one combined calculation model at a time. The following items are deferred:
 
 - multiple model display as separate independently styled objects
-- geometry repair
 - Excel and HTML reports
+
+Geometry repair is out of scope for cadmetrics. Repair invalid CAD or mesh geometry in a CAD/mesh
+tool before loading it.

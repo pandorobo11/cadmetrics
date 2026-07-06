@@ -31,6 +31,8 @@ from STL and STEP files.
   repaired automatically; volume and surface area may double-count overlaps in those cases.
 - Multi-file STL input is supported by concatenating triangle meshes. It does not perform STL
   boolean union or overlap repair.
+- Geometry repair is out of scope for this package; invalid or damaged geometry should be repaired
+  in CAD/mesh tools before using cadmetrics.
 - STEP volume and surface area should use B-Rep calculations when the `step` extra is installed
 - STEP volume should use OCP/OpenCascade `VolumePropertiesGK`
 - STEP multiple-solid input should be boolean-unioned before volume and surface-area
@@ -165,4 +167,3 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 
 - Multiple model display as separate independently styled objects
 - Excel and HTML report output
-- Geometry repair
