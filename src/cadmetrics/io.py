@@ -24,6 +24,7 @@ def load_model(
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
     base_axis_map: str = DEFAULT_AXIS_MAP,
+    require_mesh: bool = True,
 ) -> ModelData:
     paths = _normalize_model_paths(path)
     if len(paths) > 1:
@@ -36,6 +37,7 @@ def load_model(
             step_metric_source=step_metric_source,
             step_components=step_components,
             base_axis_map=base_axis_map,
+            require_mesh=require_mesh,
         )
 
     model_path = paths[0]
@@ -57,6 +59,7 @@ def load_model(
             step_metric_source=step_metric_source,
             step_components=step_components,
             base_axis_map=base_axis_map,
+            require_mesh=require_mesh,
         )
     raise ValueError(f"Unsupported file type '{model_path.suffix}'. Expected STL or STEP.")
 
@@ -80,6 +83,7 @@ def _load_assembly(
     step_metric_source: str,
     step_components: tuple[int, ...] | None,
     base_axis_map: str,
+    require_mesh: bool,
 ) -> ModelData:
     suffixes = {path.suffix.lower() for path in paths}
     if suffixes <= STL_SUFFIXES:
@@ -99,6 +103,7 @@ def _load_assembly(
             step_metric_source=step_metric_source,
             step_components=step_components,
             base_axis_map=base_axis_map,
+            require_mesh=require_mesh,
         )
     if suffixes & STL_SUFFIXES and suffixes & STEP_SUFFIXES:
         raise ValueError("Cannot assemble mixed STEP and STL inputs.")
@@ -229,6 +234,7 @@ def _load_step(
     step_metric_source: str,
     step_components: tuple[int, ...] | None,
     base_axis_map: str,
+    require_mesh: bool,
 ) -> ModelData:
     try:
         from OCP.Bnd import Bnd_Box
@@ -301,6 +307,8 @@ def _load_step(
             warnings.append("Could not detect STEP length unit; assuming m.")
 
     scale = length_scale(resolved_input_unit, output_unit)
+    native_bounds = _ocp_bounds(shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib)
+    bounds = _scaled_output_bounds(native_bounds, scale)
     native_diagonal = _ocp_bounding_box_diagonal(
         shape,
         Bnd_Box=Bnd_Box,
@@ -331,16 +339,20 @@ def _load_step(
     brep_volume = _ocp_volume_metric_gk(shape, GProp_GProps=GProp_GProps, BRepGProp=BRepGProp)
     brep_surface_area = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "SurfaceProperties")
 
-    BRepMesh_IncrementalMesh(shape, native_mesh_deflection, False, angular_deflection, True)
-    vertices, faces = _tessellate_ocp_shape(
-        shape,
-        BRep_Tool=BRep_Tool,
-        TopAbs_FACE=TopAbs_FACE,
-        TopAbs_REVERSED=TopAbs_REVERSED,
-        TopExp_Explorer=TopExp_Explorer,
-        TopLoc_Location=TopLoc_Location,
-        TopoDS=TopoDS,
-    )
+    must_tessellate = require_mesh or metric_source == "mesh" or exact_base_failed
+    if must_tessellate:
+        BRepMesh_IncrementalMesh(shape, native_mesh_deflection, False, angular_deflection, True)
+        vertices, faces = _tessellate_ocp_shape(
+            shape,
+            BRep_Tool=BRep_Tool,
+            TopAbs_FACE=TopAbs_FACE,
+            TopAbs_REVERSED=TopAbs_REVERSED,
+            TopExp_Explorer=TopExp_Explorer,
+            TopLoc_Location=TopLoc_Location,
+            TopoDS=TopoDS,
+        )
+    else:
+        vertices, faces = _empty_mesh()
     if exact_base_failed:
         base_area, base_found = _mesh_xmax_base_area(
             vertices,
@@ -406,6 +418,7 @@ def _load_step(
         step_metric_source=metric_source,
         component_names=component_names,
         selected_components=selected_components,
+        bounds=bounds,
         warnings=tuple(warnings),
     )
 
@@ -420,6 +433,7 @@ def _load_step_assembly(
     step_metric_source: str,
     step_components: tuple[int, ...] | None,
     base_axis_map: str,
+    require_mesh: bool,
 ) -> ModelData:
     try:
         from OCP.Bnd import Bnd_Box
@@ -529,6 +543,8 @@ def _load_step_assembly(
         )
 
     scale = length_scale(resolved_input_unit, output_unit)
+    native_bounds = _ocp_bounds(shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib)
+    bounds = _scaled_output_bounds(native_bounds, scale)
     native_diagonal = _ocp_bounding_box_diagonal(
         shape,
         Bnd_Box=Bnd_Box,
@@ -559,16 +575,20 @@ def _load_step_assembly(
     brep_volume = _ocp_volume_metric_gk(shape, GProp_GProps=GProp_GProps, BRepGProp=BRepGProp)
     brep_surface_area = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "SurfaceProperties")
 
-    BRepMesh_IncrementalMesh(shape, native_mesh_deflection, False, angular_deflection, True)
-    vertices, faces = _tessellate_ocp_shape(
-        shape,
-        BRep_Tool=BRep_Tool,
-        TopAbs_FACE=TopAbs_FACE,
-        TopAbs_REVERSED=TopAbs_REVERSED,
-        TopExp_Explorer=TopExp_Explorer,
-        TopLoc_Location=TopLoc_Location,
-        TopoDS=TopoDS,
-    )
+    must_tessellate = require_mesh or metric_source == "mesh" or exact_base_failed
+    if must_tessellate:
+        BRepMesh_IncrementalMesh(shape, native_mesh_deflection, False, angular_deflection, True)
+        vertices, faces = _tessellate_ocp_shape(
+            shape,
+            BRep_Tool=BRep_Tool,
+            TopAbs_FACE=TopAbs_FACE,
+            TopAbs_REVERSED=TopAbs_REVERSED,
+            TopExp_Explorer=TopExp_Explorer,
+            TopLoc_Location=TopLoc_Location,
+            TopoDS=TopoDS,
+        )
+    else:
+        vertices, faces = _empty_mesh()
     if exact_base_failed:
         base_area, base_found = _mesh_xmax_base_area(
             vertices,
@@ -635,6 +655,7 @@ def _load_step_assembly(
         is_assembly=True,
         component_names=tuple(component_names),
         selected_components=tuple(selected_components),
+        bounds=bounds,
         warnings=tuple(dict.fromkeys(warnings)),
     )
 
@@ -741,6 +762,10 @@ def _combine_meshes(meshes: Sequence[tuple[np.ndarray, np.ndarray]]) -> tuple[np
     return np.vstack(vertices), np.vstack(faces).astype(np.int64, copy=False)
 
 
+def _empty_mesh() -> tuple[np.ndarray, np.ndarray]:
+    return np.empty((0, 3), dtype=float), np.empty((0, 3), dtype=np.int64)
+
+
 def _assembly_path(paths: Sequence[Path]) -> Path:
     return Path("; ".join(str(path) for path in paths))
 
@@ -752,8 +777,7 @@ def _ocp_bounding_box_diagonal(
     BRepBndLib: Any,
 ) -> float:
     box = Bnd_Box()
-    add_method = getattr(BRepBndLib, "Add_s", None) or getattr(BRepBndLib, "Add")
-    add_method(shape, box)
+    _add_ocp_bounds(shape, box, BRepBndLib)
     try:
         xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
     except Exception:
@@ -811,9 +835,44 @@ def _ocp_bounds(
     BRepBndLib: Any,
 ) -> tuple[float, float, float, float, float, float]:
     box = Bnd_Box()
+    _add_ocp_bounds(shape, box, BRepBndLib)
+    return tuple(float(value) for value in box.Get())
+
+
+def _add_ocp_bounds(shape: Any, box: Any, BRepBndLib: Any) -> None:
+    add_optimal = getattr(BRepBndLib, "AddOptimal_s", None) or getattr(
+        BRepBndLib, "AddOptimal", None
+    )
+    if add_optimal is not None:
+        try:
+            add_optimal(shape, box, False, False)
+            return
+        except Exception:
+            pass
     add_method = getattr(BRepBndLib, "Add_s", None) or getattr(BRepBndLib, "Add")
     add_method(shape, box)
-    return tuple(float(value) for value in box.Get())
+
+
+def _scaled_output_bounds(
+    native_bounds: tuple[float, float, float, float, float, float],
+    scale: float,
+) -> tuple[float, float, float, float, float, float]:
+    xmin, ymin, zmin, xmax, ymax, zmax = native_bounds
+    return tuple(
+        _clean_bound(value)
+        for value in (
+            xmin * scale,
+            xmax * scale,
+            ymin * scale,
+            ymax * scale,
+            zmin * scale,
+            zmax * scale,
+        )
+    )  # type: ignore[return-value]
+
+
+def _clean_bound(value: float) -> float:
+    return 0.0 if abs(value) <= 1.0e-9 else value
 
 
 def _base_source_axis(base_axis_map: str) -> tuple[int, float]:

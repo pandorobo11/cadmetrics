@@ -75,15 +75,20 @@ if QtCore is not None:
         progress = QtCore.Signal(int, int, str)
         cancelled = QtCore.Signal()
 
-        def __init__(self, request: CalculationRequest) -> None:
+        def __init__(self, request: CalculationRequest, model: ModelData | None = None) -> None:
             super().__init__()
             self._request = request
+            self._model = model
             self._cancel = Event()
 
         @QtCore.Slot()
         def run(self) -> None:
             try:
-                rows = run_calculation(self._request, progress_callback=self._on_progress)
+                rows = run_calculation(
+                    self._request,
+                    model=self._model,
+                    progress_callback=self._on_progress,
+                )
             except _CancelledCalculation:
                 self.cancelled.emit()
                 return
@@ -957,13 +962,14 @@ if QtWidgets is not None:
 
             if not self._load_model():
                 return
+            model = self._model
 
             self._set_running(True)
             self.progress.setRange(0, 1)
             self.progress.setValue(0)
             self.status.setText("Running")
             self._thread = QtCore.QThread(self)
-            self._worker = CalculationWorker(request)
+            self._worker = CalculationWorker(request, model)
             self._worker.moveToThread(self._thread)
             self._thread.started.connect(self._worker.run)
             self._worker.finished.connect(self._on_finished)

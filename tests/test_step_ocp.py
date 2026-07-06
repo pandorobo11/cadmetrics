@@ -37,6 +37,52 @@ def test_generated_step_box_measurements(tmp_path: Path) -> None:
     assert projected.mesh_deflection == measured.mesh_deflection
 
 
+def test_step_measure_brep_does_not_require_tessellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    step_path = tmp_path / "box.step"
+    shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()
+    writer = STEPControl_Writer()
+    writer.Transfer(shape, STEPControl_AsIs)
+    assert writer.Write(str(step_path)) == IFSelect_RetDone
+
+    def fail_tessellation(*args, **kwargs):
+        raise AssertionError("STEP measure should not tessellate in B-Rep metric mode")
+
+    monkeypatch.setattr("cadmetrics.io._tessellate_ocp_shape", fail_tessellation)
+
+    measured = measure(step_path)
+
+    assert measured.volume == pytest.approx(6.0)
+    assert measured.surface_area == pytest.approx(22.0)
+    assert measured.base_area == pytest.approx(6.0)
+    assert measured.x_max == pytest.approx(1.0)
+    assert measured.y_max == pytest.approx(2.0)
+    assert measured.z_max == pytest.approx(3.0)
+
+
+def test_step_inspect_can_skip_mesh_but_keep_bounds(tmp_path: Path) -> None:
+    step_path = tmp_path / "box.step"
+    shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()
+    writer = STEPControl_Writer()
+    writer.Transfer(shape, STEPControl_AsIs)
+    assert writer.Write(str(step_path)) == IFSelect_RetDone
+
+    inspected = inspect_model(step_path, require_mesh=False)
+
+    assert inspected.vertex_count == 0
+    assert inspected.face_count == 0
+    assert inspected.x_min == pytest.approx(0.0)
+    assert inspected.x_max == pytest.approx(1.0)
+    assert inspected.y_min == pytest.approx(0.0)
+    assert inspected.y_max == pytest.approx(2.0)
+    assert inspected.z_min == pytest.approx(0.0)
+    assert inspected.z_max == pytest.approx(3.0)
+    assert inspected.volume == pytest.approx(6.0)
+    assert inspected.surface_area == pytest.approx(22.0)
+
+
 def test_step_box_can_use_tessellated_mesh_metrics(tmp_path: Path) -> None:
     step_path = tmp_path / "box.step"
     shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()

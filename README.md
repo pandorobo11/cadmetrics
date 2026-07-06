@@ -199,6 +199,9 @@ area. For STL-like comparisons, STEP volume and surface area can be calculated f
 tessellated mesh with `--step-metrics mesh`.
 STEP projected area is always calculated from a tessellated mesh, so the result depends on
 tessellation quality.
+For faster large STEP checks, default B-Rep `measure` and CLI `inspect` skip tessellation when a
+display/projected-area mesh is not needed. The GUI reuses the loaded display mesh when running a
+sweep.
 
 The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the
 selected output length unit. The current validation target is within `0.1%` against Fusion 360

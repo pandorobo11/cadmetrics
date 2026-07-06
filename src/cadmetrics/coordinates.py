@@ -31,7 +31,12 @@ def transform_model_axes(model: ModelData, axis_map: str) -> ModelData:
     faces = model.faces
     if _axis_map_determinant(parsed) < 0.0:
         faces = faces[:, [0, 2, 1]]
-    return replace(model, vertices=np.column_stack(columns), faces=faces)
+    return replace(
+        model,
+        vertices=np.column_stack(columns) if columns else model.vertices,
+        faces=faces,
+        bounds=_transform_bounds(model.bounds, parsed),
+    )
 
 
 def _parse_axis(value: str) -> tuple[int, float]:
@@ -48,3 +53,18 @@ def _axis_map_determinant(axis_map: tuple[tuple[int, float], ...]) -> float:
     for output_axis, (input_axis, sign) in enumerate(axis_map):
         matrix[output_axis, input_axis] = sign
     return float(np.linalg.det(matrix))
+
+
+def _transform_bounds(
+    bounds: tuple[float, float, float, float, float, float] | None,
+    axis_map: tuple[tuple[int, float], ...],
+) -> tuple[float, float, float, float, float, float] | None:
+    if bounds is None:
+        return None
+    source_bounds = ((bounds[0], bounds[1]), (bounds[2], bounds[3]), (bounds[4], bounds[5]))
+    transformed: list[float] = []
+    for source_axis, sign in axis_map:
+        lower, upper = source_bounds[source_axis]
+        values = (lower * sign, upper * sign)
+        transformed.extend([min(values), max(values)])
+    return tuple(transformed)  # type: ignore[return-value]

@@ -105,6 +105,7 @@ output length unit.
 `--step-metrics brep` is the default and reports STEP volume/surface area from the CAD kernel.
 Use `--step-metrics mesh` when you want STEP volume/surface area to be calculated from the
 tessellated mesh, for example when comparing with an exported STL.
+In B-Rep mode, STEP `measure` skips tessellation unless an exact base-area fallback is needed.
 
 Measure a same-format multi-file model:
 
@@ -189,6 +190,10 @@ This is useful for checking detected units, vertex and face counts, watertightne
 warnings before running a sweep. For STEP files, it also reports the number of detected solid
 components. Component on/off filtering is available in the GUI and Python API; the CLI currently
 loads all STEP components.
+
+For STEP files in default B-Rep metric mode, CLI `inspect` skips tessellation for faster loading.
+The reported vertex and face counts can therefore be `0`; use `project`, `sweep`, the GUI, or
+`--step-metrics mesh` when you need a tessellated mesh count.
 
 Inspect a multi-file assembly before calculating:
 

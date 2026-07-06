@@ -21,7 +21,7 @@ from cadmetrics.gui.pyside_app import (
     _projection_camera_geometry,
     TABLE_COLUMNS,
 )
-from cadmetrics.types import MeasurementRow
+from cadmetrics.types import MeasurementRow, ModelData
 
 
 def test_gui_entry_point_is_registered() -> None:
@@ -278,6 +278,70 @@ def test_gui_job_passes_multiple_files_as_one_assembly(monkeypatch) -> None:
     assert run_calculation(request) == [_row()]
     assert captured["path"] == paths
     assert captured["kwargs"]["step_components"] == (2,)
+
+
+def test_gui_job_uses_loaded_model_without_reloading(monkeypatch) -> None:
+    def fail_sweep(*args, **kwargs):
+        raise AssertionError("GUI calculation should reuse the loaded model")
+
+    monkeypatch.setattr("cadmetrics.gui.jobs.sweep", fail_sweep)
+    model = ModelData(
+        path=Path("loaded.step"),
+        source_format="step",
+        vertices=np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [0.0, 1.0, 1.0],
+            ],
+            dtype=float,
+        ),
+        faces=np.array(
+            [
+                [0, 1, 2],
+                [0, 2, 3],
+                [4, 6, 5],
+                [4, 7, 6],
+                [0, 4, 5],
+                [0, 5, 1],
+                [1, 5, 6],
+                [1, 6, 2],
+                [2, 6, 7],
+                [2, 7, 3],
+                [3, 7, 4],
+                [3, 4, 0],
+            ],
+            dtype=np.int64,
+        ),
+        input_unit="m",
+        output_unit="m",
+        volume=1.0,
+        surface_area=6.0,
+        base_area=1.0,
+        is_watertight=True,
+        mesh_deflection=0.001,
+        angular_deflection=0.1,
+        step_metric_source="brep",
+    )
+    request = CalculationRequest(
+        file=Path("model.step"),
+        attitude_mode="alpha_beta",
+        alpha_start=0.0,
+        alpha_end=0.0,
+        beta_start=0.0,
+        beta_end=0.0,
+    )
+
+    rows = run_calculation(request, model=model)
+
+    assert len(rows) == 1
+    assert rows[0].file == "loaded.step"
+    assert rows[0].projected_area == pytest.approx(1.0)
 
 
 def test_gui_formats_multiple_file_selection_labels() -> None:

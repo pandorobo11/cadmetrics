@@ -33,6 +33,7 @@ class ModelData:
     is_assembly: bool = False
     component_names: tuple[str, ...] = field(default_factory=tuple)
     selected_components: tuple[int, ...] = field(default_factory=tuple)
+    bounds: tuple[float, float, float, float, float, float] | None = None
     cadmetrics_version: str = field(default_factory=cadmetrics_version)
     cadmetrics_hash: str = field(default_factory=cadmetrics_hash)
     warnings: tuple[str, ...] = field(default_factory=tuple)
@@ -47,26 +48,38 @@ class ModelData:
 
     @property
     def x_min(self) -> float | None:
+        if self.bounds is not None:
+            return self.bounds[0]
         return _axis_min(self.vertices, 0)
 
     @property
     def x_max(self) -> float | None:
+        if self.bounds is not None:
+            return self.bounds[1]
         return _axis_max(self.vertices, 0)
 
     @property
     def y_min(self) -> float | None:
+        if self.bounds is not None:
+            return self.bounds[2]
         return _axis_min(self.vertices, 1)
 
     @property
     def y_max(self) -> float | None:
+        if self.bounds is not None:
+            return self.bounds[3]
         return _axis_max(self.vertices, 1)
 
     @property
     def z_min(self) -> float | None:
+        if self.bounds is not None:
+            return self.bounds[4]
         return _axis_min(self.vertices, 2)
 
     @property
     def z_max(self) -> float | None:
+        if self.bounds is not None:
+            return self.bounds[5]
         return _axis_max(self.vertices, 2)
 
 

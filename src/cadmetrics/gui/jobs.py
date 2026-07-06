@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
 
-from cadmetrics.api import project, sweep
+from cadmetrics.api import project, project_model, sweep, sweep_model
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP
-from cadmetrics.types import MeasurementRow
+from cadmetrics.types import MeasurementRow, ModelData
 
 AttitudeInputMode = Literal["alpha_beta", "roll_pitch", "vector"]
 ProgressCallback = Callable[[int, int, str], None]
@@ -44,6 +44,7 @@ class CalculationRequest:
 def run_calculation(
     request: CalculationRequest,
     *,
+    model: ModelData | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> list[MeasurementRow]:
     common = {
@@ -56,6 +57,14 @@ def run_calculation(
         "step_components": request.step_components,
     }
     if request.attitude_mode == "alpha_beta":
+        if model is not None:
+            return sweep_model(
+                model,
+                roll=0.0,
+                alpha=_range_spec(request.alpha_start, request.alpha_end, request.alpha_step),
+                beta=_range_spec(request.beta_start, request.beta_end, request.beta_step),
+                progress_callback=_orientation_progress(progress_callback),
+            )
         return sweep(
             request.file,
             roll=0.0,
@@ -65,6 +74,14 @@ def run_calculation(
             **common,
         )
     if request.attitude_mode == "roll_pitch":
+        if model is not None:
+            return sweep_model(
+                model,
+                roll=_range_spec(request.roll_start, request.roll_end, request.roll_step),
+                alpha=_range_spec(request.pitch_start, request.pitch_end, request.pitch_step),
+                beta=0.0,
+                progress_callback=_orientation_progress(progress_callback),
+            )
         return sweep(
             request.file,
             roll=_range_spec(request.roll_start, request.roll_end, request.roll_step),
@@ -74,11 +91,15 @@ def run_calculation(
             **common,
         )
 
-    row = project(
-        request.file,
-        direction=f"{request.vector_x},{request.vector_y},{request.vector_z}",
-        **common,
-    )
+    direction = f"{request.vector_x},{request.vector_y},{request.vector_z}"
+    if model is not None:
+        row = project_model(model, direction=direction)
+    else:
+        row = project(
+            request.file,
+            direction=direction,
+            **common,
+        )
     if progress_callback is not None:
         progress_callback(
             1,

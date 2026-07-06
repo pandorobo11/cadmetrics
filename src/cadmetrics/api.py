@@ -31,6 +31,7 @@ def inspect_model(
     axis_map: str = DEFAULT_AXIS_MAP,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
+    require_mesh: bool = True,
 ) -> ModelData:
     model = load_model(
         path,
@@ -41,6 +42,7 @@ def inspect_model(
         step_metric_source=step_metric_source,
         step_components=step_components,
         base_axis_map=axis_map,
+        require_mesh=require_mesh,
     )
     return transform_model_axes(model, axis_map)
 
@@ -66,7 +68,12 @@ def measure(
         axis_map=axis_map,
         step_metric_source=step_metric_source,
         step_components=step_components,
+        require_mesh=_step_metric_source_requires_mesh(step_metric_source),
     )
+    return measure_model(model, elapsed_sec=perf_counter() - start)
+
+
+def measure_model(model: ModelData, *, elapsed_sec: float | None = None) -> MeasurementRow:
     return MeasurementRow(
         file=str(model.path),
         input_unit=model.input_unit,
@@ -91,7 +98,7 @@ def measure(
         mesh_deflection=model.mesh_deflection,
         angular_deflection=model.angular_deflection,
         method=_method_name(model, projected=False),
-        elapsed_sec=perf_counter() - start,
+        elapsed_sec=elapsed_sec,
         cadmetrics_version=model.cadmetrics_version,
         cadmetrics_hash=model.cadmetrics_hash,
         warnings=model.warnings,
@@ -124,6 +131,25 @@ def project(
         step_metric_source=step_metric_source,
         step_components=step_components,
     )
+    return project_model(
+        model,
+        roll_deg=roll_deg,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
+        direction=direction,
+        elapsed_sec=perf_counter() - start,
+    )
+
+
+def project_model(
+    model: ModelData,
+    *,
+    roll_deg: float = 0.0,
+    alpha_deg: float = 0.0,
+    beta_deg: float = 0.0,
+    direction: str | None = None,
+    elapsed_sec: float = 0.0,
+) -> MeasurementRow:
     orientation = Orientation(roll_deg=roll_deg, alpha_deg=alpha_deg, beta_deg=beta_deg)
     vector = parse_vector(direction) if direction is not None else None
     projection_direction = (
@@ -140,7 +166,7 @@ def project(
         mesh_deflection=model.mesh_deflection,
         angular_deflection=model.angular_deflection,
         method=_method_name(model, projected=True),
-        elapsed_sec=perf_counter() - start,
+        elapsed_sec=elapsed_sec,
         warnings=model.warnings,
     )
 
@@ -248,6 +274,23 @@ def sweep(
         step_metric_source=step_metric_source,
         step_components=step_components,
     )
+    return sweep_model(
+        model,
+        roll=roll,
+        alpha=alpha,
+        beta=beta,
+        progress_callback=progress_callback,
+    )
+
+
+def sweep_model(
+    model: ModelData,
+    *,
+    roll: str | int | float = 0.0,
+    alpha: str | int | float = 0.0,
+    beta: str | int | float = 0.0,
+    progress_callback: Callable[[int, int, Orientation], None] | None = None,
+) -> list[MeasurementRow]:
     rows: list[MeasurementRow] = []
     orientations = iter_orientations(roll=roll, alpha=alpha, beta=beta)
     total = len(orientations)
@@ -263,7 +306,7 @@ def sweep(
                 projection_metrics=projected_metrics(model, orientation=orientation),
                 is_watertight=model.is_watertight,
                 mesh_deflection=model.mesh_deflection,
-                angular_deflection=angular_deflection,
+                angular_deflection=model.angular_deflection,
                 method=_method_name(model, projected=True),
                 elapsed_sec=perf_counter() - row_start,
                 warnings=model.warnings,
@@ -292,3 +335,8 @@ def _method_name(model: ModelData, *, projected: bool) -> str:
         return f"{base}+mesh-projection" if projected else base
     base = "stl-mesh-assembly" if model.is_assembly else "stl-mesh"
     return f"{base}-projection" if projected else base
+
+
+def _step_metric_source_requires_mesh(value: str) -> bool:
+    text = value.strip().lower().replace("_", "-")
+    return text in {"mesh", "tessellated", "stl"}

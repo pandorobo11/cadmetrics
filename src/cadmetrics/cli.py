@@ -374,6 +374,8 @@ def inspect(
             angular_deflection=angular_deflection,
             axis_map=axis_map,
             step_metric_source=step_metrics,
+            require_mesh=step_metrics.strip().lower().replace("_", "-")
+            in {"mesh", "tessellated", "stl"},
         )
     )
     table = Table(title=_format_input_files(file))
@@ -630,5 +632,5 @@ def _run_or_exit(action):
     try:
         return action()
     except Exception as exc:
-        console.print(f"[red]Error:[/red] {exc}", stderr=True)
+        err_console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(code=1) from exc

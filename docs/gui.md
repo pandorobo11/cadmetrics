@@ -58,6 +58,10 @@ The selected geometry is loaded and displayed immediately after browsing. When m
 selected, the GUI treats them as one calculation model. STEP and STL files cannot be mixed in the
 same selection.
 
+After a model is loaded, `Run Sweep` reuses the displayed geometry instead of loading the same
+file again. Changing Advanced settings that affect geometry still reloads the model when those
+settings are applied.
+
 ## Setup
 
 `Input unit` defaults to `auto`.

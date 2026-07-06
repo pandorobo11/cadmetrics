@@ -123,18 +123,25 @@ scale it with model size.
 ## Large STEP Performance Notes
 
 Large STEP files with curved faces can spend most of their load time in tessellation. cadmetrics
-currently tessellates STEP geometry even for `measure` and `inspect`, because the same loaded
-model representation is used for projected area, GUI display, coordinate bounds, watertightness,
-and optional mesh-based STEP metrics.
+therefore avoids STEP mesh generation for `measure` and CLI `inspect` when `--step-metrics brep`
+is used. In that path, volume, surface area, base area, and coordinate bounds come from the
+B-Rep/OpenCascade shape.
 
-Two possible future optimizations are intentionally not implemented yet:
+Mesh generation is still required for:
 
-- measure-only loading could skip display/projected-area mesh generation when no projected area
-  or GUI view is needed
-- the GUI could cache loaded STEP geometry and avoid reloading when only display settings change
+- `project` and `sweep`, because projected area is mesh-based
+- `--step-metrics mesh`, because STEP volume and surface area are intentionally measured from
+  the tessellated mesh
+- GUI model display, because the PyVista viewer needs triangles
+- rare exact base-area fallback cases
 
-For now, use coarser `--mesh-deflection` and `--angular-deflection` values for quick previews,
-then tighten them for final projected-area validation.
+The GUI reuses the already loaded display model for `Run Sweep`, so browsing a STEP file and then
+calculating projected area does not reload and tessellate the same model a second time. If you
+change Advanced settings that affect geometry, click `Apply Settings` or run the calculation to
+load the updated model.
+
+Use coarser `--mesh-deflection` and `--angular-deflection` values for quick previews, then tighten
+them for final projected-area validation.
 
 ## Watertightness
 

@@ -46,6 +46,7 @@ from STL and STEP files.
   fallback on internal calculation failure
 - STL base area should use triangle faces on the `Xmax` plane
 - STEP projected area is calculated from a tessellated mesh
+- STEP `measure` and CLI `inspect` should skip tessellation when B-Rep metrics are sufficient
 - Multiple solids are treated as one projected silhouette, so overlapping projected regions are
   counted once
 - The GUI and Python API can turn STEP solid components on or off before boolean union and
@@ -162,11 +163,10 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 ## Performance Notes
 
 - Large curved STEP files can be slow because cadmetrics currently tessellates STEP geometry
-  during load so the GUI can display the model and projected area can be calculated.
-- Future performance options may include skipping display mesh generation for measure-only
-  workflows and caching GUI loads when only view settings change.
-- These options are design notes only; the current behavior keeps one loaded model representation
-  for inspect, measure, project, sweep, and GUI display consistency.
+  when projected area, mesh metrics, or GUI display are needed.
+- `measure` and CLI `inspect` avoid STEP tessellation in default B-Rep mode.
+- The GUI reuses the loaded display model for calculation so `Run Sweep` does not reload the same
+  model immediately after Browse or Apply Settings.
 
 ## Accuracy Target
 
