@@ -40,6 +40,11 @@ selected axis map. Curved bodies that only touch `Xmax` at a point or line repor
 warning because they do not have a finite base face there. For STL input, the same definition is
 approximated by summing triangle faces on the `Xmax` plane.
 
+The Xmax face test uses `--base-tolerance`, a relative tolerance applied as
+`max(bounding-box diagonal * value, 1e-12)` in the output length unit. The default is `1e-6`.
+Increase it for noisy or slightly non-planar exported meshes; decrease it when nearby but
+distinct faces must not be grouped into the base face.
+
 ## STEP B-Rep vs STL-Like Mesh Values
 
 It is possible to tessellate a STEP model and then calculate volume and surface area from the

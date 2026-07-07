@@ -29,6 +29,7 @@ class ModelData:
     is_watertight: bool | None
     mesh_deflection: float | None = None
     angular_deflection: float | None = None
+    base_tolerance: float | None = None
     step_metric_source: str | None = None
     is_assembly: bool = False
     component_names: tuple[str, ...] = field(default_factory=tuple)
@@ -115,6 +116,7 @@ class MeasurementRow:
     step_component_names: tuple[str, ...] = field(default_factory=tuple)
     mesh_deflection: float | None = None
     angular_deflection: float | None = None
+    base_tolerance: float | None = None
     method: str | None = None
     elapsed_sec: float | None = None
     cadmetrics_version: str = field(default_factory=cadmetrics_version)
@@ -153,6 +155,7 @@ class MeasurementRow:
             "is_watertight": self.is_watertight,
             "mesh_deflection": self.mesh_deflection,
             "angular_deflection": self.angular_deflection,
+            "base_tolerance": self.base_tolerance,
             "method": self.method,
             "elapsed_sec": self.elapsed_sec,
             "cadmetrics_version": self.cadmetrics_version,

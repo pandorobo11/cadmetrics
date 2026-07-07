@@ -15,6 +15,7 @@ from cadmetrics.api import inspect_model
 from cadmetrics.api import measure as measure_api
 from cadmetrics.api import project as project_api
 from cadmetrics.api import sweep as sweep_api
+from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.types import MeasurementRow
 
 app = typer.Typer(no_args_is_help=True, help="Calculate CAD volume, surface, and projected area.")
@@ -53,6 +54,7 @@ CSV_FIELDS = [
     "is_watertight",
     "mesh_deflection",
     "angular_deflection",
+    "base_tolerance",
     "method",
     "elapsed_sec",
     "cadmetrics_version",
@@ -81,6 +83,12 @@ def measure(
         min=0.0,
         help="STEP tessellation angular tolerance.",
     ),
+    base_tolerance: float = typer.Option(
+        DEFAULT_BASE_TOLERANCE,
+        "--base-tolerance",
+        min=0.0,
+        help="Relative tolerance for identifying Xmax base faces: max(bbox diagonal * value, 1e-12).",
+    ),
     axis_map: str = typer.Option(
         DEFAULT_AXIS_MAP,
         "--axis-map",
@@ -102,6 +110,7 @@ def measure(
             output_unit=output_unit,
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
+            base_tolerance=base_tolerance,
             axis_map=axis_map,
             step_metric_source=step_metrics,
         )
@@ -154,6 +163,12 @@ def project(
         min=0.0,
         help="STEP tessellation angular tolerance.",
     ),
+    base_tolerance: float = typer.Option(
+        DEFAULT_BASE_TOLERANCE,
+        "--base-tolerance",
+        min=0.0,
+        help="Relative tolerance for identifying Xmax base faces: max(bbox diagonal * value, 1e-12).",
+    ),
     axis_map: str = typer.Option(
         DEFAULT_AXIS_MAP,
         "--axis-map",
@@ -187,6 +202,7 @@ def project(
             output_unit=output_unit,
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
+            base_tolerance=base_tolerance,
             axis_map=axis_map,
             step_metric_source=step_metrics,
         )
@@ -247,6 +263,12 @@ def sweep(
         min=0.0,
         help="STEP tessellation angular tolerance.",
     ),
+    base_tolerance: float = typer.Option(
+        DEFAULT_BASE_TOLERANCE,
+        "--base-tolerance",
+        min=0.0,
+        help="Relative tolerance for identifying Xmax base faces: max(bbox diagonal * value, 1e-12).",
+    ),
     axis_map: str = typer.Option(
         DEFAULT_AXIS_MAP,
         "--axis-map",
@@ -303,6 +325,7 @@ def sweep(
                 output_unit=output_unit,
                 mesh_deflection=mesh_deflection,
                 angular_deflection=angular_deflection,
+                base_tolerance=base_tolerance,
                 axis_map=axis_map,
                 step_metric_source=step_metrics,
             )
@@ -321,6 +344,7 @@ def sweep(
                     output_unit=output_unit,
                     mesh_deflection=mesh_deflection,
                     angular_deflection=angular_deflection,
+                    base_tolerance=base_tolerance,
                     axis_map=axis_map,
                     step_metric_source=step_metrics,
                     progress_callback=on_progress,
@@ -352,6 +376,12 @@ def inspect(
         min=0.0,
         help="STEP tessellation angular tolerance.",
     ),
+    base_tolerance: float = typer.Option(
+        DEFAULT_BASE_TOLERANCE,
+        "--base-tolerance",
+        min=0.0,
+        help="Relative tolerance for identifying Xmax base faces: max(bbox diagonal * value, 1e-12).",
+    ),
     axis_map: str = typer.Option(
         DEFAULT_AXIS_MAP,
         "--axis-map",
@@ -372,6 +402,7 @@ def inspect(
             output_unit=output_unit,
             mesh_deflection=mesh_deflection,
             angular_deflection=angular_deflection,
+            base_tolerance=base_tolerance,
             axis_map=axis_map,
             step_metric_source=step_metrics,
             require_mesh=step_metrics.strip().lower().replace("_", "-")
@@ -405,6 +436,7 @@ def inspect(
         )
     table.add_row("cadmetrics_version", model.cadmetrics_version)
     table.add_row("cadmetrics_hash", model.cadmetrics_hash)
+    table.add_row("base_tolerance", _format_optional(model.base_tolerance))
     table.add_row("is_watertight", str(model.is_watertight))
     table.add_row("warnings", "; ".join(model.warnings))
     console.print(table)
@@ -465,6 +497,7 @@ def _emit_measurement_table(row: MeasurementRow, *, title: str) -> None:
     table.add_row("is_watertight", str(row.is_watertight))
     table.add_row("mesh_deflection", _format_optional(row.mesh_deflection))
     table.add_row("angular_deflection", _format_optional(row.angular_deflection))
+    table.add_row("base_tolerance", _format_optional(row.base_tolerance))
     table.add_row("method", row.method or "")
     table.add_row("elapsed_sec", _format_optional(row.elapsed_sec))
     table.add_row("cadmetrics_version", row.cadmetrics_version)

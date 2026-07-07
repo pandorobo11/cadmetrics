@@ -1,11 +1,13 @@
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 pytest.importorskip("shapely")
 pytest.importorskip("trimesh")
 
 from cadmetrics.api import measure, project, sweep
+from cadmetrics.io import _mesh_xmax_base_area
 
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -120,3 +122,38 @@ def test_positive_roll_uses_positive_x_right_hand_rule() -> None:
     assert row.direction_z == pytest.approx(0.0)
     assert row.roll_deg == pytest.approx(90.0)
     assert row.pitch_deg == pytest.approx(90.0)
+
+
+def test_base_area_default_tolerance_allows_small_xmax_face_variation() -> None:
+    vertices = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [1.0 - 5.0e-7, 1.0, 0.0],
+            [1.0, 1.0, 1.0],
+            [1.0 - 5.0e-7, 0.0, 1.0],
+        ],
+        dtype=float,
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
+
+    default_area, default_found = _mesh_xmax_base_area(
+        vertices,
+        faces,
+        base_axis_map="x,y,z",
+        scale=1.0,
+        native_diagonal=1.0,
+        relative_tolerance=1.0e-6,
+    )
+    strict_area, strict_found = _mesh_xmax_base_area(
+        vertices,
+        faces,
+        base_axis_map="x,y,z",
+        scale=1.0,
+        native_diagonal=1.0,
+        relative_tolerance=1.0e-8,
+    )
+
+    assert default_found is True
+    assert default_area == pytest.approx(1.0)
+    assert strict_found is False
+    assert strict_area == pytest.approx(0.0)

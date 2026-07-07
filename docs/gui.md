@@ -115,6 +115,10 @@ bounding-box diagonal * 1e-4
 
 `Angular deflection` controls STEP angular tessellation tolerance. Its default is `0.1`.
 
+`Base tolerance` controls how close a face must be to cadmetrics-coordinate `Xmax` to count as
+`base_area`. It is relative to the loaded model size: cadmetrics uses
+`max(bounding-box diagonal * value, 1e-12)` in the output length unit. The default is `1e-6`.
+
 ## Shape Display
 
 The 3D view supports:
@@ -156,6 +160,7 @@ The result table uses the same columns as the CLI CSV output. Important fields i
 - `roll_deg`, `pitch_deg`
 - `direction_x`, `direction_y`, `direction_z`
 - `cadmetrics_version`, `cadmetrics_hash`
+- `base_tolerance`
 
 The yellow centroid marker is shown when a projected-area result row is selected. The red
 projection arrow is placed outside the model and aligned with the selected projected centroid

@@ -12,6 +12,7 @@ from cadmetrics.api import inspect_model
 from cadmetrics.coordinates import AXIS_CHOICES
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath, run_calculation
+from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.orientation import Orientation, parse_vector, projection_direction_for_orientation
 from cadmetrics.projection import projection_basis
 from cadmetrics.types import MeasurementRow, ModelData
@@ -55,6 +56,7 @@ TABLE_COLUMNS = [
     "is_watertight",
     "mesh_deflection",
     "angular_deflection",
+    "base_tolerance",
     "method",
     "elapsed_sec",
     "cadmetrics_version",
@@ -606,6 +608,13 @@ if QtWidgets is not None:
             self.angular_deflection.setValue(0.1)
             advanced_layout.addRow("Angular deflection", self.angular_deflection)
 
+            self.base_tolerance = FlexibleDoubleSpinBox()
+            self.base_tolerance.setRange(1.0e-12, 1.0)
+            self.base_tolerance.setDecimals(12)
+            self.base_tolerance.setSingleStep(1.0e-6)
+            self.base_tolerance.setValue(DEFAULT_BASE_TOLERANCE)
+            advanced_layout.addRow("Base tolerance", self.base_tolerance)
+
             self.apply_advanced_button = QtWidgets.QPushButton("Apply Settings")
             self.apply_advanced_button.setObjectName("secondaryButton")
             self.apply_advanced_button.clicked.connect(self._apply_advanced_settings)
@@ -879,6 +888,7 @@ if QtWidgets is not None:
                 output_unit=self.output_unit.currentText(),
                 mesh_deflection=mesh_deflection,
                 angular_deflection=self.angular_deflection.value(),
+                base_tolerance=self.base_tolerance.value(),
                 step_metric_source=self.step_metrics.currentData(),
                 roll_start=self.roll_start.value(),
                 roll_end=self.roll_end.value(),
@@ -939,6 +949,7 @@ if QtWidgets is not None:
                     output_unit=request.output_unit,
                     mesh_deflection=request.mesh_deflection,
                     angular_deflection=request.angular_deflection,
+                    base_tolerance=request.base_tolerance,
                     step_metric_source=request.step_metric_source,
                     axis_map=request.axis_map,
                     step_components=request.step_components,
@@ -1500,6 +1511,7 @@ if QtWidgets is not None:
                 f"volume: {_format_cell(model.volume)}",
                 f"cadmetrics_version: {model.cadmetrics_version}",
                 f"cadmetrics_hash: {model.cadmetrics_hash}",
+                f"base_tolerance: {_format_cell(model.base_tolerance)}",
                 f"watertight: {_format_cell(model.is_watertight)}",
             ]
             if model.component_names:

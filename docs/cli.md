@@ -96,7 +96,8 @@ Useful STEP options:
 cadmetrics measure model.step \
   --step-metrics brep \
   --mesh-deflection auto \
-  --angular-deflection 0.1
+  --angular-deflection 0.1 \
+  --base-tolerance 1e-6
 ```
 
 `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the selected
@@ -106,6 +107,10 @@ output length unit.
 Use `--step-metrics mesh` when you want STEP volume/surface area to be calculated from the
 tessellated mesh, for example when comparing with an exported STL.
 In B-Rep mode, STEP `measure` skips tessellation unless an exact base-area fallback is needed.
+
+`--base-tolerance` controls how close a face must be to cadmetrics-coordinate `Xmax` to count as
+`base_area`. It is a relative tolerance: cadmetrics uses `max(bounding-box diagonal * value,
+1e-12)` in the output length unit. The default is `1e-6`.
 
 Measure a same-format multi-file model:
 
@@ -227,6 +232,7 @@ All calculation commands use the same CSV schema:
 | `is_watertight` | mesh watertightness when known |
 | `mesh_deflection` | effective STEP tessellation deflection, if applicable |
 | `angular_deflection` | effective STEP angular deflection, if applicable |
+| `base_tolerance` | relative tolerance used to identify Xmax base faces |
 | `method` | calculation backend summary |
 | `elapsed_sec` | elapsed time for the row |
 | `cadmetrics_version` | package version used for the calculation |

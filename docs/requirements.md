@@ -154,6 +154,7 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 - `is_watertight`
 - `mesh_deflection`
 - `angular_deflection`
+- `base_tolerance`
 - `method`
 - `elapsed_sec`
 - `cadmetrics_version`

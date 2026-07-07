@@ -6,7 +6,7 @@ from time import perf_counter
 from typing import Callable
 
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP, transform_model_axes
-from cadmetrics.io import load_model
+from cadmetrics.io import DEFAULT_BASE_TOLERANCE, load_model
 from cadmetrics.orientation import (
     Orientation,
     alpha_beta_from_direction,
@@ -31,6 +31,7 @@ def inspect_model(
     axis_map: str = DEFAULT_AXIS_MAP,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
+    base_tolerance: float = DEFAULT_BASE_TOLERANCE,
     require_mesh: bool = True,
 ) -> ModelData:
     model = load_model(
@@ -42,6 +43,7 @@ def inspect_model(
         step_metric_source=step_metric_source,
         step_components=step_components,
         base_axis_map=axis_map,
+        base_tolerance=base_tolerance,
         require_mesh=require_mesh,
     )
     return transform_model_axes(model, axis_map)
@@ -57,6 +59,7 @@ def measure(
     axis_map: str = DEFAULT_AXIS_MAP,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
+    base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> MeasurementRow:
     start = perf_counter()
     model = inspect_model(
@@ -68,6 +71,7 @@ def measure(
         axis_map=axis_map,
         step_metric_source=step_metric_source,
         step_components=step_components,
+        base_tolerance=base_tolerance,
         require_mesh=_step_metric_source_requires_mesh(step_metric_source),
     )
     return measure_model(model, elapsed_sec=perf_counter() - start)
@@ -97,6 +101,7 @@ def measure_model(model: ModelData, *, elapsed_sec: float | None = None) -> Meas
         step_component_names=_selected_component_names(model),
         mesh_deflection=model.mesh_deflection,
         angular_deflection=model.angular_deflection,
+        base_tolerance=model.base_tolerance,
         method=_method_name(model, projected=False),
         elapsed_sec=elapsed_sec,
         cadmetrics_version=model.cadmetrics_version,
@@ -119,6 +124,7 @@ def project(
     axis_map: str = DEFAULT_AXIS_MAP,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
+    base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> MeasurementRow:
     start = perf_counter()
     model = inspect_model(
@@ -130,6 +136,7 @@ def project(
         axis_map=axis_map,
         step_metric_source=step_metric_source,
         step_components=step_components,
+        base_tolerance=base_tolerance,
     )
     return project_model(
         model,
@@ -165,6 +172,7 @@ def project_model(
         is_watertight=model.is_watertight,
         mesh_deflection=model.mesh_deflection,
         angular_deflection=model.angular_deflection,
+        base_tolerance=model.base_tolerance,
         method=_method_name(model, projected=True),
         elapsed_sec=elapsed_sec,
         warnings=model.warnings,
@@ -181,6 +189,7 @@ def _projected_row(
     is_watertight: bool | None,
     mesh_deflection: float | None,
     angular_deflection: float | None,
+    base_tolerance: float | None,
     method: str,
     elapsed_sec: float,
     warnings: tuple[str, ...],
@@ -225,6 +234,7 @@ def _projected_row(
         step_component_names=_selected_component_names(model),
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
+        base_tolerance=base_tolerance,
         method=method,
         elapsed_sec=elapsed_sec,
         cadmetrics_version=model.cadmetrics_version,
@@ -263,6 +273,7 @@ def sweep(
     axis_map: str = DEFAULT_AXIS_MAP,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
+    base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> list[MeasurementRow]:
     model = inspect_model(
         path,
@@ -273,6 +284,7 @@ def sweep(
         axis_map=axis_map,
         step_metric_source=step_metric_source,
         step_components=step_components,
+        base_tolerance=base_tolerance,
     )
     return sweep_model(
         model,
@@ -307,6 +319,7 @@ def sweep_model(
                 is_watertight=model.is_watertight,
                 mesh_deflection=model.mesh_deflection,
                 angular_deflection=model.angular_deflection,
+                base_tolerance=model.base_tolerance,
                 method=_method_name(model, projected=True),
                 elapsed_sec=perf_counter() - row_start,
                 warnings=model.warnings,

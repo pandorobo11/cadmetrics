@@ -12,6 +12,7 @@ from cadmetrics.units import area_scale, length_scale, normalize_unit, volume_sc
 
 STEP_SUFFIXES = {".step", ".stp"}
 STL_SUFFIXES = {".stl"}
+DEFAULT_BASE_TOLERANCE = 1.0e-6
 
 
 def load_model(
@@ -24,8 +25,10 @@ def load_model(
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
     base_axis_map: str = DEFAULT_AXIS_MAP,
+    base_tolerance: float = DEFAULT_BASE_TOLERANCE,
     require_mesh: bool = True,
 ) -> ModelData:
+    base_tolerance = _resolve_base_tolerance(base_tolerance)
     paths = _normalize_model_paths(path)
     if len(paths) > 1:
         return _load_assembly(
@@ -37,6 +40,7 @@ def load_model(
             step_metric_source=step_metric_source,
             step_components=step_components,
             base_axis_map=base_axis_map,
+            base_tolerance=base_tolerance,
             require_mesh=require_mesh,
         )
 
@@ -48,6 +52,7 @@ def load_model(
             input_unit=input_unit,
             output_unit=output_unit,
             base_axis_map=base_axis_map,
+            base_tolerance=base_tolerance,
         )
     if suffix in STEP_SUFFIXES:
         return _load_step(
@@ -59,6 +64,7 @@ def load_model(
             step_metric_source=step_metric_source,
             step_components=step_components,
             base_axis_map=base_axis_map,
+            base_tolerance=base_tolerance,
             require_mesh=require_mesh,
         )
     raise ValueError(f"Unsupported file type '{model_path.suffix}'. Expected STL or STEP.")
@@ -83,6 +89,7 @@ def _load_assembly(
     step_metric_source: str,
     step_components: tuple[int, ...] | None,
     base_axis_map: str,
+    base_tolerance: float,
     require_mesh: bool,
 ) -> ModelData:
     suffixes = {path.suffix.lower() for path in paths}
@@ -92,6 +99,7 @@ def _load_assembly(
             input_unit=input_unit,
             output_unit=output_unit,
             base_axis_map=base_axis_map,
+            base_tolerance=base_tolerance,
         )
     if suffixes <= STEP_SUFFIXES:
         return _load_step_assembly(
@@ -103,6 +111,7 @@ def _load_assembly(
             step_metric_source=step_metric_source,
             step_components=step_components,
             base_axis_map=base_axis_map,
+            base_tolerance=base_tolerance,
             require_mesh=require_mesh,
         )
     if suffixes & STL_SUFFIXES and suffixes & STEP_SUFFIXES:
@@ -117,6 +126,7 @@ def _load_stl(
     input_unit: str,
     output_unit: str,
     base_axis_map: str,
+    base_tolerance: float,
 ) -> ModelData:
     try:
         import trimesh
@@ -151,6 +161,7 @@ def _load_stl(
         base_axis_map=base_axis_map,
         scale=scale,
         native_diagonal=native_diagonal,
+        relative_tolerance=base_tolerance,
     )
     if not base_found:
         warnings.append("Could not find an Xmax base face; base_area set to 0.")
@@ -167,6 +178,7 @@ def _load_stl(
         is_watertight=is_watertight,
         mesh_deflection=None,
         angular_deflection=None,
+        base_tolerance=base_tolerance,
         warnings=tuple(warnings),
     )
 
@@ -177,6 +189,7 @@ def _load_stl_assembly(
     input_unit: str,
     output_unit: str,
     base_axis_map: str,
+    base_tolerance: float,
 ) -> ModelData:
     models = [
         _load_stl(
@@ -184,6 +197,7 @@ def _load_stl_assembly(
             input_unit=input_unit,
             output_unit=output_unit,
             base_axis_map=base_axis_map,
+            base_tolerance=base_tolerance,
         )
         for path in paths
     ]
@@ -197,6 +211,7 @@ def _load_stl_assembly(
         base_axis_map=base_axis_map,
         scale=1.0,
         native_diagonal=_mesh_bounding_box_diagonal(vertices),
+        relative_tolerance=base_tolerance,
     )
     warnings = [
         "STL assembly meshes were concatenated without boolean union; overlapping volume and surface area may double-count."
@@ -219,6 +234,7 @@ def _load_stl_assembly(
         is_watertight=is_watertight,
         mesh_deflection=None,
         angular_deflection=None,
+        base_tolerance=base_tolerance,
         is_assembly=True,
         warnings=tuple(dict.fromkeys(warnings)),
     )
@@ -234,6 +250,7 @@ def _load_step(
     step_metric_source: str,
     step_components: tuple[int, ...] | None,
     base_axis_map: str,
+    base_tolerance: float,
     require_mesh: bool,
 ) -> ModelData:
     try:
@@ -328,6 +345,7 @@ def _load_step(
         base_axis_map=base_axis_map,
         scale=scale,
         native_diagonal=native_diagonal,
+        relative_tolerance=base_tolerance,
         Bnd_Box=Bnd_Box,
         BRepBndLib=BRepBndLib,
         BRepGProp=BRepGProp,
@@ -360,6 +378,7 @@ def _load_step(
             base_axis_map=base_axis_map,
             scale=scale,
             native_diagonal=native_diagonal,
+            relative_tolerance=base_tolerance,
         )
         warnings.append("Could not calculate exact STEP base area; used tessellated mesh fallback.")
     else:
@@ -415,6 +434,7 @@ def _load_step(
         is_watertight=is_watertight,
         mesh_deflection=mesh_deflection_value,
         angular_deflection=angular_deflection,
+        base_tolerance=base_tolerance,
         step_metric_source=metric_source,
         component_names=component_names,
         selected_components=selected_components,
@@ -433,6 +453,7 @@ def _load_step_assembly(
     step_metric_source: str,
     step_components: tuple[int, ...] | None,
     base_axis_map: str,
+    base_tolerance: float,
     require_mesh: bool,
 ) -> ModelData:
     try:
@@ -564,6 +585,7 @@ def _load_step_assembly(
         base_axis_map=base_axis_map,
         scale=scale,
         native_diagonal=native_diagonal,
+        relative_tolerance=base_tolerance,
         Bnd_Box=Bnd_Box,
         BRepBndLib=BRepBndLib,
         BRepGProp=BRepGProp,
@@ -596,6 +618,7 @@ def _load_step_assembly(
             base_axis_map=base_axis_map,
             scale=scale,
             native_diagonal=native_diagonal,
+            relative_tolerance=base_tolerance,
         )
         warnings.append("Could not calculate exact STEP base area; used tessellated mesh fallback.")
     else:
@@ -651,6 +674,7 @@ def _load_step_assembly(
         is_watertight=is_watertight,
         mesh_deflection=mesh_deflection_value,
         angular_deflection=angular_deflection,
+        base_tolerance=base_tolerance,
         step_metric_source=metric_source,
         is_assembly=True,
         component_names=tuple(component_names),
@@ -678,6 +702,16 @@ def _resolve_mesh_deflection(
     if value <= 0.0:
         raise ValueError("mesh_deflection must be greater than zero")
     return float(value)
+
+
+def _resolve_base_tolerance(value: float) -> float:
+    try:
+        tolerance = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("base_tolerance must be a number") from exc
+    if tolerance <= 0.0:
+        raise ValueError("base_tolerance must be greater than zero")
+    return tolerance
 
 
 def _normalize_step_metric_source(value: str) -> str:
@@ -713,6 +747,7 @@ def _mesh_xmax_base_area(
     base_axis_map: str,
     scale: float,
     native_diagonal: float,
+    relative_tolerance: float,
 ) -> tuple[float, bool]:
     if vertices.size == 0 or faces.size == 0:
         return 0.0, False
@@ -720,7 +755,11 @@ def _mesh_xmax_base_area(
     source_axis, sign = _base_source_axis(base_axis_map)
     coordinates = vertices[:, source_axis]
     target = float(np.max(coordinates) if sign > 0.0 else np.min(coordinates))
-    tolerance = _native_xmax_tolerance(native_diagonal=native_diagonal, scale=scale)
+    tolerance = _native_xmax_tolerance(
+        native_diagonal=native_diagonal,
+        scale=scale,
+        relative_tolerance=relative_tolerance,
+    )
     face_coordinates = coordinates[faces]
     on_base = np.all(np.abs(face_coordinates - target) <= tolerance, axis=1)
     if not bool(np.any(on_base)):
@@ -792,6 +831,7 @@ def _ocp_xmax_base_area(
     base_axis_map: str,
     scale: float,
     native_diagonal: float,
+    relative_tolerance: float,
     Bnd_Box: Any,
     BRepBndLib: Any,
     BRepGProp: Any,
@@ -802,7 +842,11 @@ def _ocp_xmax_base_area(
 ) -> tuple[float, bool, bool]:
     try:
         source_axis, sign = _base_source_axis(base_axis_map)
-        tolerance = _native_xmax_tolerance(native_diagonal=native_diagonal, scale=scale)
+        tolerance = _native_xmax_tolerance(
+            native_diagonal=native_diagonal,
+            scale=scale,
+            relative_tolerance=relative_tolerance,
+        )
         shape_bounds = _ocp_bounds(shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib)
         target = shape_bounds[source_axis + 3] if sign > 0.0 else shape_bounds[source_axis]
         explorer = TopExp_Explorer(shape, TopAbs_FACE)
@@ -879,10 +923,15 @@ def _base_source_axis(base_axis_map: str) -> tuple[int, float]:
     return parse_axis_map(base_axis_map)[0]
 
 
-def _native_xmax_tolerance(*, native_diagonal: float, scale: float) -> float:
+def _native_xmax_tolerance(
+    *,
+    native_diagonal: float,
+    scale: float,
+    relative_tolerance: float,
+) -> float:
     if scale <= 0.0:
-        return max(native_diagonal * 1.0e-9, 1.0e-12)
-    output_tolerance = max(native_diagonal * scale * 1.0e-9, 1.0e-12)
+        return max(native_diagonal * relative_tolerance, 1.0e-12)
+    output_tolerance = max(native_diagonal * scale * relative_tolerance, 1.0e-12)
     return output_tolerance / scale
 
 

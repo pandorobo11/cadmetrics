@@ -6,6 +6,7 @@ from typing import Callable, Literal
 
 from cadmetrics.api import project, project_model, sweep, sweep_model
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP
+from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.types import MeasurementRow, ModelData
 
 AttitudeInputMode = Literal["alpha_beta", "roll_pitch", "vector"]
@@ -21,6 +22,7 @@ class CalculationRequest:
     output_unit: str = "m"
     mesh_deflection: float | str = "auto"
     angular_deflection: float = 0.1
+    base_tolerance: float = DEFAULT_BASE_TOLERANCE
     axis_map: str = DEFAULT_AXIS_MAP
     step_metric_source: str = "brep"
     step_components: tuple[int, ...] | None = None
@@ -52,6 +54,7 @@ def run_calculation(
         "output_unit": request.output_unit,
         "mesh_deflection": request.mesh_deflection,
         "angular_deflection": request.angular_deflection,
+        "base_tolerance": request.base_tolerance,
         "axis_map": request.axis_map,
         "step_metric_source": request.step_metric_source,
         "step_components": request.step_components,

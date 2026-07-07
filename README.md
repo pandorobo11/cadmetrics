@@ -204,8 +204,9 @@ display/projected-area mesh is not needed. The GUI reuses the loaded display mes
 sweep.
 
 The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the
-selected output length unit. The current validation target is within `0.1%` against Fusion 360
-for representative closed solids.
+selected output length unit. Xmax base-face detection uses `--base-tolerance 1e-6` by default,
+applied as a relative tolerance to the model bounding-box diagonal. The current validation target
+is within `0.1%` against Fusion 360 for representative closed solids.
 
 See [Accuracy Notes](docs/accuracy.md) for details.
 
