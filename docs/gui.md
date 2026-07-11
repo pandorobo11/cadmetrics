@@ -126,6 +126,7 @@ The 3D view supports:
 - transparent shape display
 - mesh-edge display
 - feature-edge display
+- projection-arrow display (enabled by default)
 - overlay text with current conditions or selected result values
 - PNG export with `Save Image`
 

@@ -511,6 +511,8 @@ if QtWidgets is not None:
             self.mesh_edges.setChecked(False)
             self.feature_edges = QtWidgets.QCheckBox("Feature edges")
             self.feature_edges.setChecked(True)
+            self.show_projection_arrow = QtWidgets.QCheckBox("Projection arrow")
+            self.show_projection_arrow.setChecked(True)
             self.show_overlay = QtWidgets.QCheckBox("Overlay")
             self.show_overlay.setChecked(True)
             self.save_image_button = QtWidgets.QPushButton("Save Image")
@@ -518,13 +520,15 @@ if QtWidgets is not None:
             self.transparent_shape.toggled.connect(self._apply_display_options)
             self.mesh_edges.toggled.connect(self._apply_display_options)
             self.feature_edges.toggled.connect(self._apply_display_options)
+            self.show_projection_arrow.toggled.connect(self._update_projection_vector)
             self.show_overlay.toggled.connect(self._update_overlay)
             self.save_image_button.clicked.connect(self._save_view_image)
             display_layout.addWidget(self.transparent_shape, 0, 0)
             display_layout.addWidget(self.mesh_edges, 0, 1)
             display_layout.addWidget(self.feature_edges, 1, 0)
             display_layout.addWidget(self.show_overlay, 1, 1)
-            display_layout.addWidget(self.save_image_button, 2, 0, 1, 2)
+            display_layout.addWidget(self.show_projection_arrow, 2, 0, 1, 2)
+            display_layout.addWidget(self.save_image_button, 3, 0, 1, 2)
             panel_layout.addWidget(display_box)
 
             advanced_layout = self._make_collapsible_section(panel_layout, "Advanced")
@@ -1420,11 +1424,13 @@ if QtWidgets is not None:
                     self._plotter.remove_actor(self._vector_actor)
                 except Exception:
                     pass
-            self._vector_actor = self._plotter.add_arrows(
-                start.reshape(1, 3),
-                vector.reshape(1, 3),
-                color="#d04a02",
-            )
+                self._vector_actor = None
+            if self.show_projection_arrow.isChecked():
+                self._vector_actor = self._plotter.add_arrows(
+                    start.reshape(1, 3),
+                    vector.reshape(1, 3),
+                    color="#d04a02",
+                )
             self._update_centroid_marker(row)
             if align_camera:
                 self._look_from_projection_direction(direction)

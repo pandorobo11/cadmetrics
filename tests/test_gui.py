@@ -170,6 +170,14 @@ def test_gui_view_can_be_saved_as_image() -> None:
     assert "screenshot(str(output_path))" in source
 
 
+def test_projection_arrow_display_can_be_toggled() -> None:
+    source = Path("src/cadmetrics/gui/pyside_app.py").read_text(encoding="utf-8")
+
+    assert 'QCheckBox("Projection arrow")' in source
+    assert "show_projection_arrow.setChecked(True)" in source
+    assert "if self.show_projection_arrow.isChecked():" in source
+
+
 def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:
     captured = {}
     expected = [_row()]
