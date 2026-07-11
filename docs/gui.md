@@ -135,6 +135,12 @@ The 3D view supports:
 The viewer uses parallel projection. After a calculation, selecting a result row points the
 camera along that row's projection direction.
 
+## Documentation Viewer
+
+Choose `Help` > `Documentation` to open the README and all bundled documentation as a local MkDocs
+site in the system's default browser. The site works offline and provides navigation between all
+bundled documents.
+
 ## Attitude Input
 
 The GUI supports three input modes:

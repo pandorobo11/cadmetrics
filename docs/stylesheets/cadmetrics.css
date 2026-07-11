@@ -1,0 +1,17 @@
+.wy-nav-content {
+  max-width: 980px;
+}
+
+.rst-content p,
+.rst-content li {
+  line-height: 1.65;
+}
+
+.rst-content h2,
+.rst-content h3 {
+  margin-top: 1.6em;
+}
+
+.rst-content code {
+  font-size: 0.9em;
+}

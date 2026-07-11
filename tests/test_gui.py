@@ -42,6 +42,23 @@ def test_pyside_gui_module_imports_without_optional_dependencies() -> None:
     assert module.__name__ == "cadmetrics.gui.pyside_app"
 
 
+def test_gui_opens_mkdocs_site_in_default_browser() -> None:
+    source = Path("src/cadmetrics/gui/pyside_app.py").read_text(encoding="utf-8")
+
+    assert 'addMenu("Help")' in source
+    assert 'QAction("Documentation"' in source
+    assert "self._documentation_index is None" in source
+    assert "build_documentation_site(parent, site_dir)" in source
+    assert "QDesktopServices.openUrl(url)" in source
+
+
+def test_build_hook_bundles_documentation() -> None:
+    source = Path("hatch_build.py").read_text(encoding="utf-8")
+
+    assert '"cadmetrics/_docs_site"' in source
+    assert "build_documentation_site(root, docs_site)" in source
+
+
 def test_projection_arrow_stays_outside_model_bounds() -> None:
     vertices = np.array(
         [

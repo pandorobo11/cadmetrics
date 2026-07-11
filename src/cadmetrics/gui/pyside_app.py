@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 import tempfile
+from contextlib import ExitStack
+from importlib import resources
 from pathlib import Path
 from threading import Event
 from typing import Any
@@ -10,6 +12,7 @@ import numpy as np
 
 from cadmetrics.api import inspect_model
 from cadmetrics.coordinates import AXIS_CHOICES
+from cadmetrics.docs_site import build_documentation_site
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath, run_calculation
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
@@ -18,9 +21,10 @@ from cadmetrics.projection import projection_basis
 from cadmetrics.types import MeasurementRow, ModelData
 
 try:
-    from PySide6 import QtCore, QtWidgets
+    from PySide6 import QtCore, QtGui, QtWidgets
 except ImportError:  # pragma: no cover - exercised by entry point in environments without GUI extra
     QtCore = None
+    QtGui = None
     QtWidgets = None
 
 UNIT_OPTIONS = ["auto", "m", "mm", "cm", "in", "ft"]
@@ -189,9 +193,35 @@ if QtWidgets is not None:
             self._component_checkboxes: list[QtWidgets.QCheckBox] = []
             self._component_filter_path: tuple[Path, ...] | None = None
             self._file_paths: tuple[Path, ...] = ()
+            self._documentation_resources = ExitStack()
+            self._documentation_tempdir: tempfile.TemporaryDirectory[str] | None = None
+            self._documentation_index: Path | None = None
 
             self._build_ui()
+            self._build_menu()
             self._set_running(False)
+
+        def _build_menu(self) -> None:
+            help_menu = self.menuBar().addMenu("Help")
+            documentation_action = QtGui.QAction("Documentation", self)
+            documentation_action.triggered.connect(self._show_documentation)
+            help_menu.addAction(documentation_action)
+
+        def _show_documentation(self) -> None:
+            if self._documentation_index is None:
+                try:
+                    (
+                        self._documentation_index,
+                        self._documentation_tempdir,
+                    ) = _documentation_site_index(
+                        self._documentation_resources
+                    )
+                except Exception as exc:
+                    self._show_error(str(exc))
+                    return
+            url = QtCore.QUrl.fromLocalFile(str(self._documentation_index))
+            if not QtGui.QDesktopServices.openUrl(url):
+                self._show_error("Could not open the documentation site in the default browser.")
 
         def _build_ui(self) -> None:
             root = QtWidgets.QSplitter()
@@ -1640,6 +1670,28 @@ if QtWidgets is not None:
 
 else:
     MainWindow = object  # type: ignore[misc,assignment]
+
+
+def _documentation_site_index(
+    stack: ExitStack,
+) -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
+    source_file = Path(__file__).resolve()
+    for parent in source_file.parents:
+        if (parent / "README.md").is_file() and (parent / "docs").is_dir():
+            temporary = tempfile.TemporaryDirectory(prefix="cadmetrics-docs-")
+            site_dir = Path(temporary.name) / "site"
+            build_documentation_site(parent, site_dir)
+            return site_dir / "index.html", temporary
+
+    packaged = resources.files("cadmetrics").joinpath("_docs_site")
+    try:
+        site_dir = stack.enter_context(resources.as_file(packaged))
+    except (FileNotFoundError, ModuleNotFoundError) as exc:
+        raise RuntimeError("Bundled cadmetrics documentation site was not found.") from exc
+    index = site_dir / "index.html"
+    if not index.is_file():
+        raise RuntimeError("Bundled cadmetrics documentation site was not found.")
+    return index, None
 
 
 def _format_cell(value: object) -> str:

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib.util
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
@@ -10,6 +12,12 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 class CustomBuildHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
         root = Path(self.root)
+        force_include = build_data.setdefault("force_include", {})
+        docs_site = root / ".hatch-build" / "cadmetrics-docs-site"
+        docs_builder = _load_docs_builder(root / "src" / "cadmetrics" / "docs_site.py")
+        docs_builder.build_documentation_site(root, docs_site)
+        force_include[str(docs_site)] = "cadmetrics/_docs_site"
+
         git_hash = _git_hash(root) or _existing_build_hash(root) or "unknown"
         source_build_file = root / "src" / "cadmetrics" / "_build.py"
         if self.target_name == "wheel" and source_build_file.exists():
@@ -25,7 +33,17 @@ class CustomBuildHook(BuildHookInterface):
         )
 
         target = "cadmetrics/_build.py" if self.target_name == "wheel" else "src/cadmetrics/_build.py"
-        build_data.setdefault("force_include", {})[str(generated)] = target
+        force_include[str(generated)] = target
+
+
+def _load_docs_builder(path: Path):
+    spec = importlib.util.spec_from_file_location("cadmetrics_docs_builder", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load documentation builder: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _git_hash(root: Path) -> str | None:
