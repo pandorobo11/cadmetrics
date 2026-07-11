@@ -41,6 +41,11 @@ jobs:
       - name: Build package
         run: uv build
 
+      - name: Package HTML documentation
+        run: |
+          cd .hatch-build/cadmetrics-docs-site
+          zip -r "../../dist/cadmetrics-docs-${GITHUB_REF_NAME}.zip" .
+
       - name: Smoke install wheel
         run: |
           WHEEL="$(ls dist/cadmetrics-*.whl)"
@@ -68,4 +73,5 @@ jobs:
           files: |
             dist/*.whl
             dist/*.tar.gz
+            dist/cadmetrics-docs-*.zip
           generate_release_notes: true

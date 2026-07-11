@@ -34,3 +34,7 @@ During `uv build`, `hatch_build.py` embeds the current git hash into the package
 the wheel does not contain a `.git` directory. If a wheel is built outside a git checkout,
 cadmetrics falls back to an embedded hash from the source distribution when one is present, or
 `unknown` otherwise.
+
+The release workflow also archives `.hatch-build/cadmetrics-docs-site` as
+`cadmetrics-docs-<tag>.zip` and attaches it to the GitHub Release. After extracting the archive,
+open `index.html` in a browser to read the documentation offline.

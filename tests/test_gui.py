@@ -59,6 +59,14 @@ def test_build_hook_bundles_documentation() -> None:
     assert "build_documentation_site(root, docs_site)" in source
 
 
+def test_release_workflow_packages_html_documentation() -> None:
+    source = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "cd .hatch-build/cadmetrics-docs-site" in source
+    assert 'cadmetrics-docs-${GITHUB_REF_NAME}.zip' in source
+    assert "dist/cadmetrics-docs-*.zip" in source
+
+
 def test_projection_arrow_stays_outside_model_bounds() -> None:
     vertices = np.array(
         [
