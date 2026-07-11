@@ -180,6 +180,8 @@ if QtWidgets is not None:
             self._vector_actor: Any | None = None
             self._mesh_actor: Any | None = None
             self._feature_edges_actor: Any | None = None
+            self._base_face_actor: Any | None = None
+            self._base_face_polydata: Any | None = None
             self._mesh_polydata: Any | None = None
             self._centroid_actor: Any | None = None
             self._overlay_actor: Any | None = None
@@ -523,6 +525,9 @@ if QtWidgets is not None:
             self.feature_edges.setChecked(True)
             self.show_projection_arrow = QtWidgets.QCheckBox("Projection arrow")
             self.show_projection_arrow.setChecked(True)
+            self.show_base_face = QtWidgets.QCheckBox("Base face")
+            self.show_base_face.setChecked(False)
+            self.show_base_face.setEnabled(False)
             self.show_overlay = QtWidgets.QCheckBox("Overlay")
             self.show_overlay.setChecked(True)
             self.camera_direction = QtWidgets.QComboBox()
@@ -535,6 +540,7 @@ if QtWidgets is not None:
             self.mesh_edges.toggled.connect(self._apply_display_options)
             self.feature_edges.toggled.connect(self._apply_display_options)
             self.show_projection_arrow.toggled.connect(self._update_projection_vector)
+            self.show_base_face.toggled.connect(self._update_base_face_highlight)
             self.show_overlay.toggled.connect(self._update_overlay)
             self.camera_direction.activated.connect(self._apply_camera_direction)
             self.save_image_button.clicked.connect(self._save_view_image)
@@ -542,7 +548,8 @@ if QtWidgets is not None:
             display_layout.addWidget(self.mesh_edges, 0, 1)
             display_layout.addWidget(self.feature_edges, 1, 0)
             display_layout.addWidget(self.show_overlay, 1, 1)
-            display_layout.addWidget(self.show_projection_arrow, 2, 0, 1, 2)
+            display_layout.addWidget(self.show_projection_arrow, 2, 0)
+            display_layout.addWidget(self.show_base_face, 2, 1)
             display_layout.addWidget(QtWidgets.QLabel("Camera"), 3, 0)
             display_layout.addWidget(self.camera_direction, 3, 1)
             display_layout.addWidget(self.save_image_button, 4, 0, 1, 2)
@@ -1183,6 +1190,17 @@ if QtWidgets is not None:
             self._centroid_actor = None
             self._overlay_actor = None
             self._feature_edges_actor = None
+            self._base_face_actor = None
+            self._base_face_polydata = _base_face_polydata(model, pv)
+            has_base_face = self._base_face_polydata is not None
+            self.show_base_face.setEnabled(has_base_face)
+            self.show_base_face.setToolTip(
+                "Highlight the Xmax base face."
+                if has_base_face
+                else "No Xmax base face found."
+            )
+            if not has_base_face:
+                self.show_base_face.setChecked(False)
             self._configure_scene_lighting()
             self._plotter.add_axes()
             self._plotter.show_grid()
@@ -1201,6 +1219,7 @@ if QtWidgets is not None:
             )
             self._apply_mesh_shading()
             self._update_feature_edges()
+            self._update_base_face_highlight(render=False)
             self._set_default_model_camera(model)
             self._update_overlay()
 
@@ -1338,6 +1357,33 @@ if QtWidgets is not None:
                 opacity=0.9,
                 pickable=False,
             )
+            if render:
+                self._plotter.render()
+
+        def _update_base_face_highlight(
+            self,
+            _checked: bool | None = None,
+            *,
+            render: bool = True,
+        ) -> None:
+            if self._plotter is None:
+                return
+            if self._base_face_actor is not None:
+                try:
+                    self._plotter.remove_actor(self._base_face_actor)
+                except Exception:
+                    pass
+                self._base_face_actor = None
+
+            if self._base_face_polydata is not None and self.show_base_face.isChecked():
+                self._base_face_actor = self._plotter.add_mesh(
+                    self._base_face_polydata,
+                    color="#ffd400",
+                    opacity=1.0,
+                    smooth_shading=False,
+                    ambient=0.75,
+                    diffuse=0.25,
+                )
             if render:
                 self._plotter.render()
 
@@ -1782,6 +1828,38 @@ def _projection_arrow_geometry(
     start = anchor + unit_direction * (upstream_edge - clearance - arrow_length)
     vector = unit_direction * arrow_length
     return start, vector
+
+
+def _base_face_mask(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    relative_tolerance: float,
+) -> np.ndarray:
+    if vertices.size == 0 or faces.size == 0:
+        return np.zeros(faces.shape[0], dtype=bool)
+    diagonal = float(np.linalg.norm(np.ptp(vertices, axis=0)))
+    tolerance = max(diagonal * relative_tolerance, 1.0e-12)
+    xmax = float(np.max(vertices[:, 0]))
+    return np.all(np.abs(vertices[faces, 0] - xmax) <= tolerance, axis=1)
+
+
+def _base_face_polydata(model: ModelData, pv: Any) -> Any | None:
+    relative_tolerance = model.base_tolerance or DEFAULT_BASE_TOLERANCE
+    mask = _base_face_mask(model.vertices, model.faces, relative_tolerance)
+    if not bool(np.any(mask)):
+        return None
+
+    triangles = model.vertices[model.faces[mask]].copy()
+    diagonal = float(np.linalg.norm(np.ptp(model.vertices, axis=0)))
+    triangles[:, :, 0] += max(diagonal * 1.0e-5, 1.0e-12)
+    highlight_vertices = triangles.reshape(-1, 3)
+    highlight_faces = np.column_stack(
+        [
+            np.full(triangles.shape[0], 3, dtype=np.int64),
+            np.arange(highlight_vertices.shape[0], dtype=np.int64).reshape(-1, 3),
+        ]
+    ).ravel()
+    return pv.PolyData(highlight_vertices, highlight_faces)
 
 
 def _projection_camera_geometry(

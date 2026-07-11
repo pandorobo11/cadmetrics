@@ -127,6 +127,7 @@ The 3D view supports:
 - mesh-edge display
 - feature-edge display
 - projection-arrow display (enabled by default)
+- optional yellow highlighting of the Xmax base face
 - camera direction selection from `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`, and two ISO views
 - overlay text with current conditions or selected result values
 - PNG export with `Save Image`

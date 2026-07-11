@@ -13,6 +13,7 @@ from cadmetrics.gui.jobs import CalculationRequest, run_calculation
 from cadmetrics.cli import CSV_FIELDS
 from cadmetrics.gui.pyside_app import (
     CAMERA_DIRECTIONS,
+    _base_face_mask,
     _camera_geometry,
     _component_display_groups,
     _default_camera_geometry,
@@ -59,6 +60,50 @@ def test_projection_arrow_stays_outside_model_bounds() -> None:
     assert start[0] < vertices[:, 0].min()
     assert end[0] < vertices[:, 0].min()
     assert vector[0] > 0.0
+
+
+def test_base_face_mask_selects_only_xmax_triangles() -> None:
+    vertices = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0],
+        ],
+        dtype=float,
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
+
+    mask = _base_face_mask(vertices, faces, 1.0e-6)
+
+    assert mask.tolist() == [True, False]
+
+
+def test_base_face_mask_uses_relative_tolerance() -> None:
+    vertices = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [1.0 - 5.0e-7, 1.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [1.0 - 5.0e-5, 0.0, -1.0],
+        ],
+        dtype=float,
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
+
+    mask = _base_face_mask(vertices, faces, 1.0e-6)
+
+    assert mask.tolist() == [True, False]
+
+
+def test_base_face_mask_handles_empty_mesh() -> None:
+    mask = _base_face_mask(
+        np.empty((0, 3), dtype=float),
+        np.empty((0, 3), dtype=np.int64),
+        1.0e-6,
+    )
+
+    assert mask.size == 0
 
 
 def test_projection_arrow_axis_can_pass_through_centroid_without_entering_model() -> None:
@@ -195,6 +240,14 @@ def test_projection_arrow_display_can_be_toggled() -> None:
     assert 'QCheckBox("Projection arrow")' in source
     assert "show_projection_arrow.setChecked(True)" in source
     assert "if self.show_projection_arrow.isChecked():" in source
+
+
+def test_base_face_highlight_can_be_toggled() -> None:
+    source = Path("src/cadmetrics/gui/pyside_app.py").read_text(encoding="utf-8")
+
+    assert 'QCheckBox("Base face")' in source
+    assert "show_base_face.setChecked(False)" in source
+    assert "No Xmax base face found." in source
 
 
 def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:
