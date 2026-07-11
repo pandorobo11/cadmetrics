@@ -12,6 +12,8 @@ from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
 from cadmetrics.cli import CSV_FIELDS
 from cadmetrics.gui.pyside_app import (
+    CAMERA_DIRECTIONS,
+    _camera_geometry,
     _component_display_groups,
     _default_camera_geometry,
     _format_file_selection,
@@ -125,6 +127,23 @@ def test_default_camera_is_from_negative_x_negative_y_positive_z() -> None:
     assert offset[1] < 0.0
     assert offset[2] > 0.0
     assert np.isclose(float(np.dot(view_up, focal_point - position)), 0.0)
+
+
+@pytest.mark.parametrize(("label", "from_direction"), CAMERA_DIRECTIONS)
+def test_camera_geometry_looks_from_selected_direction(label, from_direction) -> None:
+    vertices = np.array([[-1.0, -2.0, -3.0], [1.0, 2.0, 3.0]], dtype=float)
+
+    position, focal_point, view_up = _camera_geometry(
+        vertices,
+        np.asarray(from_direction, dtype=float),
+    )
+    actual_from_direction = (position - focal_point) / np.linalg.norm(position - focal_point)
+    expected_from_direction = np.asarray(from_direction) / np.linalg.norm(from_direction)
+
+    assert label
+    assert np.allclose(actual_from_direction, expected_from_direction)
+    assert np.isclose(float(np.dot(view_up, focal_point - position)), 0.0)
+    assert np.isclose(float(np.linalg.norm(view_up)), 1.0)
 
 
 def test_overlay_text_includes_selected_result_values() -> None:

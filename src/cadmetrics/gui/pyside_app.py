@@ -25,6 +25,16 @@ except ImportError:  # pragma: no cover - exercised by entry point in environmen
 
 UNIT_OPTIONS = ["auto", "m", "mm", "cm", "in", "ft"]
 OUTPUT_UNIT_OPTIONS = ["m", "mm", "cm", "in", "ft"]
+CAMERA_DIRECTIONS = (
+    ("+X", (1.0, 0.0, 0.0)),
+    ("-X", (-1.0, 0.0, 0.0)),
+    ("+Y", (0.0, 1.0, 0.0)),
+    ("-Y", (0.0, -1.0, 0.0)),
+    ("+Z", (0.0, 0.0, 1.0)),
+    ("-Z", (0.0, 0.0, -1.0)),
+    ("-X-Y+Z (ISO)", (-1.0, -1.0, 1.0)),
+    ("+X+Y-Z (ISO)", (1.0, 1.0, -1.0)),
+)
 TABLE_COLUMNS = [
     "file",
     "step_components",
@@ -515,6 +525,10 @@ if QtWidgets is not None:
             self.show_projection_arrow.setChecked(True)
             self.show_overlay = QtWidgets.QCheckBox("Overlay")
             self.show_overlay.setChecked(True)
+            self.camera_direction = QtWidgets.QComboBox()
+            for label, direction in CAMERA_DIRECTIONS:
+                self.camera_direction.addItem(label, direction)
+            self.camera_direction.setCurrentIndex(6)
             self.save_image_button = QtWidgets.QPushButton("Save Image")
             self.save_image_button.setObjectName("secondaryButton")
             self.transparent_shape.toggled.connect(self._apply_display_options)
@@ -522,13 +536,16 @@ if QtWidgets is not None:
             self.feature_edges.toggled.connect(self._apply_display_options)
             self.show_projection_arrow.toggled.connect(self._update_projection_vector)
             self.show_overlay.toggled.connect(self._update_overlay)
+            self.camera_direction.activated.connect(self._apply_camera_direction)
             self.save_image_button.clicked.connect(self._save_view_image)
             display_layout.addWidget(self.transparent_shape, 0, 0)
             display_layout.addWidget(self.mesh_edges, 0, 1)
             display_layout.addWidget(self.feature_edges, 1, 0)
             display_layout.addWidget(self.show_overlay, 1, 1)
             display_layout.addWidget(self.show_projection_arrow, 2, 0, 1, 2)
-            display_layout.addWidget(self.save_image_button, 3, 0, 1, 2)
+            display_layout.addWidget(QtWidgets.QLabel("Camera"), 3, 0)
+            display_layout.addWidget(self.camera_direction, 3, 1)
+            display_layout.addWidget(self.save_image_button, 4, 0, 1, 2)
             panel_layout.addWidget(display_box)
 
             advanced_layout = self._make_collapsible_section(panel_layout, "Advanced")
@@ -1190,7 +1207,31 @@ if QtWidgets is not None:
         def _set_default_model_camera(self, model: ModelData) -> None:
             if self._plotter is None:
                 return
-            position, focal_point, view_up = _default_camera_geometry(model.vertices)
+            self.camera_direction.setCurrentIndex(6)
+            position, focal_point, view_up = _camera_geometry(
+                model.vertices,
+                np.asarray(self.camera_direction.currentData(), dtype=float),
+            )
+            self._set_camera(position, focal_point, view_up)
+
+        def _apply_camera_direction(self) -> None:
+            if self._plotter is None or self._model is None:
+                return
+            position, focal_point, view_up = _camera_geometry(
+                self._model.vertices,
+                np.asarray(self.camera_direction.currentData(), dtype=float),
+            )
+            self._set_camera(position, focal_point, view_up)
+            self._plotter.render()
+
+        def _set_camera(
+            self,
+            position: np.ndarray,
+            focal_point: np.ndarray,
+            view_up: np.ndarray,
+        ) -> None:
+            if self._plotter is None:
+                return
             self._plotter.reset_camera()
             self._plotter.camera_position = (
                 tuple(position),
@@ -1758,15 +1799,25 @@ def _projection_camera_geometry(
 
 
 def _default_camera_geometry(vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    return _camera_geometry(vertices, np.array([-1.0, -1.0, 1.0], dtype=float))
+
+
+def _camera_geometry(
+    vertices: np.ndarray,
+    from_direction: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     center = vertices.mean(axis=0)
-    from_direction = np.array([-1.0, -1.0, 1.0], dtype=float)
     from_direction = from_direction / np.linalg.norm(from_direction)
     spans = np.ptp(vertices, axis=0)
     scale = max(float(spans.max()), 1.0)
     distance = scale * 3.0
     position = center + from_direction * distance
     view_direction = (center - position) / np.linalg.norm(center - position)
-    up_hint = np.array([0.0, 0.0, 1.0], dtype=float)
+    up_hint = (
+        np.array([0.0, 1.0, 0.0], dtype=float)
+        if abs(float(view_direction[2])) > 0.9
+        else np.array([0.0, 0.0, 1.0], dtype=float)
+    )
     view_up = up_hint - view_direction * float(np.dot(up_hint, view_direction))
     view_up = view_up / np.linalg.norm(view_up)
     return position, center, view_up
