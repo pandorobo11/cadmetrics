@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import asin, atan2, cos, degrees, radians, sin, sqrt
+from math import asin, atan2, cos, degrees, isfinite, radians, sin, sqrt
 
 import numpy as np
 
@@ -90,7 +90,11 @@ def parse_vector(value: str) -> FloatArray:
 
 
 def normalize_vector(vector: FloatArray) -> FloatArray:
+    if not bool(np.all(np.isfinite(vector))):
+        raise ValueError("Vector components must be finite")
     magnitude = sqrt(float(np.dot(vector, vector)))
+    if not isfinite(magnitude):
+        raise ValueError("Vector magnitude must be finite")
     if magnitude == 0.0:
         raise ValueError("Vector magnitude must be greater than zero")
     return vector / magnitude

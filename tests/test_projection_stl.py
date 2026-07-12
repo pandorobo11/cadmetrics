@@ -114,6 +114,12 @@ def test_vector_direction_reports_equivalent_attitudes() -> None:
     assert row.pitch_deg == pytest.approx(90.0)
 
 
+@pytest.mark.parametrize("direction", ["nan,0,0", "inf,0,0", "1,-inf,0"])
+def test_vector_direction_rejects_non_finite_components(direction: str) -> None:
+    with pytest.raises(ValueError, match="finite"):
+        project(DATA_DIR / "unit_cube.stl", direction=direction)
+
+
 def test_positive_roll_uses_positive_x_right_hand_rule() -> None:
     row = project(DATA_DIR / "unit_cube.stl", roll_deg=90, alpha_deg=90)
 

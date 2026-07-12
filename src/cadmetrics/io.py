@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,8 @@ def load_model(
     require_mesh: bool = True,
 ) -> ModelData:
     base_tolerance = _resolve_base_tolerance(base_tolerance)
+    angular_deflection = _resolve_angular_deflection(angular_deflection)
+    _validate_mesh_deflection_input(mesh_deflection)
     paths = _normalize_model_paths(path)
     if len(paths) > 1:
         return _load_assembly(
@@ -699,9 +702,24 @@ def _resolve_mesh_deflection(
             value = float(text)
         except ValueError as exc:
             raise ValueError("mesh_deflection must be a number or 'auto'") from exc
+    if not isfinite(float(value)):
+        raise ValueError("mesh_deflection must be finite")
     if value <= 0.0:
         raise ValueError("mesh_deflection must be greater than zero")
     return float(value)
+
+
+def _validate_mesh_deflection_input(value: float | str) -> None:
+    if isinstance(value, str) and value.strip().lower() == "auto":
+        return
+    try:
+        deflection = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("mesh_deflection must be a number or 'auto'") from exc
+    if not isfinite(deflection):
+        raise ValueError("mesh_deflection must be finite")
+    if deflection <= 0.0:
+        raise ValueError("mesh_deflection must be greater than zero")
 
 
 def _resolve_base_tolerance(value: float) -> float:
@@ -709,9 +727,23 @@ def _resolve_base_tolerance(value: float) -> float:
         tolerance = float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError("base_tolerance must be a number") from exc
+    if not isfinite(tolerance):
+        raise ValueError("base_tolerance must be finite")
     if tolerance <= 0.0:
         raise ValueError("base_tolerance must be greater than zero")
     return tolerance
+
+
+def _resolve_angular_deflection(value: float) -> float:
+    try:
+        deflection = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("angular_deflection must be a number") from exc
+    if not isfinite(deflection):
+        raise ValueError("angular_deflection must be finite")
+    if deflection < 0.0:
+        raise ValueError("angular_deflection must not be negative")
+    return deflection
 
 
 def _normalize_step_metric_source(value: str) -> str:

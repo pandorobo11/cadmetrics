@@ -17,7 +17,7 @@ from cadmetrics.orientation import (
 )
 from cadmetrics.projection import ProjectionMetrics, projected_metrics
 from cadmetrics.projection import projection_basis
-from cadmetrics.sweep import iter_orientations
+from cadmetrics.sweep import iter_orientations, orientation_count
 from cadmetrics.types import MeasurementRow, ModelData
 
 
@@ -304,8 +304,8 @@ def sweep_model(
     progress_callback: Callable[[int, int, Orientation], None] | None = None,
 ) -> list[MeasurementRow]:
     rows: list[MeasurementRow] = []
+    total = orientation_count(roll=roll, alpha=alpha, beta=beta)
     orientations = iter_orientations(roll=roll, alpha=alpha, beta=beta)
-    total = len(orientations)
     for index, orientation in enumerate(orientations, start=1):
         row_start = perf_counter()
         projection_direction = projection_direction_for_orientation(orientation)
