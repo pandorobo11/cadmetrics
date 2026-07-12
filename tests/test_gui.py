@@ -10,13 +10,12 @@ import pytest
 
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
+from cadmetrics.gui.workers import CalculationWorker
 from cadmetrics.cli import CSV_FIELDS
 from cadmetrics.gui.pyside_app import (
     CAMERA_DIRECTIONS,
-    _base_face_mask,
     _camera_geometry,
     _component_display_groups,
-    _default_camera_geometry,
     _format_file_selection,
     _format_model_file_label,
     _overlay_text,
@@ -24,6 +23,8 @@ from cadmetrics.gui.pyside_app import (
     _projection_camera_geometry,
     TABLE_COLUMNS,
 )
+from cadmetrics.gui.viewer_geometry import base_face_mask as _base_face_mask
+from cadmetrics.gui.viewer_geometry import default_camera_geometry as _default_camera_geometry
 from cadmetrics.types import MeasurementRow, ModelData
 
 
@@ -449,6 +450,59 @@ def test_gui_job_uses_loaded_model_without_reloading(monkeypatch) -> None:
     assert rows[0].projected_area == pytest.approx(1.0)
 
 
+def test_calculation_worker_loads_model_before_calculation(monkeypatch) -> None:
+    pytest.importorskip("PySide6")
+    model = _model()
+    row = _row()
+    events = []
+
+    monkeypatch.setattr("cadmetrics.gui.workers.inspect_model", lambda *args, **kwargs: model)
+    monkeypatch.setattr(
+        "cadmetrics.gui.workers.run_calculation",
+        lambda request, *, model, progress_callback: [row],
+    )
+    worker = CalculationWorker(CalculationRequest(file=Path("model.step")), calculate=True)
+    worker.model_loaded.connect(lambda loaded: events.append(("loaded", loaded)))
+    worker.finished.connect(lambda rows: events.append(("finished", rows)))
+
+    worker.run()
+
+    assert events == [("loaded", model), ("finished", [row])]
+
+
+def test_calculation_worker_load_only_skips_calculation(monkeypatch) -> None:
+    pytest.importorskip("PySide6")
+    model = _model()
+    completed = []
+
+    monkeypatch.setattr("cadmetrics.gui.workers.inspect_model", lambda *args, **kwargs: model)
+    monkeypatch.setattr(
+        "cadmetrics.gui.workers.run_calculation",
+        lambda *args, **kwargs: pytest.fail("load-only worker must not calculate"),
+    )
+    worker = CalculationWorker(CalculationRequest(file=Path("model.step")), calculate=False)
+    worker.load_finished.connect(lambda: completed.append(True))
+
+    worker.run()
+
+    assert completed == [True]
+
+
+def test_calculation_worker_honors_cancel_after_load(monkeypatch) -> None:
+    pytest.importorskip("PySide6")
+    model = _model()
+    cancelled = []
+
+    monkeypatch.setattr("cadmetrics.gui.workers.inspect_model", lambda *args, **kwargs: model)
+    worker = CalculationWorker(CalculationRequest(file=Path("model.step")), calculate=True)
+    worker.cancelled.connect(lambda: cancelled.append(True))
+    worker.cancel()
+
+    worker.run()
+
+    assert cancelled == [True]
+
+
 def test_gui_formats_multiple_file_selection_labels() -> None:
     paths = (Path("/tmp/body.step"), Path("/tmp/wing.step"), Path("/tmp/tail.step"))
 
@@ -576,5 +630,20 @@ def _row(*, direction: str | None = None) -> MeasurementRow:
         volume=1.0,
         surface_area=2.0,
         projected_area=3.0,
+        is_watertight=True,
+    )
+
+
+def _model() -> ModelData:
+    return ModelData(
+        path=Path("model.step"),
+        source_format="step",
+        vertices=np.empty((0, 3), dtype=float),
+        faces=np.empty((0, 3), dtype=np.int64),
+        input_unit="m",
+        output_unit="m",
+        volume=1.0,
+        surface_area=6.0,
+        base_area=1.0,
         is_watertight=True,
     )

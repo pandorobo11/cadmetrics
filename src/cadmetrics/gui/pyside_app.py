@@ -5,19 +5,22 @@ import tempfile
 from contextlib import ExitStack
 from importlib import resources
 from pathlib import Path
-from threading import Event
 from typing import Any
 
 import numpy as np
 
-from cadmetrics.api import inspect_model
 from cadmetrics.coordinates import AXIS_CHOICES
 from cadmetrics.docs_site import build_documentation_site
 from cadmetrics.gui.export import write_rows_csv
-from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath, run_calculation
+from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath
+from cadmetrics.gui.viewer_geometry import base_face_polydata as _base_face_polydata
+from cadmetrics.gui.viewer_geometry import camera_geometry as _camera_geometry
+from cadmetrics.gui.viewer_geometry import projection_arrow_geometry as _projection_arrow_geometry
+from cadmetrics.gui.viewer_geometry import projection_camera_geometry as _projection_camera_geometry
+from cadmetrics.gui.viewer_geometry import row_centroid_point as _row_centroid_point
+from cadmetrics.gui.workers import CalculationWorker
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.orientation import Orientation, parse_vector, projection_direction_for_orientation
-from cadmetrics.projection import projection_basis
 from cadmetrics.types import MeasurementRow, ModelData
 
 try:
@@ -83,45 +86,6 @@ class MissingGuiDependency(RuntimeError):
     pass
 
 
-if QtCore is not None:
-
-    class CalculationWorker(QtCore.QObject):
-        finished = QtCore.Signal(list)
-        failed = QtCore.Signal(str)
-        progress = QtCore.Signal(int, int, str)
-        cancelled = QtCore.Signal()
-
-        def __init__(self, request: CalculationRequest, model: ModelData | None = None) -> None:
-            super().__init__()
-            self._request = request
-            self._model = model
-            self._cancel = Event()
-
-        @QtCore.Slot()
-        def run(self) -> None:
-            try:
-                rows = run_calculation(
-                    self._request,
-                    model=self._model,
-                    progress_callback=self._on_progress,
-                )
-            except _CancelledCalculation:
-                self.cancelled.emit()
-                return
-            except Exception as exc:
-                self.failed.emit(str(exc))
-                return
-            self.finished.emit(rows)
-
-        def cancel(self) -> None:
-            self._cancel.set()
-
-        def _on_progress(self, index: int, total: int, description: str) -> None:
-            if self._cancel.is_set():
-                raise _CancelledCalculation
-            self.progress.emit(index, total, description)
-
-
 if QtWidgets is not None:
 
     class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
@@ -132,12 +96,7 @@ if QtWidgets is not None:
             return text
 
 else:
-    CalculationWorker = object  # type: ignore[misc,assignment]
     FlexibleDoubleSpinBox = object  # type: ignore[misc,assignment]
-
-
-class _CancelledCalculation(Exception):
-    pass
 
 
 def _spinbox_arrow_image_urls() -> tuple[str, str]:
@@ -180,6 +139,7 @@ if QtWidgets is not None:
             self._rows: list[MeasurementRow] = []
             self._thread: QtCore.QThread | None = None
             self._worker: CalculationWorker | None = None
+            self._close_when_idle = False
             self._plotter: Any | None = None
             self._vector_actor: Any | None = None
             self._mesh_actor: Any | None = None
@@ -450,14 +410,14 @@ if QtWidgets is not None:
             setup_layout = self._make_section(panel_layout, "Setup")
             self.file_edit = QtWidgets.QLineEdit()
             self.file_edit.setPlaceholderText("STL or STEP file(s)")
-            browse = QtWidgets.QPushButton("Browse")
-            browse.setObjectName("secondaryButton")
-            browse.clicked.connect(self._browse_file)
+            self.browse_button = QtWidgets.QPushButton("Browse")
+            self.browse_button.setObjectName("secondaryButton")
+            self.browse_button.clicked.connect(self._browse_file)
             file_row = QtWidgets.QHBoxLayout()
             file_row.setContentsMargins(0, 0, 0, 0)
             file_row.setSpacing(8)
             file_row.addWidget(self.file_edit)
-            file_row.addWidget(browse)
+            file_row.addWidget(self.browse_button)
             setup_layout.addRow("File", file_row)
 
             self.input_unit = QtWidgets.QComboBox()
@@ -998,29 +958,13 @@ if QtWidgets is not None:
                 return
             self._load_model()
 
-        def _load_model(self) -> bool:
+        def _load_model(self) -> None:
             try:
                 request = self._request()
-                self._model = inspect_model(
-                    request.file,
-                    input_unit=request.input_unit,
-                    output_unit=request.output_unit,
-                    mesh_deflection=request.mesh_deflection,
-                    angular_deflection=request.angular_deflection,
-                    base_tolerance=request.base_tolerance,
-                    step_metric_source=request.step_metric_source,
-                    axis_map=request.axis_map,
-                    step_components=request.step_components,
-                )
             except Exception as exc:
                 self._show_error(str(exc))
-                return False
-            self._populate_component_filters(self._model)
-            self._show_model_info(self._model)
-            self._plot_model(self._model)
-            self._update_projection_vector()
-            self.status.setText("Model loaded")
-            return True
+                return
+            self._start_worker(request, calculate=False)
 
         def _start_calculation(self) -> None:
             try:
@@ -1029,22 +973,26 @@ if QtWidgets is not None:
                 self._show_error(str(exc))
                 return
 
-            if not self._load_model():
-                return
-            model = self._model
+            self._start_worker(request, calculate=True)
 
+        def _start_worker(self, request: CalculationRequest, *, calculate: bool) -> None:
+            if self._thread is not None:
+                self._show_error("Another model operation is already running.")
+                return
             self._set_running(True)
-            self.progress.setRange(0, 1)
-            self.progress.setValue(0)
-            self.status.setText("Running")
+            self.progress.setRange(0, 0)
+            self.status.setText("Loading model")
             self._thread = QtCore.QThread(self)
-            self._worker = CalculationWorker(request, model)
+            self._worker = CalculationWorker(request, calculate=calculate)
             self._worker.moveToThread(self._thread)
             self._thread.started.connect(self._worker.run)
+            self._worker.model_loaded.connect(self._on_model_loaded)
+            self._worker.load_finished.connect(self._on_load_finished)
             self._worker.finished.connect(self._on_finished)
             self._worker.failed.connect(self._on_failed)
             self._worker.cancelled.connect(self._on_cancelled)
             self._worker.progress.connect(self._on_progress)
+            self._worker.load_finished.connect(self._thread.quit)
             self._worker.finished.connect(self._thread.quit)
             self._worker.failed.connect(self._thread.quit)
             self._worker.cancelled.connect(self._thread.quit)
@@ -1052,6 +1000,20 @@ if QtWidgets is not None:
             self._thread.finished.connect(self._thread.deleteLater)
             self._thread.finished.connect(self._clear_thread)
             self._thread.start()
+
+        def _on_model_loaded(self, model: ModelData) -> None:
+            self._model = model
+            self._populate_component_filters(model)
+            self._show_model_info(model)
+            self._plot_model(model)
+            self._update_projection_vector()
+            self.status.setText("Model loaded; calculating")
+
+        def _on_load_finished(self) -> None:
+            self._set_running(False)
+            self.progress.setRange(0, 1)
+            self.progress.setValue(1)
+            self.status.setText("Model loaded")
 
         def _cancel_calculation(self) -> None:
             if self._worker is not None:
@@ -1090,6 +1052,17 @@ if QtWidgets is not None:
         def _clear_thread(self) -> None:
             self._thread = None
             self._worker = None
+            if self._close_when_idle:
+                self.close()
+
+        def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
+            if self._thread is not None:
+                self._close_when_idle = True
+                self._cancel_calculation()
+                event.ignore()
+                return
+            self._documentation_resources.close()
+            event.accept()
 
         def _save_csv(self) -> None:
             if not self._rows:
@@ -1663,6 +1636,19 @@ if QtWidgets is not None:
             self.save_button.setEnabled(not running and bool(self._rows))
             self.cancel_button.setEnabled(running)
             self.cancel_button.setVisible(running)
+            for widget in (
+                self.file_edit,
+                self.browse_button,
+                self.input_unit,
+                self.output_unit,
+                self.attitude_box,
+                self.apply_advanced_button,
+            ):
+                widget.setEnabled(not running)
+            if running:
+                self._sync_component_controls(False)
+            else:
+                self._sync_component_controls(bool(self._component_checkboxes))
 
         def _show_error(self, message: str) -> None:
             self.status.setText(f"Error: {message}")
@@ -1855,99 +1841,3 @@ def _format_sweep(start: float, end: float, step: float) -> str:
     if start == end:
         return f"{start:.3g}"
     return f"{start:.3g}:{end:.3g}:{step:.3g}"
-
-
-def _row_centroid_point(row: MeasurementRow | None) -> np.ndarray | None:
-    if row is None or row.centroid_x is None or row.centroid_y is None or row.centroid_z is None:
-        return None
-    return np.array([row.centroid_x, row.centroid_y, row.centroid_z], dtype=float)
-
-
-def _projection_arrow_geometry(
-    vertices: np.ndarray,
-    direction: np.ndarray,
-    *,
-    through_point: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    anchor = vertices.mean(axis=0) if through_point is None else through_point
-    unit_direction = direction / np.linalg.norm(direction)
-    spans = np.ptp(vertices, axis=0)
-    scale = max(float(spans.max()), 1.0)
-    clearance = scale * 0.15
-    projections = (vertices - anchor) @ unit_direction
-    upstream_edge = float(projections.min())
-    arrow_length = scale * 0.35
-    start = anchor + unit_direction * (upstream_edge - clearance - arrow_length)
-    vector = unit_direction * arrow_length
-    return start, vector
-
-
-def _base_face_mask(
-    vertices: np.ndarray,
-    faces: np.ndarray,
-    relative_tolerance: float,
-) -> np.ndarray:
-    if vertices.size == 0 or faces.size == 0:
-        return np.zeros(faces.shape[0], dtype=bool)
-    diagonal = float(np.linalg.norm(np.ptp(vertices, axis=0)))
-    tolerance = max(diagonal * relative_tolerance, 1.0e-12)
-    xmax = float(np.max(vertices[:, 0]))
-    return np.all(np.abs(vertices[faces, 0] - xmax) <= tolerance, axis=1)
-
-
-def _base_face_polydata(model: ModelData, pv: Any) -> Any | None:
-    relative_tolerance = model.base_tolerance or DEFAULT_BASE_TOLERANCE
-    mask = _base_face_mask(model.vertices, model.faces, relative_tolerance)
-    if not bool(np.any(mask)):
-        return None
-
-    triangles = model.vertices[model.faces[mask]].copy()
-    diagonal = float(np.linalg.norm(np.ptp(model.vertices, axis=0)))
-    triangles[:, :, 0] += max(diagonal * 1.0e-5, 1.0e-12)
-    highlight_vertices = triangles.reshape(-1, 3)
-    highlight_faces = np.column_stack(
-        [
-            np.full(triangles.shape[0], 3, dtype=np.int64),
-            np.arange(highlight_vertices.shape[0], dtype=np.int64).reshape(-1, 3),
-        ]
-    ).ravel()
-    return pv.PolyData(highlight_vertices, highlight_faces)
-
-
-def _projection_camera_geometry(
-    vertices: np.ndarray,
-    direction: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    center = vertices.mean(axis=0)
-    unit_direction = direction / np.linalg.norm(direction)
-    spans = np.ptp(vertices, axis=0)
-    scale = max(float(spans.max()), 1.0)
-    distance = scale * 3.0
-    _, view_up = projection_basis(unit_direction)
-    position = center - unit_direction * distance
-    return position, center, view_up
-
-
-def _default_camera_geometry(vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    return _camera_geometry(vertices, np.array([-1.0, -1.0, 1.0], dtype=float))
-
-
-def _camera_geometry(
-    vertices: np.ndarray,
-    from_direction: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    center = vertices.mean(axis=0)
-    from_direction = from_direction / np.linalg.norm(from_direction)
-    spans = np.ptp(vertices, axis=0)
-    scale = max(float(spans.max()), 1.0)
-    distance = scale * 3.0
-    position = center + from_direction * distance
-    view_direction = (center - position) / np.linalg.norm(center - position)
-    up_hint = (
-        np.array([0.0, 1.0, 0.0], dtype=float)
-        if abs(float(view_direction[2])) > 0.9
-        else np.array([0.0, 0.0, 1.0], dtype=float)
-    )
-    view_up = up_hint - view_direction * float(np.dot(up_hint, view_direction))
-    view_up = view_up / np.linalg.norm(view_up)
-    return position, center, view_up
