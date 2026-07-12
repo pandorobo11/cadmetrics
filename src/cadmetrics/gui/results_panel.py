@@ -9,6 +9,13 @@ from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.gui_formatters import format_cell
 from cadmetrics.types import MeasurementRow
 
+DEFAULT_COLUMN_WIDTH = 110
+WIDE_COLUMN_WIDTHS = {
+    "file": 180,
+    "step_component_names": 160,
+    "warnings": 200,
+}
+
 
 class ResultsPanel(QtWidgets.QWidget):
     selected_row_changed = QtCore.Signal(object)
@@ -35,7 +42,27 @@ class ResultsPanel(QtWidgets.QWidget):
         layout.addWidget(toolbar)
         self.table = QtWidgets.QTableWidget(0, len(CSV_FIELDS))
         self.table.setHorizontalHeaderLabels(CSV_FIELDS)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
+        header.setDefaultSectionSize(DEFAULT_COLUMN_WIDTH)
+        header.setMinimumSectionSize(70)
+        header.setStretchLastSection(False)
+        header.setDefaultAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.table.setTextElideMode(QtCore.Qt.TextElideMode.ElideRight)
+        for column_index, column in enumerate(CSV_FIELDS):
+            header_item = self.table.horizontalHeaderItem(column_index)
+            if header_item is None:
+                raise RuntimeError(f"Could not create table header for {column}")
+            header_item.setTextAlignment(
+                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+            )
+            header_item.setToolTip(column)
+            self.table.setColumnWidth(
+                column_index,
+                WIDE_COLUMN_WIDTHS.get(column, DEFAULT_COLUMN_WIDTH),
+            )
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
@@ -55,10 +82,16 @@ class ResultsPanel(QtWidgets.QWidget):
         for row_index, row in enumerate(rows):
             values = row.to_csv_row()
             for column_index, column in enumerate(CSV_FIELDS):
+                text = format_cell(values[column])
+                item = QtWidgets.QTableWidgetItem(text)
+                item.setTextAlignment(
+                    QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+                )
+                item.setToolTip(text)
                 self.table.setItem(
                     row_index,
                     column_index,
-                    QtWidgets.QTableWidgetItem(format_cell(values[column])),
+                    item,
                 )
         self.result_count.setText(f"Rows: {len(rows)}")
         self.save_button.setEnabled(bool(rows))

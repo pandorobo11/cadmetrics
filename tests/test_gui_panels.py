@@ -10,9 +10,11 @@ pytest.importorskip("PySide6")
 from PySide6 import QtCore, QtWidgets
 
 import cadmetrics.gui.pyside_app as pyside_app
+from cadmetrics.cli import CSV_FIELDS
 from cadmetrics.gui.control_panel import ControlPanel
 from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.results_panel import ResultsPanel
+from cadmetrics.gui.results_panel import DEFAULT_COLUMN_WIDTH, WIDE_COLUMN_WIDTHS
 from cadmetrics.gui.styles import application_stylesheet
 from cadmetrics.types import MeasurementRow, ModelData
 
@@ -175,6 +177,38 @@ def test_results_panel_restores_table_density(qtbot) -> None:
     assert panel.table.alternatingRowColors() is True
     assert panel.table.verticalHeader().isVisible() is False
     assert panel.table.verticalHeader().defaultSectionSize() == 24
+
+
+def test_results_panel_keeps_all_field_names_left_aligned_and_discoverable(qtbot) -> None:
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    panel.set_rows([_row()])
+    header = panel.table.horizontalHeader()
+
+    assert panel.table.columnCount() == len(CSV_FIELDS)
+    assert panel.table.textElideMode() == QtCore.Qt.TextElideMode.ElideRight
+    assert header.sectionResizeMode(0) == QtWidgets.QHeaderView.ResizeMode.Interactive
+    for column_index, column in enumerate(CSV_FIELDS):
+        item = panel.table.horizontalHeaderItem(column_index)
+        assert item.text() == column
+        assert item.toolTip() == column
+        assert item.textAlignment() & QtCore.Qt.AlignmentFlag.AlignLeft
+
+
+def test_results_panel_cells_are_left_aligned_with_full_text_tooltips(qtbot) -> None:
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    row = _row()
+    panel.set_rows([row])
+    file_column = CSV_FIELDS.index("file")
+    warnings_column = CSV_FIELDS.index("warnings")
+    file_item = panel.table.item(0, file_column)
+
+    assert file_item.textAlignment() & QtCore.Qt.AlignmentFlag.AlignLeft
+    assert file_item.toolTip() == file_item.text()
+    assert panel.table.columnWidth(file_column) == WIDE_COLUMN_WIDTHS["file"]
+    assert panel.table.columnWidth(warnings_column) == WIDE_COLUMN_WIDTHS["warnings"]
+    assert panel.table.columnWidth(CSV_FIELDS.index("roll_deg")) == DEFAULT_COLUMN_WIDTH
 
 
 def test_main_window_only_composes_gui_components(qtbot, monkeypatch) -> None:
