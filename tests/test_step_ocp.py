@@ -9,7 +9,9 @@ from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
 from OCP.gp import gp_Pnt
 from OCP.IFSelect import IFSelect_RetDone
 from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
-from OCP.TopoDS import TopoDS_Compound
+from OCP.TopAbs import TopAbs_FACE
+from OCP.TopExp import TopExp_Explorer
+from OCP.TopoDS import TopoDS, TopoDS_Compound
 
 from cadmetrics.api import inspect_model, measure, project
 from cadmetrics.cli import app
@@ -101,6 +103,36 @@ def test_step_box_can_use_tessellated_mesh_metrics(tmp_path: Path) -> None:
     assert projected.method == "step-mesh+mesh-projection"
     assert projected.volume == pytest.approx(measured.volume)
     assert projected.surface_area == pytest.approx(measured.surface_area)
+
+
+@pytest.mark.parametrize("metric_source", ["brep", "mesh"])
+def test_open_step_shape_leaves_volume_unset(tmp_path: Path, metric_source: str) -> None:
+    step_path = tmp_path / "open_box.step"
+    _write_open_step_box(step_path)
+
+    measured = measure(step_path, step_metric_source=metric_source)
+
+    assert measured.volume is None
+    assert measured.surface_area == pytest.approx(5.0)
+    assert measured.is_watertight is False
+    assert "volume was left unset" in "; ".join(measured.warnings)
+
+
+def test_step_shape_with_loose_face_is_not_watertight(tmp_path: Path) -> None:
+    step_path = tmp_path / "solid_with_loose_face.step"
+    solid = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    extra_shape = BRepPrimAPI_MakeBox(
+        gp_Pnt(2000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
+    ).Shape()
+    explorer = TopExp_Explorer(extra_shape, TopAbs_FACE)
+    extra_face = TopoDS.Face_s(explorer.Current())
+    _write_step_compound(step_path, [solid, extra_face])
+
+    measured = measure(step_path)
+
+    assert measured.volume is None
+    assert measured.is_watertight is False
+    assert "non-solid faces" in "; ".join(measured.warnings)
 
 
 def test_step_metrics_mesh_cli_option(tmp_path: Path) -> None:
@@ -302,3 +334,13 @@ def _write_step_compound(path: Path, shapes) -> None:
     writer = STEPControl_Writer()
     writer.Transfer(compound, STEPControl_AsIs)
     assert writer.Write(str(path)) == IFSelect_RetDone
+
+
+def _write_open_step_box(path: Path) -> None:
+    shape = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    faces = []
+    explorer = TopExp_Explorer(shape, TopAbs_FACE)
+    while explorer.More():
+        faces.append(TopoDS.Face_s(explorer.Current()))
+        explorer.Next()
+    _write_step_compound(path, faces[:-1])

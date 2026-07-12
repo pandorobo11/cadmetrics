@@ -262,13 +262,14 @@ def _load_step(
         from OCP.BRep import BRep_Tool
         from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
         from OCP.BRepBndLib import BRepBndLib
+        from OCP.BRepCheck import BRepCheck_Analyzer
         from OCP.BRepGProp import BRepGProp
         from OCP.BRepMesh import BRepMesh_IncrementalMesh
         from OCP.GProp import GProp_GProps
         from OCP.IFSelect import IFSelect_RetDone
         from OCP.STEPControl import STEPControl_Reader
         from OCP.TColStd import TColStd_SequenceOfAsciiString
-        from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED, TopAbs_SOLID
+        from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED, TopAbs_SHELL, TopAbs_SOLID
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS, TopoDS_Compound
@@ -316,6 +317,15 @@ def _load_step(
         warnings.append(
             "Could not boolean-union STEP solids; volume and surface area may double-count overlaps."
         )
+    topology_watertight = _ocp_shape_is_watertight(
+        shape,
+        BRepCheck_Analyzer=BRepCheck_Analyzer,
+        BRep_Tool=BRep_Tool,
+        TopAbs_FACE=TopAbs_FACE,
+        TopAbs_SHELL=TopAbs_SHELL,
+        TopAbs_SOLID=TopAbs_SOLID,
+        TopExp_Explorer=TopExp_Explorer,
+    )
     resolved_input_unit = input_unit
     if input_unit.strip().lower() == "auto":
         resolved_input_unit = _detect_step_length_unit(
@@ -398,6 +408,12 @@ def _load_step(
         surface_area = brep_surface_area
         mesh_watertight = None
 
+    if not topology_watertight:
+        volume = None
+        warnings.append(
+            "STEP shape is open, invalid, or contains non-solid faces; volume was left unset."
+        )
+
     metric_label = "mesh" if metric_source == "mesh" else "exact"
     if volume is None:
         warnings.append(f"Could not calculate {metric_label} STEP volume.")
@@ -417,7 +433,9 @@ def _load_step(
         else None
     )
     is_watertight = None
-    if metric_source == "mesh":
+    if not topology_watertight:
+        is_watertight = False
+    elif metric_source == "mesh":
         is_watertight = mesh_watertight
     elif scaled_volume is not None:
         is_watertight = scaled_volume > 0.0
@@ -465,13 +483,14 @@ def _load_step_assembly(
         from OCP.BRep import BRep_Tool
         from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
         from OCP.BRepBndLib import BRepBndLib
+        from OCP.BRepCheck import BRepCheck_Analyzer
         from OCP.BRepGProp import BRepGProp
         from OCP.BRepMesh import BRepMesh_IncrementalMesh
         from OCP.GProp import GProp_GProps
         from OCP.IFSelect import IFSelect_RetDone
         from OCP.STEPControl import STEPControl_Reader
         from OCP.TColStd import TColStd_SequenceOfAsciiString
-        from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED, TopAbs_SOLID
+        from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED, TopAbs_SHELL, TopAbs_SOLID
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS, TopoDS_Compound
@@ -565,6 +584,15 @@ def _load_step_assembly(
         warnings.append(
             "Could not boolean-union STEP assembly solids; volume and surface area may double-count overlaps."
         )
+    topology_watertight = _ocp_shape_is_watertight(
+        shape,
+        BRepCheck_Analyzer=BRepCheck_Analyzer,
+        BRep_Tool=BRep_Tool,
+        TopAbs_FACE=TopAbs_FACE,
+        TopAbs_SHELL=TopAbs_SHELL,
+        TopAbs_SOLID=TopAbs_SOLID,
+        TopExp_Explorer=TopExp_Explorer,
+    )
 
     scale = length_scale(resolved_input_unit, output_unit)
     native_bounds = _ocp_bounds(shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib)
@@ -638,6 +666,12 @@ def _load_step_assembly(
         surface_area = brep_surface_area
         mesh_watertight = None
 
+    if not topology_watertight:
+        volume = None
+        warnings.append(
+            "STEP shape is open, invalid, or contains non-solid faces; volume was left unset."
+        )
+
     metric_label = "mesh" if metric_source == "mesh" else "exact"
     if volume is None:
         warnings.append(f"Could not calculate {metric_label} STEP volume.")
@@ -657,7 +691,9 @@ def _load_step_assembly(
         else None
     )
     is_watertight = None
-    if metric_source == "mesh":
+    if not topology_watertight:
+        is_watertight = False
+    elif metric_source == "mesh":
         is_watertight = mesh_watertight
     elif scaled_volume is not None:
         is_watertight = scaled_volume > 0.0
@@ -1001,6 +1037,56 @@ def _boolean_union_ocp_solids(
         fused = fuse.Shape()
 
     return fused, True
+
+
+def _ocp_shape_is_watertight(
+    shape: Any,
+    *,
+    BRepCheck_Analyzer: Any,
+    BRep_Tool: Any,
+    TopAbs_FACE: Any,
+    TopAbs_SHELL: Any,
+    TopAbs_SOLID: Any,
+    TopExp_Explorer: Any,
+) -> bool:
+    try:
+        if not BRepCheck_Analyzer(shape).IsValid():
+            return False
+    except Exception:
+        return False
+
+    solids = _explore_ocp_subshapes(shape, TopAbs_SOLID, TopExp_Explorer)
+    if not solids:
+        return False
+
+    solid_faces: list[Any] = []
+    for solid in solids:
+        try:
+            if not BRepCheck_Analyzer(solid).IsValid():
+                return False
+        except Exception:
+            return False
+        shells = _explore_ocp_subshapes(solid, TopAbs_SHELL, TopExp_Explorer)
+        if not shells:
+            return False
+        try:
+            if any(not BRep_Tool.IsClosed_s(shell) for shell in shells):
+                return False
+        except Exception:
+            return False
+        solid_faces.extend(_explore_ocp_subshapes(solid, TopAbs_FACE, TopExp_Explorer))
+
+    all_faces = _explore_ocp_subshapes(shape, TopAbs_FACE, TopExp_Explorer)
+    return all(any(face.IsSame(solid_face) for solid_face in solid_faces) for face in all_faces)
+
+
+def _explore_ocp_subshapes(shape: Any, shape_type: Any, TopExp_Explorer: Any) -> list[Any]:
+    subshapes: list[Any] = []
+    explorer = TopExp_Explorer(shape, shape_type)
+    while explorer.More():
+        subshapes.append(explorer.Current())
+        explorer.Next()
+    return subshapes
 
 
 def _extract_ocp_solids(
