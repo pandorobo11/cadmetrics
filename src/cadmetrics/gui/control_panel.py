@@ -40,6 +40,7 @@ class ControlPanel(QtWidgets.QScrollArea):
     model_reload_requested = QtCore.Signal(object)
     cancel_requested = QtCore.Signal()
     viewer_options_changed = QtCore.Signal(object)
+    request_changed = QtCore.Signal(object)
     error = QtCore.Signal(str)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
@@ -97,6 +98,7 @@ class ControlPanel(QtWidgets.QScrollArea):
         attitude_layout.addWidget(self.vector_group)
         layout.addWidget(self.attitude_box)
         self.attitude_mode.currentIndexChanged.connect(self._sync_attitude_controls)
+        self.attitude_mode.currentIndexChanged.connect(self._emit_preview_request)
 
         self.run_button = QtWidgets.QPushButton("Run Sweep")
         self.run_button.setObjectName("primaryButton")
@@ -328,6 +330,13 @@ class ControlPanel(QtWidgets.QScrollArea):
     def _emit_viewer_options(self) -> None:
         self.viewer_options_changed.emit(self.viewer_options())
 
+    def _emit_preview_request(self) -> None:
+        try:
+            request = self.request()
+        except Exception:
+            return
+        self.request_changed.emit(request)
+
     def _populate_components(self, model: ModelData) -> None:
         current = set(self._selected_components(self.file_paths) or ())
         self._clear_component_widgets()
@@ -447,7 +456,7 @@ class ControlPanel(QtWidgets.QScrollArea):
         fields = (self._number(0.0), self._number(0.0), self._number(1.0))
         for column, field in enumerate(fields, start=1):
             grid.addWidget(field, row, column)
-            field.valueChanged.connect(self._emit_viewer_options)
+            field.valueChanged.connect(self._emit_preview_request)
         return fields
 
     def _vector_inputs(
@@ -462,7 +471,7 @@ class ControlPanel(QtWidgets.QScrollArea):
         for column, (label, field) in enumerate(zip(("X", "Y", "Z"), fields, strict=True)):
             grid.addWidget(QtWidgets.QLabel(label), 0, column)
             grid.addWidget(field, 1, column)
-            field.valueChanged.connect(self._emit_viewer_options)
+            field.valueChanged.connect(self._emit_preview_request)
         return widget, fields
 
     def _number(self, value: float) -> FlexibleDoubleSpinBox:

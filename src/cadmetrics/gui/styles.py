@@ -25,3 +25,59 @@ def spinbox_arrow_image_urls() -> tuple[str, str]:
 def with_spinbox_assets(stylesheet: str) -> str:
     up, down = spinbox_arrow_image_urls()
     return stylesheet.replace("__SPIN_UP_URL__", up).replace("__SPIN_DOWN_URL__", down)
+
+
+APPLICATION_STYLESHEET = """
+QWidget { color: #202832; font-size: 13px; }
+QLineEdit, QComboBox, QDoubleSpinBox {
+    min-height: 26px; border: 1px solid #c9d0d8; border-radius: 5px;
+    padding: 2px 7px; background: #ffffff; selection-background-color: #2f78c4;
+}
+QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus { border-color: #2f78c4; }
+QDoubleSpinBox { padding-right: 18px; }
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+    width: 18px; border-left: 1px solid #d5dbe2; background: #f8fafc;
+}
+QDoubleSpinBox::up-arrow { image: url("__SPIN_UP_URL__"); width: 10px; height: 8px; }
+QDoubleSpinBox::down-arrow { image: url("__SPIN_DOWN_URL__"); width: 10px; height: 8px; }
+QPushButton {
+    min-height: 28px; border: 1px solid #b9c2cc; border-radius: 5px;
+    padding: 4px 14px; background: #f8fafc; color: #1f2933; font-weight: 500;
+}
+QPushButton:hover { background: #eef3f8; border-color: #99a8b8; }
+QPushButton:disabled { background: #edf0f3; color: #a3abb4; }
+QPushButton#primaryButton { background: #256fb4; border-color: #1e609e; color: white; }
+QPushButton#dangerButton { background: #fff7f5; border-color: #d8a59a; color: #9f3b2f; }
+QCheckBox { min-height: 22px; spacing: 7px; }
+QGroupBox {
+    border: 1px solid #d5d9de; border-radius: 6px; margin-top: 9px;
+    padding: 10px 8px 8px 8px; background: #f9fafb;
+}
+QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; font-weight: 600; }
+QToolButton#sectionToggle {
+    border: 1px solid #d5d9de; border-radius: 6px; background: #f9fafb;
+    font-weight: 600; padding: 7px 8px; text-align: left;
+}
+QProgressBar {
+    min-height: 8px; max-height: 8px; border: 0; border-radius: 4px; background: #dce2e8;
+}
+QProgressBar::chunk { border-radius: 4px; background: #256fb4; }
+QTextEdit { border: 1px solid #cfd6dd; border-radius: 5px; background: white; padding: 5px; }
+QTableWidget {
+    gridline-color: #e2e7ec; selection-background-color: #dcecff;
+    alternate-background-color: #fafbfc; background: white; border: 0;
+}
+QHeaderView::section {
+    min-height: 24px; padding: 4px 8px; border: 0;
+    border-right: 1px solid #d9dee4; border-bottom: 1px solid #d9dee4;
+    background: #f1f4f7; color: #43505d; font-weight: 600;
+}
+QStatusBar { border-top: 1px solid #d9dee4; background: #f7f9fb; }
+QScrollArea { border: 0; background: #eef1f4; }
+QWidget#resultToolbar { background: #f7f9fb; border-top: 1px solid #d9dee4; }
+QLabel#resultCountLabel { color: #5f6872; font-weight: 500; }
+"""
+
+
+def application_stylesheet() -> str:
+    return with_spinbox_assets(APPLICATION_STYLESHEET)

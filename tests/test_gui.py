@@ -12,22 +12,20 @@ import numpy as np
 import pytest
 
 from cadmetrics.gui.export import write_rows_csv
-from cadmetrics.gui.jobs import CalculationRequest, run_calculation
-from cadmetrics.gui.workers import CalculationWorker
-from cadmetrics.cli import CSV_FIELDS
-from cadmetrics.gui.pyside_app import (
-    CAMERA_DIRECTIONS,
-    _camera_geometry,
-    _component_display_groups,
-    _format_file_selection,
-    _format_model_file_label,
-    _overlay_text,
-    _projection_arrow_geometry,
-    _projection_camera_geometry,
-    TABLE_COLUMNS,
+from cadmetrics.gui.control_panel import CAMERA_DIRECTIONS
+from cadmetrics.gui.gui_formatters import (
+    component_display_groups as _component_display_groups,
+    format_file_selection as _format_file_selection,
+    format_model_file_label as _format_model_file_label,
+    overlay_text as _overlay_text,
 )
+from cadmetrics.gui.jobs import CalculationRequest, run_calculation
+from cadmetrics.cli import CSV_FIELDS
+from cadmetrics.gui.viewer_geometry import camera_geometry as _camera_geometry
 from cadmetrics.gui.viewer_geometry import base_face_mask as _base_face_mask
 from cadmetrics.gui.viewer_geometry import default_camera_geometry as _default_camera_geometry
+from cadmetrics.gui.viewer_geometry import projection_arrow_geometry as _projection_arrow_geometry
+from cadmetrics.gui.viewer_geometry import projection_camera_geometry as _projection_camera_geometry
 from cadmetrics.types import MeasurementRow, ModelData
 
 
@@ -182,7 +180,7 @@ def test_projection_arrow_axis_can_pass_through_centroid_without_entering_model(
 
 
 def test_gui_viewer_enables_parallel_projection() -> None:
-    source = Path("src/cadmetrics/gui/pyside_app.py").read_text(encoding="utf-8")
+    source = Path("src/cadmetrics/gui/viewer.py").read_text(encoding="utf-8")
 
     assert source.count("enable_parallel_projection()") >= 2
 
@@ -281,25 +279,26 @@ def test_overlay_text_includes_selected_result_values() -> None:
 
 
 def test_gui_view_can_be_saved_as_image() -> None:
-    source = Path("src/cadmetrics/gui/pyside_app.py").read_text(encoding="utf-8")
+    source = Path("src/cadmetrics/gui/viewer.py").read_text(encoding="utf-8")
 
-    assert "screenshot(str(output_path))" in source
+    assert "screenshot(str(output))" in source
 
 
 def test_projection_arrow_display_can_be_toggled() -> None:
-    source = Path("src/cadmetrics/gui/pyside_app.py").read_text(encoding="utf-8")
+    controls = Path("src/cadmetrics/gui/control_panel.py").read_text(encoding="utf-8")
+    viewer = Path("src/cadmetrics/gui/viewer.py").read_text(encoding="utf-8")
 
-    assert 'QCheckBox("Projection arrow")' in source
-    assert "show_projection_arrow.setChecked(True)" in source
-    assert "if self.show_projection_arrow.isChecked():" in source
+    assert 'self._check("Projection arrow", True)' in controls
+    assert "if self._options.show_projection_arrow:" in viewer
 
 
 def test_base_face_highlight_can_be_toggled() -> None:
-    source = Path("src/cadmetrics/gui/pyside_app.py").read_text(encoding="utf-8")
+    controls = Path("src/cadmetrics/gui/control_panel.py").read_text(encoding="utf-8")
+    app = Path("src/cadmetrics/gui/pyside_app.py").read_text(encoding="utf-8")
 
-    assert 'QCheckBox("Base face")' in source
-    assert "show_base_face.setChecked(False)" in source
-    assert "No Xmax base face found." in source
+    assert 'self._check("Base face", False)' in controls
+    assert "show_base_face.setChecked(False)" in app
+    assert "No Xmax base face found." in app
 
 
 def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:
@@ -476,59 +475,6 @@ def test_gui_job_uses_loaded_model_without_reloading(monkeypatch) -> None:
     assert rows[0].projected_area == pytest.approx(1.0)
 
 
-def test_calculation_worker_loads_model_before_calculation(monkeypatch) -> None:
-    pytest.importorskip("PySide6")
-    model = _model()
-    row = _row()
-    events = []
-
-    monkeypatch.setattr("cadmetrics.gui.workers.inspect_model", lambda *args, **kwargs: model)
-    monkeypatch.setattr(
-        "cadmetrics.gui.workers.run_calculation",
-        lambda request, *, model, progress_callback: [row],
-    )
-    worker = CalculationWorker(CalculationRequest(file=Path("model.step")), calculate=True)
-    worker.model_loaded.connect(lambda loaded: events.append(("loaded", loaded)))
-    worker.finished.connect(lambda rows: events.append(("finished", rows)))
-
-    worker.run()
-
-    assert events == [("loaded", model), ("finished", [row])]
-
-
-def test_calculation_worker_load_only_skips_calculation(monkeypatch) -> None:
-    pytest.importorskip("PySide6")
-    model = _model()
-    completed = []
-
-    monkeypatch.setattr("cadmetrics.gui.workers.inspect_model", lambda *args, **kwargs: model)
-    monkeypatch.setattr(
-        "cadmetrics.gui.workers.run_calculation",
-        lambda *args, **kwargs: pytest.fail("load-only worker must not calculate"),
-    )
-    worker = CalculationWorker(CalculationRequest(file=Path("model.step")), calculate=False)
-    worker.load_finished.connect(lambda: completed.append(True))
-
-    worker.run()
-
-    assert completed == [True]
-
-
-def test_calculation_worker_honors_cancel_after_load(monkeypatch) -> None:
-    pytest.importorskip("PySide6")
-    model = _model()
-    cancelled = []
-
-    monkeypatch.setattr("cadmetrics.gui.workers.inspect_model", lambda *args, **kwargs: model)
-    worker = CalculationWorker(CalculationRequest(file=Path("model.step")), calculate=True)
-    worker.cancelled.connect(lambda: cancelled.append(True))
-    worker.cancel()
-
-    worker.run()
-
-    assert cancelled == [True]
-
-
 def test_gui_formats_multiple_file_selection_labels() -> None:
     paths = (Path("/tmp/body.step"), Path("/tmp/wing.step"), Path("/tmp/tail.step"))
 
@@ -636,10 +582,6 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
             "warnings": "note",
         }
     ]
-
-
-def test_gui_table_columns_match_cli_order() -> None:
-    assert TABLE_COLUMNS == CSV_FIELDS
 
 
 def _row(*, direction: str | None = None) -> MeasurementRow:

@@ -44,6 +44,8 @@ class _OperationWorker(QtCore.QObject):
                 model = load_model_for_request(self._request)
                 self._raise_if_cancelled()
                 self.model_loaded.emit(model)
+            elif not self._calculate:
+                self.model_loaded.emit(model)
             if not self._calculate:
                 self.load_finished.emit()
                 return

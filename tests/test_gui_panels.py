@@ -7,10 +7,34 @@ import pytest
 
 pytest.importorskip("PySide6")
 
+from PySide6 import QtCore, QtWidgets
+
+import cadmetrics.gui.pyside_app as pyside_app
 from cadmetrics.gui.control_panel import ControlPanel
 from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.results_panel import ResultsPanel
 from cadmetrics.types import MeasurementRow, ModelData
+
+
+class _FakeViewer(QtWidgets.QWidget):
+    error = QtCore.Signal(str)
+    message = QtCore.Signal(str)
+    base_face_available = QtCore.Signal(bool)
+
+    def set_options(self, options) -> None:
+        pass
+
+    def set_request(self, request) -> None:
+        pass
+
+    def set_model(self, model) -> None:
+        pass
+
+    def set_result(self, row, request, *, align_camera=False) -> None:
+        pass
+
+    def choose_and_save_image(self) -> None:
+        pass
 
 
 def test_control_panel_builds_roll_pitch_request(qtbot, tmp_path: Path) -> None:
@@ -46,6 +70,20 @@ def test_control_panel_busy_state_enables_only_cancel(qtbot) -> None:
     assert panel.cancel_button.isEnabled() is False
 
 
+def test_control_panel_emits_preview_request_for_attitude_change(qtbot, tmp_path: Path) -> None:
+    path = tmp_path / "model.stl"
+    path.touch()
+    panel = ControlPanel()
+    qtbot.addWidget(panel)
+    panel.set_file_paths((path,))
+    requests = []
+    panel.request_changed.connect(requests.append)
+
+    panel.alpha_fields[0].setValue(12.0)
+
+    assert requests[-1].alpha_start == 12.0
+
+
 def test_control_panel_populates_step_components(qtbot, tmp_path: Path) -> None:
     path = tmp_path / "assembly.step"
     path.touch()
@@ -76,6 +114,17 @@ def test_results_panel_displays_selects_and_exports_rows(qtbot, tmp_path: Path) 
     assert panel.result_count.text() == "Rows: 1"
     assert selected == [row]
     assert output.read_text(encoding="utf-8").startswith("file,step_components")
+
+
+def test_main_window_only_composes_gui_components(qtbot, monkeypatch) -> None:
+    monkeypatch.setattr(pyside_app, "ModelViewer", _FakeViewer)
+    window = pyside_app.MainWindow()
+    qtbot.addWidget(window)
+
+    assert isinstance(window.controls, ControlPanel)
+    assert isinstance(window.results, ResultsPanel)
+    assert isinstance(window.viewer, _FakeViewer)
+    assert len(Path("src/cadmetrics/gui/pyside_app.py").read_text().splitlines()) <= 400
 
 
 def _model(path: Path, *, component_names: tuple[str, ...]) -> ModelData:
