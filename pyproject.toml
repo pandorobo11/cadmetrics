@@ -75,6 +75,8 @@ files = [
   "src/cadmetrics/gui/control_panel.py",
   "src/cadmetrics/gui/results_panel.py",
   "src/cadmetrics/gui/viewer.py",
+  "src/cadmetrics/gui/model_loading.py",
+  "src/cadmetrics/gui/calculation_controller.py",
 ]
 check_untyped_defs = true
 disallow_untyped_defs = true
