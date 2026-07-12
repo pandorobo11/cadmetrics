@@ -25,7 +25,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --extra step --group dev
+        run: uv sync --extra step --extra gui --group dev
 
       - name: Verify tag matches package version
         run: |
@@ -39,6 +39,8 @@ jobs:
         run: uv run mypy
 
       - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: uv run pytest
 
       - name: Build package
