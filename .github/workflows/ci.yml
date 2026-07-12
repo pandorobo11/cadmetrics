@@ -24,6 +24,10 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Install Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes libegl1
+
       - name: Install dependencies
         run: uv sync --extra step --extra gui --group dev
 
