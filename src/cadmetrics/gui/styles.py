@@ -38,6 +38,15 @@ QDoubleSpinBox { padding-right: 18px; }
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
     width: 18px; border-left: 1px solid #d5dbe2; background: #f8fafc;
 }
+QDoubleSpinBox::up-button {
+    subcontrol-origin: border; subcontrol-position: top right;
+    border-top-right-radius: 5px; height: 13px;
+}
+QDoubleSpinBox::down-button {
+    subcontrol-origin: border; subcontrol-position: bottom right;
+    border-bottom-right-radius: 5px; height: 13px;
+}
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { background: #eef3f8; }
 QDoubleSpinBox::up-arrow { image: url("__SPIN_UP_URL__"); width: 10px; height: 8px; }
 QDoubleSpinBox::down-arrow { image: url("__SPIN_DOWN_URL__"); width: 10px; height: 8px; }
 QPushButton {
@@ -45,10 +54,17 @@ QPushButton {
     padding: 4px 14px; background: #f8fafc; color: #1f2933; font-weight: 500;
 }
 QPushButton:hover { background: #eef3f8; border-color: #99a8b8; }
-QPushButton:disabled { background: #edf0f3; color: #a3abb4; }
+QPushButton:pressed { background: #e3eaf2; border-color: #8798aa; }
+QPushButton:disabled { background: #edf0f3; border-color: #d5dbe1; color: #a3abb4; }
 QPushButton#primaryButton { background: #256fb4; border-color: #1e609e; color: white; }
 QPushButton#dangerButton { background: #fff7f5; border-color: #d8a59a; color: #9f3b2f; }
 QCheckBox { min-height: 22px; spacing: 7px; }
+QCheckBox::indicator {
+    width: 14px; height: 14px; border: 1px solid #aab5c0;
+    border-radius: 4px; background: #ffffff;
+}
+QCheckBox::indicator:checked { background: #2f78c4; border-color: #2f78c4; }
+QCheckBox::indicator:disabled { background: #edf0f3; border-color: #d5dbe1; }
 QGroupBox {
     border: 1px solid #d5d9de; border-radius: 6px; margin-top: 9px;
     padding: 10px 8px 8px 8px; background: #f9fafb;
@@ -58,6 +74,7 @@ QToolButton#sectionToggle {
     border: 1px solid #d5d9de; border-radius: 6px; background: #f9fafb;
     font-weight: 600; padding: 7px 8px; text-align: left;
 }
+QToolButton#sectionToggle:hover { border-color: #b8c3cf; background: #ffffff; }
 QProgressBar {
     min-height: 8px; max-height: 8px; border: 0; border-radius: 4px; background: #dce2e8;
 }

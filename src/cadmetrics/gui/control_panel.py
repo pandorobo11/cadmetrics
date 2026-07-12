@@ -69,6 +69,8 @@ class ControlPanel(QtWidgets.QScrollArea):
         self.browse_button.setObjectName("secondaryButton")
         self.browse_button.clicked.connect(self._browse)
         file_row = QtWidgets.QHBoxLayout()
+        file_row.setContentsMargins(0, 0, 0, 0)
+        file_row.setSpacing(8)
         file_row.addWidget(self.file_edit)
         file_row.addWidget(self.browse_button)
         setup.addRow("File", file_row)
@@ -81,6 +83,8 @@ class ControlPanel(QtWidgets.QScrollArea):
 
         self.attitude_box = QtWidgets.QGroupBox("Attitude")
         attitude_layout = QtWidgets.QVBoxLayout(self.attitude_box)
+        attitude_layout.setContentsMargins(8, 6, 8, 8)
+        attitude_layout.setSpacing(5)
         self.attitude_mode = QtWidgets.QComboBox()
         self.attitude_mode.addItem("Alpha / Beta", "alpha_beta")
         self.attitude_mode.addItem("Roll / Pitch", "roll_pitch")
@@ -102,17 +106,30 @@ class ControlPanel(QtWidgets.QScrollArea):
 
         self.run_button = QtWidgets.QPushButton("Run Sweep")
         self.run_button.setObjectName("primaryButton")
+        self.run_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         self.cancel_button = QtWidgets.QPushButton("Cancel")
         self.cancel_button.setObjectName("dangerButton")
+        self.cancel_button.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
         self.run_button.clicked.connect(lambda: self._emit_request(self.calculation_requested))
         self.cancel_button.clicked.connect(self.cancel_requested)
         run_row = QtWidgets.QHBoxLayout()
+        run_row.setContentsMargins(0, 0, 0, 0)
+        run_row.setSpacing(8)
         run_row.addWidget(self.run_button)
         run_row.addWidget(self.cancel_button)
         layout.addLayout(run_row)
 
         display = QtWidgets.QGroupBox("Shape Display")
         display_layout = QtWidgets.QGridLayout(display)
+        display_layout.setContentsMargins(8, 6, 8, 6)
+        display_layout.setHorizontalSpacing(12)
+        display_layout.setVerticalSpacing(4)
         self.transparent_shape = self._check("Transparent", False)
         self.mesh_edges = self._check("Mesh edges", False)
         self.feature_edges = self._check("Feature edges", True)
@@ -152,6 +169,8 @@ class ControlPanel(QtWidgets.QScrollArea):
         self.axis_y = self._axis_combo("y")
         self.axis_z = self._axis_combo("z")
         axis_row = QtWidgets.QHBoxLayout()
+        axis_row.setContentsMargins(0, 0, 0, 0)
+        axis_row.setSpacing(6)
         for label, combo in (("X", self.axis_x), ("Y", self.axis_y), ("Z", self.axis_z)):
             axis_row.addWidget(QtWidgets.QLabel(label))
             axis_row.addWidget(combo)
@@ -160,18 +179,28 @@ class ControlPanel(QtWidgets.QScrollArea):
         component_widget = QtWidgets.QWidget()
         component_layout = QtWidgets.QVBoxLayout(component_widget)
         component_layout.setContentsMargins(0, 0, 0, 0)
+        component_layout.setSpacing(6)
         self.component_summary = QtWidgets.QLabel("Load a multi-solid STEP file.")
         component_layout.addWidget(self.component_summary)
         component_list = QtWidgets.QWidget()
         self.component_list_layout = QtWidgets.QVBoxLayout(component_list)
+        self.component_list_layout.setContentsMargins(0, 0, 0, 0)
+        self.component_list_layout.setSpacing(2)
         component_scroll = QtWidgets.QScrollArea()
         component_scroll.setWidgetResizable(True)
+        component_scroll.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         component_scroll.setMaximumHeight(105)
         component_scroll.setWidget(component_list)
         component_layout.addWidget(component_scroll)
         component_buttons = QtWidgets.QHBoxLayout()
+        component_buttons.setContentsMargins(0, 0, 0, 0)
+        component_buttons.setSpacing(6)
         self.component_all_button = QtWidgets.QPushButton("All")
         self.component_none_button = QtWidgets.QPushButton("None")
+        self.component_all_button.setObjectName("secondaryButton")
+        self.component_none_button.setObjectName("secondaryButton")
         self.component_all_button.clicked.connect(lambda: self._set_all_components(True))
         self.component_none_button.clicked.connect(lambda: self._set_all_components(False))
         component_buttons.addWidget(self.component_all_button)
@@ -193,6 +222,8 @@ class ControlPanel(QtWidgets.QScrollArea):
             lambda checked: self.mesh_deflection.setEnabled(not checked)
         )
         mesh_row = QtWidgets.QHBoxLayout()
+        mesh_row.setContentsMargins(0, 0, 0, 0)
+        mesh_row.setSpacing(8)
         mesh_row.addWidget(self.mesh_deflection)
         mesh_row.addWidget(self.mesh_deflection_auto)
         advanced.addRow("Mesh deflection", mesh_row)
@@ -212,10 +243,19 @@ class ControlPanel(QtWidgets.QScrollArea):
         advanced.addRow(self.apply_advanced_button)
 
         model_box = QtWidgets.QGroupBox("Model Info")
+        model_box.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
         model_layout = QtWidgets.QVBoxLayout(model_box)
+        model_layout.setContentsMargins(8, 6, 8, 8)
         self.model_info = QtWidgets.QTextEdit()
         self.model_info.setReadOnly(True)
         self.model_info.setMinimumHeight(130)
+        self.model_info.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding,
+        )
         model_layout.addWidget(self.model_info)
         layout.addWidget(model_box)
         self._sync_attitude_controls()
@@ -417,6 +457,7 @@ class ControlPanel(QtWidgets.QScrollArea):
     def _section(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:
         box = QtWidgets.QGroupBox(title)
         form = QtWidgets.QFormLayout(box)
+        self._configure_form_layout(form, margins=(8, 6, 8, 7))
         parent.addWidget(box)
         return form
 
@@ -426,10 +467,22 @@ class ControlPanel(QtWidgets.QScrollArea):
         toggle.setCheckable(True)
         toggle.setChecked(False)
         toggle.setObjectName("sectionToggle")
+        toggle.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toggle.setArrowType(QtCore.Qt.ArrowType.RightArrow)
         content = QtWidgets.QGroupBox()
         content.setVisible(False)
         form = QtWidgets.QFormLayout(content)
-        toggle.toggled.connect(content.setVisible)
+        self._configure_form_layout(form, margins=(8, 8, 8, 8))
+
+        def sync_collapsed_state(checked: bool) -> None:
+            toggle.setArrowType(
+                QtCore.Qt.ArrowType.DownArrow
+                if checked
+                else QtCore.Qt.ArrowType.RightArrow
+            )
+            content.setVisible(checked)
+
+        toggle.toggled.connect(sync_collapsed_state)
         parent.addWidget(toggle)
         parent.addWidget(content)
         return form
@@ -443,16 +496,28 @@ class ControlPanel(QtWidgets.QScrollArea):
     ]:
         widget = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(widget)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(3)
         for column, text in enumerate(("Start", "End", "Step"), start=1):
-            grid.addWidget(QtWidgets.QLabel(text), 0, column)
+            header = QtWidgets.QLabel(text)
+            header.setStyleSheet("color: #5f6872;")
+            header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(header, 0, column)
         first = self._sweep_row(grid, 1, first_label)
         second = self._sweep_row(grid, 2, second_label)
+        grid.setColumnStretch(0, 0)
+        for column in (1, 2, 3):
+            grid.setColumnStretch(column, 1)
         return widget, first, second
 
     def _sweep_row(
         self, grid: QtWidgets.QGridLayout, row: int, label: str
     ) -> tuple[FlexibleDoubleSpinBox, FlexibleDoubleSpinBox, FlexibleDoubleSpinBox]:
-        grid.addWidget(QtWidgets.QLabel(label), row, 0)
+        row_label = QtWidgets.QLabel(label)
+        row_label.setStyleSheet("color: #374151;")
+        row_label.setMinimumWidth(46)
+        grid.addWidget(row_label, row, 0)
         fields = (self._number(0.0), self._number(0.0), self._number(1.0))
         for column, field in enumerate(fields, start=1):
             grid.addWidget(field, row, column)
@@ -467,10 +532,16 @@ class ControlPanel(QtWidgets.QScrollArea):
     ]:
         widget = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(widget)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(6)
         fields = (self._number(1.0), self._number(0.0), self._number(0.0))
         for column, (label, field) in enumerate(zip(("X", "Y", "Z"), fields, strict=True)):
-            grid.addWidget(QtWidgets.QLabel(label), 0, column)
+            header = QtWidgets.QLabel(label)
+            header.setStyleSheet("color: #5f6872;")
+            header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(header, 0, column)
             grid.addWidget(field, 1, column)
+            grid.setColumnStretch(column, 1)
             field.valueChanged.connect(self._emit_preview_request)
         return widget, fields
 
@@ -478,11 +549,14 @@ class ControlPanel(QtWidgets.QScrollArea):
         field = FlexibleDoubleSpinBox()
         field.setRange(-1.0e6, 1.0e6)
         field.setDecimals(6)
+        field.setSingleStep(1.0)
         field.setValue(value)
+        field.setMinimumWidth(70)
         return field
 
     def _axis_combo(self, default: str) -> QtWidgets.QComboBox:
         combo = QtWidgets.QComboBox()
+        combo.setMinimumWidth(62)
         for axis in AXIS_CHOICES:
             combo.addItem(axis.upper(), axis)
         combo.setCurrentIndex(combo.findData(default))
@@ -492,3 +566,18 @@ class ControlPanel(QtWidgets.QScrollArea):
         checkbox = QtWidgets.QCheckBox(text)
         checkbox.setChecked(checked)
         return checkbox
+
+    @staticmethod
+    def _configure_form_layout(
+        form: QtWidgets.QFormLayout,
+        *,
+        margins: tuple[int, int, int, int],
+    ) -> None:
+        form.setFieldGrowthPolicy(
+            QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+        )
+        form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        form.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
+        form.setVerticalSpacing(6)
+        form.setHorizontalSpacing(10)
+        form.setContentsMargins(*margins)
