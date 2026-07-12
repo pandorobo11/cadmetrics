@@ -179,8 +179,9 @@ For `vector`, `sweep` returns one row because a unit vector is a single directio
 cadmetrics sweep model.step --attitude vector --direction 1,0,0
 ```
 
-Ranges use inclusive `start:end:step` syntax. A single value is also valid. The sweep command
-prints a progress bar to stderr and writes CSV rows to stdout unless `--out` is provided. Use
+Ranges use inclusive `start:end:step` syntax. A single value is also valid. Inputs must be finite,
+and the Cartesian product is limited to 10,000 orientations per command. The sweep command prints
+a progress bar to stderr and writes CSV rows to stdout unless `--out` is provided. Use
 `--no-summary` to suppress the printed summary.
 
 ## inspect
@@ -225,11 +226,11 @@ All calculation commands use the same CSV schema:
 | `x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max` | model coordinate bounds in `output_unit` |
 | `surface_area` | surface area in `output_unit^2` |
 | `base_area` | exterior face area at cadmetrics-coordinate `Xmax` in `output_unit^2`; `0` with a warning when no face is found |
-| `volume` | volume in `output_unit^3` |
+| `volume` | volume in `output_unit^3`; empty for open, invalid, or surface-only STEP shapes |
 | `projected_area` | orthographic projected outline area in `output_unit^2` |
 | `centroid_u`, `centroid_v` | projected 2D centroid in the projection plane |
 | `centroid_x`, `centroid_y`, `centroid_z` | corresponding 3D marker position |
-| `is_watertight` | mesh watertightness when known |
+| `is_watertight` | mesh or STEP topology watertightness when known |
 | `mesh_deflection` | effective STEP tessellation deflection, if applicable |
 | `angular_deflection` | effective STEP angular deflection, if applicable |
 | `base_tolerance` | relative tolerance used to identify Xmax base faces |

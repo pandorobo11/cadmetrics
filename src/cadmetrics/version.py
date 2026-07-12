@@ -30,7 +30,7 @@ def cadmetrics_hash() -> str:
             capture_output=True,
             text=True,
         ).stdout.strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return "unknown"
 
     if _tracked_worktree_is_dirty(repo_root):
@@ -41,7 +41,7 @@ def cadmetrics_hash() -> str:
 def _embedded_git_hash() -> str | None:
     try:
         build_info = import_module("cadmetrics._build")
-    except Exception:
+    except ImportError:
         return None
     value = getattr(build_info, "GIT_HASH", None)
     if not isinstance(value, str):
@@ -61,6 +61,6 @@ def _tracked_worktree_is_dirty(repo_root: Path) -> bool:
             capture_output=True,
             text=True,
         ).stdout.strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
     return bool(status)

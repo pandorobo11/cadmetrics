@@ -27,6 +27,10 @@ For STEP input:
 - projected area uses a tessellated mesh generated from the B-Rep
 - the GUI can exclude selected STEP solid components before boolean union and measurement
 
+Before reporting STEP volume, cadmetrics validates that the shape contains valid closed solids
+and no loose non-solid faces. Open, invalid, or surface-only STEP shapes report `volume=None` and
+`is_watertight=False`; surface, base, and projected areas remain available when calculable.
+
 When multiple STEP files are passed in one command, cadmetrics loads their solids into one
 compound and applies the same boolean-union step before measurement. STEP and STL files cannot
 be mixed in one calculation model.
@@ -95,6 +99,15 @@ file name. With `--unit auto`, all detected STEP units must match; otherwise, sp
 
 Projected area is the orthographic 2D outline area for the selected projection direction.
 Overlapping projected regions are counted once.
+
+Projection performance can be measured reproducibly from a checkout with:
+
+```bash
+uv run python scripts/benchmark_projection.py samples/satellite/satellite.step
+```
+
+The JSON result includes mesh vertex/triangle counts, median and minimum duration, peak Python
+memory observed by `tracemalloc`, and projected area.
 
 This is intended for aerodynamic projected-area and drag-area screening, where the silhouette
 area matters more than the sum of all visible facets.

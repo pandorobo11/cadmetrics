@@ -4,6 +4,7 @@ import argparse
 import os
 import plistlib
 import stat
+import tomllib
 from pathlib import Path
 
 
@@ -19,6 +20,7 @@ def build_app(repo: Path, output: Path, bundle_id: str) -> Path:
     macos.mkdir(parents=True, exist_ok=True)
     resources.mkdir(parents=True, exist_ok=True)
 
+    version = _project_version(repo)
     info = {
         "CFBundleDevelopmentRegion": "en",
         "CFBundleDisplayName": "Cadmetrics",
@@ -27,8 +29,8 @@ def build_app(repo: Path, output: Path, bundle_id: str) -> Path:
         "CFBundleInfoDictionaryVersion": "6.0",
         "CFBundleName": "Cadmetrics",
         "CFBundlePackageType": "APPL",
-        "CFBundleShortVersionString": "0.1.0",
-        "CFBundleVersion": "0.1.0",
+        "CFBundleShortVersionString": version,
+        "CFBundleVersion": version,
         "LSApplicationCategoryType": "public.app-category.graphics-design",
         "NSHighResolutionCapable": True,
     }
@@ -57,6 +59,18 @@ def build_app(repo: Path, output: Path, bundle_id: str) -> Path:
 
     (contents / "PkgInfo").write_text("APPL????", encoding="ascii")
     return app
+
+
+def _project_version(repo: Path) -> str:
+    pyproject = repo / "pyproject.toml"
+    try:
+        with pyproject.open("rb") as handle:
+            version = tomllib.load(handle)["project"]["version"]
+    except (OSError, KeyError, tomllib.TOMLDecodeError) as exc:
+        raise ValueError(f"Could not read project version from {pyproject}") from exc
+    if not isinstance(version, str) or not version.strip():
+        raise ValueError(f"Invalid project version in {pyproject}")
+    return version.strip()
 
 
 def main() -> None:

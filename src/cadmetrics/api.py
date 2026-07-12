@@ -18,7 +18,7 @@ from cadmetrics.orientation import (
 from cadmetrics.projection import ProjectionMetrics, projected_metrics
 from cadmetrics.projection import projection_basis
 from cadmetrics.sweep import iter_orientations, orientation_count
-from cadmetrics.types import MeasurementRow, ModelData
+from cadmetrics.types import FloatArray, MeasurementRow, ModelData
 
 
 def inspect_model(
@@ -182,7 +182,7 @@ def project_model(
 def _projected_row(
     model: ModelData,
     *,
-    projection_direction,
+    projection_direction: FloatArray,
     volume: float | None,
     surface_area: float | None,
     projection_metrics: ProjectionMetrics,
@@ -246,7 +246,7 @@ def _projected_row(
 def _centroid_model_coordinates(
     model: ModelData,
     *,
-    projection_direction,
+    projection_direction: FloatArray,
     centroid_u: float | None,
     centroid_v: float | None,
 ) -> tuple[float | None, float | None, float | None]:

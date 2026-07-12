@@ -55,7 +55,7 @@ def _git_hash(root: Path) -> str | None:
             capture_output=True,
             text=True,
         ).stdout.strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return None
     if not commit:
         return None
@@ -73,7 +73,7 @@ def _tracked_worktree_is_dirty(root: Path) -> bool:
             capture_output=True,
             text=True,
         ).stdout.strip()
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return False
     return bool(status)
 

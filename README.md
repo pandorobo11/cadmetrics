@@ -199,6 +199,8 @@ area. For STL-like comparisons, STEP volume and surface area can be calculated f
 tessellated mesh with `--step-metrics mesh`.
 STEP projected area is always calculated from a tessellated mesh, so the result depends on
 tessellation quality.
+Open, invalid, or surface-only STEP shapes keep calculable area results but report no volume and
+set `is_watertight` to false.
 For faster large STEP checks, default B-Rep `measure` and CLI `inspect` skip tessellation when a
 display/projected-area mesh is not needed. The GUI reuses the loaded display mesh when running a
 sweep.

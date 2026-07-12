@@ -39,6 +39,7 @@ cadmetrics-gui = "cadmetrics.gui.pyside_app:main"
 [dependency-groups]
 dev = [
   "mkdocs>=1.6,<2",
+  "mypy>=1.14,<2",
   "pytest>=8.3",
   "ruff>=0.8",
 ]
@@ -57,3 +58,20 @@ target-version = "py312"
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+files = [
+  "src/cadmetrics/api.py",
+  "src/cadmetrics/coordinates.py",
+  "src/cadmetrics/orientation.py",
+  "src/cadmetrics/projection.py",
+  "src/cadmetrics/sweep.py",
+  "src/cadmetrics/types.py",
+  "src/cadmetrics/units.py",
+]
+check_untyped_defs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+warn_redundant_casts = true
+warn_unused_ignores = true

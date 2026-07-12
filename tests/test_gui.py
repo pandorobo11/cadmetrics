@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import csv
 import importlib
+import plistlib
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -35,6 +38,29 @@ def test_gui_entry_point_is_registered() -> None:
     optional_dependencies = pyproject["project"]["optional-dependencies"]
     assert "gui" in optional_dependencies
     assert "gui-pyside" not in optional_dependencies
+
+
+def test_macos_app_uses_project_version(tmp_path: Path) -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            "scripts/create_macos_app.py",
+            "--repo",
+            str(Path.cwd()),
+            "--output",
+            str(tmp_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    app = tmp_path / "Cadmetrics.app"
+    with (app / "Contents" / "Info.plist").open("rb") as handle:
+        info = plistlib.load(handle)
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
+
+    assert info["CFBundleShortVersionString"] == project["version"]
+    assert info["CFBundleVersion"] == project["version"]
 
 
 def test_pyside_gui_module_imports_without_optional_dependencies() -> None:

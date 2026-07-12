@@ -15,7 +15,7 @@ def parse_axis_map(value: str) -> tuple[tuple[int, float], tuple[int, float], tu
     if len(parts) != 3:
         raise ValueError("axis_map must contain three comma-separated axes, e.g. x,y,z")
 
-    parsed = tuple(_parse_axis(part) for part in parts)
+    parsed = (_parse_axis(parts[0]), _parse_axis(parts[1]), _parse_axis(parts[2]))
     source_axes = [axis for axis, _sign in parsed]
     if sorted(source_axes) != [0, 1, 2]:
         raise ValueError("axis_map must use each source axis exactly once")
