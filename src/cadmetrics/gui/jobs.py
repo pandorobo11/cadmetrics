@@ -63,43 +63,44 @@ def run_calculation(
         if model is not None:
             return sweep_model(
                 model,
-                roll=0.0,
-                alpha=_range_spec(request.alpha_start, request.alpha_end, request.alpha_step),
-                beta=_range_spec(request.beta_start, request.beta_end, request.beta_step),
-                progress_callback=_orientation_progress(progress_callback),
+                attitude="alpha-beta",
+                alpha_deg=_range_spec(request.alpha_start, request.alpha_end, request.alpha_step),
+                beta_deg=_range_spec(request.beta_start, request.beta_end, request.beta_step),
+                progress_callback=_orientation_progress(progress_callback, "alpha_beta"),
             )
         return sweep(
             request.file,
-            roll=0.0,
-            alpha=_range_spec(request.alpha_start, request.alpha_end, request.alpha_step),
-            beta=_range_spec(request.beta_start, request.beta_end, request.beta_step),
-            progress_callback=_orientation_progress(progress_callback),
+            attitude="alpha-beta",
+            alpha_deg=_range_spec(request.alpha_start, request.alpha_end, request.alpha_step),
+            beta_deg=_range_spec(request.beta_start, request.beta_end, request.beta_step),
+            progress_callback=_orientation_progress(progress_callback, "alpha_beta"),
             **common,
         )
     if request.attitude_mode == "roll_pitch":
         if model is not None:
             return sweep_model(
                 model,
-                roll=_range_spec(request.roll_start, request.roll_end, request.roll_step),
-                alpha=_range_spec(request.pitch_start, request.pitch_end, request.pitch_step),
-                beta=0.0,
-                progress_callback=_orientation_progress(progress_callback),
+                attitude="roll-pitch",
+                roll_deg=_range_spec(request.roll_start, request.roll_end, request.roll_step),
+                pitch_deg=_range_spec(request.pitch_start, request.pitch_end, request.pitch_step),
+                progress_callback=_orientation_progress(progress_callback, "roll_pitch"),
             )
         return sweep(
             request.file,
-            roll=_range_spec(request.roll_start, request.roll_end, request.roll_step),
-            alpha=_range_spec(request.pitch_start, request.pitch_end, request.pitch_step),
-            beta=0.0,
-            progress_callback=_orientation_progress(progress_callback),
+            attitude="roll-pitch",
+            roll_deg=_range_spec(request.roll_start, request.roll_end, request.roll_step),
+            pitch_deg=_range_spec(request.pitch_start, request.pitch_end, request.pitch_step),
+            progress_callback=_orientation_progress(progress_callback, "roll_pitch"),
             **common,
         )
 
     direction = f"{request.vector_x},{request.vector_y},{request.vector_z}"
     if model is not None:
-        row = project_model(model, direction=direction)
+        row = project_model(model, attitude="vector", direction=direction)
     else:
         row = project(
             request.file,
+            attitude="vector",
             direction=direction,
             **common,
         )
@@ -112,20 +113,19 @@ def run_calculation(
     return [row]
 
 
-def _orientation_progress(progress_callback: ProgressCallback | None):
+def _orientation_progress(
+    progress_callback: ProgressCallback | None,
+    mode: Literal["alpha_beta", "roll_pitch"],
+):
     if progress_callback is None:
         return None
 
-    def on_progress(index, total, orientation) -> None:
-        progress_callback(
-            index,
-            total,
-            (
-                f"roll={orientation.roll_deg:g}, "
-                f"alpha={orientation.alpha_deg:g}, "
-                f"beta={orientation.beta_deg:g}"
-            ),
-        )
+    def on_progress(index, total, row) -> None:
+        if mode == "roll_pitch":
+            text = f"roll={row.roll_deg:g}, pitch={row.pitch_deg:g}"
+        else:
+            text = f"alpha={row.alpha_deg:g}, beta={row.beta_deg:g}"
+        progress_callback(index, total, text)
 
     return on_progress
 

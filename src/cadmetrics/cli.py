@@ -3,18 +3,18 @@ from __future__ import annotations
 import csv
 import sys
 from pathlib import Path
+from typing import cast
 
 import typer
 from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from cadmetrics.coordinates import DEFAULT_AXIS_MAP
-from cadmetrics.orientation import Orientation
-from cadmetrics.api import inspect_model
+from cadmetrics.api import AttitudeMode, inspect_model
 from cadmetrics.api import measure as measure_api
 from cadmetrics.api import project as project_api
 from cadmetrics.api import sweep as sweep_api
+from cadmetrics.coordinates import DEFAULT_AXIS_MAP
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.types import MeasurementRow
 
@@ -194,7 +194,9 @@ def project(
     row = _run_or_exit(
         lambda: project_api(
             file,
+            attitude=cast(AttitudeMode, request["mode"]),
             roll_deg=request["roll"],
+            pitch_deg=request["pitch"],
             alpha_deg=request["alpha"],
             beta_deg=request["beta"],
             direction=request["direction"],
@@ -302,7 +304,7 @@ def sweep(
     )
     task_id: int | None = None
 
-    def on_progress(index: int, total: int, orientation: Orientation) -> None:
+    def on_progress(index: int, total: int, row: MeasurementRow) -> None:
         nonlocal task_id
         if task_id is None:
             task_id = progress.add_task("sweep", total=total)
@@ -310,9 +312,10 @@ def sweep(
             task_id,
             completed=index,
             description=(
-                f"roll={orientation.roll_deg:g} "
-                f"alpha={orientation.alpha_deg:g} "
-                f"beta={orientation.beta_deg:g}"
+                f"roll={row.roll_deg:g} "
+                f"pitch={row.pitch_deg:g} "
+                f"alpha={row.alpha_deg:g} "
+                f"beta={row.beta_deg:g}"
             ),
         )
 
@@ -320,6 +323,7 @@ def sweep(
         row = _run_or_exit(
             lambda: project_api(
                 file,
+                attitude="vector",
                 direction=request["direction"],
                 input_unit=unit,
                 output_unit=output_unit,
@@ -337,9 +341,11 @@ def sweep(
                 progress,
                 lambda: sweep_api(
                     file,
-                    roll=request["roll"],
-                    alpha=request["alpha"],
-                    beta=request["beta"],
+                    attitude=cast(AttitudeMode, request["mode"]),
+                    roll_deg=request["roll"],
+                    pitch_deg=request["pitch"],
+                    alpha_deg=request["alpha"],
+                    beta_deg=request["beta"],
                     input_unit=unit,
                     output_unit=output_unit,
                     mesh_deflection=mesh_deflection,
@@ -560,7 +566,14 @@ def _resolve_project_attitude(
         _reject_nonzero(roll, "--roll", mode)
         if pitch is not None:
             _reject_nonzero(pitch, "--pitch", mode)
-        return {"mode": mode, "roll": 0.0, "alpha": 0.0, "beta": 0.0, "direction": direction}
+        return {
+            "mode": mode,
+            "roll": 0.0,
+            "pitch": 0.0,
+            "alpha": 0.0,
+            "beta": 0.0,
+            "direction": direction,
+        }
 
     if direction is not None:
         raise typer.BadParameter("--direction can only be used with --attitude vector")
@@ -570,7 +583,8 @@ def _resolve_project_attitude(
         return {
             "mode": mode,
             "roll": roll,
-            "alpha": 0.0 if pitch is None else pitch,
+            "pitch": 0.0 if pitch is None else pitch,
+            "alpha": 0.0,
             "beta": 0.0,
             "direction": None,
         }
@@ -578,7 +592,14 @@ def _resolve_project_attitude(
     if pitch is not None:
         raise typer.BadParameter("--pitch can only be used with --attitude roll-pitch")
     _reject_nonzero(roll, "--roll", mode)
-    return {"mode": mode, "roll": roll, "alpha": alpha, "beta": beta, "direction": None}
+    return {
+        "mode": mode,
+        "roll": 0.0,
+        "pitch": 0.0,
+        "alpha": alpha,
+        "beta": beta,
+        "direction": None,
+    }
 
 
 def _resolve_sweep_attitude(
@@ -599,7 +620,14 @@ def _resolve_sweep_attitude(
         _reject_nondefault_spec(roll, "--roll", mode)
         if pitch is not None:
             _reject_nondefault_spec(pitch, "--pitch", mode)
-        return {"mode": mode, "roll": "0", "alpha": "0", "beta": "0", "direction": direction}
+        return {
+            "mode": mode,
+            "roll": "0",
+            "pitch": "0",
+            "alpha": "0",
+            "beta": "0",
+            "direction": direction,
+        }
 
     if direction is not None:
         raise typer.BadParameter("--direction can only be used with --attitude vector")
@@ -609,7 +637,8 @@ def _resolve_sweep_attitude(
         return {
             "mode": mode,
             "roll": roll,
-            "alpha": "0" if pitch is None else pitch,
+            "pitch": "0" if pitch is None else pitch,
+            "alpha": "0",
             "beta": 0.0,
             "direction": None,
         }
@@ -617,7 +646,14 @@ def _resolve_sweep_attitude(
     if pitch is not None:
         raise typer.BadParameter("--pitch can only be used with --attitude roll-pitch")
     _reject_nondefault_spec(roll, "--roll", mode)
-    return {"mode": mode, "roll": roll, "alpha": alpha, "beta": beta, "direction": None}
+    return {
+        "mode": mode,
+        "roll": "0",
+        "pitch": "0",
+        "alpha": alpha,
+        "beta": beta,
+        "direction": None,
+    }
 
 
 def _normalize_attitude_mode(

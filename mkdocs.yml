@@ -8,6 +8,7 @@ nav:
   - User Guide:
       - GUI Usage: docs/gui.md
       - CLI Usage: docs/cli.md
+      - Python API: docs/api.md
       - Attitude Definition: docs/attitude.md
       - Accuracy Notes: docs/accuracy.md
       - Sample Geometry: docs/samples.md

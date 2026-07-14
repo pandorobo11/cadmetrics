@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 from time import perf_counter
-from typing import Callable
+from typing import Callable, Literal
 
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP, transform_model_axes
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE, load_model
@@ -17,8 +17,13 @@ from cadmetrics.orientation import (
 )
 from cadmetrics.projection import ProjectionMetrics, projected_metrics
 from cadmetrics.projection import projection_basis
-from cadmetrics.sweep import iter_orientations, orientation_count
+from cadmetrics.sweep import iter_orientations, orientation_count, parse_sweep_values
 from cadmetrics.types import FloatArray, MeasurementRow, ModelData
+
+
+AttitudeMode = Literal["alpha-beta", "roll-pitch", "vector"]
+SweepValue = str | int | float
+ATTITUDE_MODES: tuple[AttitudeMode, ...] = ("alpha-beta", "roll-pitch", "vector")
 
 
 def inspect_model(
@@ -113,7 +118,9 @@ def measure_model(model: ModelData, *, elapsed_sec: float | None = None) -> Meas
 def project(
     path: str | Path | Sequence[str | Path],
     *,
+    attitude: AttitudeMode = "alpha-beta",
     roll_deg: float = 0.0,
+    pitch_deg: float = 0.0,
     alpha_deg: float = 0.0,
     beta_deg: float = 0.0,
     direction: str | None = None,
@@ -140,7 +147,9 @@ def project(
     )
     return project_model(
         model,
+        attitude=attitude,
         roll_deg=roll_deg,
+        pitch_deg=pitch_deg,
         alpha_deg=alpha_deg,
         beta_deg=beta_deg,
         direction=direction,
@@ -151,17 +160,28 @@ def project(
 def project_model(
     model: ModelData,
     *,
+    attitude: AttitudeMode = "alpha-beta",
     roll_deg: float = 0.0,
+    pitch_deg: float = 0.0,
     alpha_deg: float = 0.0,
     beta_deg: float = 0.0,
     direction: str | None = None,
     elapsed_sec: float = 0.0,
 ) -> MeasurementRow:
-    orientation = Orientation(roll_deg=roll_deg, alpha_deg=alpha_deg, beta_deg=beta_deg)
-    vector = parse_vector(direction) if direction is not None else None
-    projection_direction = (
-        vector if vector is not None else projection_direction_for_orientation(orientation)
+    mode = _normalize_attitude(attitude)
+    orientation, vector = _resolve_project_orientation(
+        mode=mode,
+        roll_deg=roll_deg,
+        pitch_deg=pitch_deg,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
+        direction=direction,
     )
+    if vector is not None:
+        projection_direction = vector
+    else:
+        assert orientation is not None
+        projection_direction = projection_direction_for_orientation(orientation)
     metrics = projected_metrics(model, orientation=orientation if vector is None else None, direction=vector)
     return _projected_row(
         model,
@@ -262,14 +282,17 @@ def _centroid_model_coordinates(
 def sweep(
     path: str | Path | Sequence[str | Path],
     *,
-    roll: str | int | float = 0.0,
-    alpha: str | int | float = 0.0,
-    beta: str | int | float = 0.0,
+    attitude: AttitudeMode = "alpha-beta",
+    roll_deg: SweepValue = 0.0,
+    pitch_deg: SweepValue = 0.0,
+    alpha_deg: SweepValue = 0.0,
+    beta_deg: SweepValue = 0.0,
+    direction: str | None = None,
     input_unit: str = "auto",
     output_unit: str = "m",
     mesh_deflection: float | str = "auto",
     angular_deflection: float = 0.1,
-    progress_callback: Callable[[int, int, Orientation], None] | None = None,
+    progress_callback: Callable[[int, int, MeasurementRow], None] | None = None,
     axis_map: str = DEFAULT_AXIS_MAP,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
@@ -288,9 +311,12 @@ def sweep(
     )
     return sweep_model(
         model,
-        roll=roll,
-        alpha=alpha,
-        beta=beta,
+        attitude=attitude,
+        roll_deg=roll_deg,
+        pitch_deg=pitch_deg,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
+        direction=direction,
         progress_callback=progress_callback,
     )
 
@@ -298,36 +324,117 @@ def sweep(
 def sweep_model(
     model: ModelData,
     *,
-    roll: str | int | float = 0.0,
-    alpha: str | int | float = 0.0,
-    beta: str | int | float = 0.0,
-    progress_callback: Callable[[int, int, Orientation], None] | None = None,
+    attitude: AttitudeMode = "alpha-beta",
+    roll_deg: SweepValue = 0.0,
+    pitch_deg: SweepValue = 0.0,
+    alpha_deg: SweepValue = 0.0,
+    beta_deg: SweepValue = 0.0,
+    direction: str | None = None,
+    progress_callback: Callable[[int, int, MeasurementRow], None] | None = None,
 ) -> list[MeasurementRow]:
+    mode = _normalize_attitude(attitude)
+    if mode == "vector":
+        _require_direction(direction, mode)
+        assert direction is not None
+        _reject_nondefault_sweep(roll_deg, "roll_deg", mode)
+        _reject_nondefault_sweep(pitch_deg, "pitch_deg", mode)
+        _reject_nondefault_sweep(alpha_deg, "alpha_deg", mode)
+        _reject_nondefault_sweep(beta_deg, "beta_deg", mode)
+        row = project_model(model, attitude=mode, direction=direction)
+        if progress_callback is not None:
+            progress_callback(1, 1, row)
+        return [row]
+
+    if direction is not None:
+        raise ValueError(f"direction cannot be used with attitude {mode!r}")
+    roll: SweepValue
+    alpha: SweepValue
+    beta: SweepValue
+    if mode == "roll-pitch":
+        _reject_nondefault_sweep(alpha_deg, "alpha_deg", mode)
+        _reject_nondefault_sweep(beta_deg, "beta_deg", mode)
+        roll, alpha, beta = roll_deg, pitch_deg, 0.0
+    else:
+        _reject_nondefault_sweep(roll_deg, "roll_deg", mode)
+        _reject_nondefault_sweep(pitch_deg, "pitch_deg", mode)
+        roll, alpha, beta = 0.0, alpha_deg, beta_deg
+
     rows: list[MeasurementRow] = []
     total = orientation_count(roll=roll, alpha=alpha, beta=beta)
     orientations = iter_orientations(roll=roll, alpha=alpha, beta=beta)
     for index, orientation in enumerate(orientations, start=1):
         row_start = perf_counter()
         projection_direction = projection_direction_for_orientation(orientation)
-        rows.append(
-            _projected_row(
-                model,
-                projection_direction=projection_direction,
-                volume=model.volume,
-                surface_area=model.surface_area,
-                projection_metrics=projected_metrics(model, orientation=orientation),
-                is_watertight=model.is_watertight,
-                mesh_deflection=model.mesh_deflection,
-                angular_deflection=model.angular_deflection,
-                base_tolerance=model.base_tolerance,
-                method=_method_name(model, projected=True),
-                elapsed_sec=perf_counter() - row_start,
-                warnings=model.warnings,
-            )
+        row = _projected_row(
+            model,
+            projection_direction=projection_direction,
+            volume=model.volume,
+            surface_area=model.surface_area,
+            projection_metrics=projected_metrics(model, orientation=orientation),
+            is_watertight=model.is_watertight,
+            mesh_deflection=model.mesh_deflection,
+            angular_deflection=model.angular_deflection,
+            base_tolerance=model.base_tolerance,
+            method=_method_name(model, projected=True),
+            elapsed_sec=perf_counter() - row_start,
+            warnings=model.warnings,
         )
+        rows.append(row)
         if progress_callback is not None:
-            progress_callback(index, total, orientation)
+            progress_callback(index, total, row)
     return rows
+
+
+def _normalize_attitude(value: AttitudeMode) -> AttitudeMode:
+    mode = value.strip().lower().replace("_", "-")
+    if mode not in ATTITUDE_MODES:
+        raise ValueError(f"attitude must be one of: {', '.join(ATTITUDE_MODES)}")
+    return mode
+
+
+def _resolve_project_orientation(
+    *,
+    mode: AttitudeMode,
+    roll_deg: float,
+    pitch_deg: float,
+    alpha_deg: float,
+    beta_deg: float,
+    direction: str | None,
+) -> tuple[Orientation | None, FloatArray | None]:
+    if mode == "vector":
+        _require_direction(direction, mode)
+        assert direction is not None
+        _reject_nonzero(roll_deg, "roll_deg", mode)
+        _reject_nonzero(pitch_deg, "pitch_deg", mode)
+        _reject_nonzero(alpha_deg, "alpha_deg", mode)
+        _reject_nonzero(beta_deg, "beta_deg", mode)
+        return None, parse_vector(direction)
+
+    if direction is not None:
+        raise ValueError(f"direction cannot be used with attitude {mode!r}")
+    if mode == "roll-pitch":
+        _reject_nonzero(alpha_deg, "alpha_deg", mode)
+        _reject_nonzero(beta_deg, "beta_deg", mode)
+        return Orientation(roll_deg=roll_deg, alpha_deg=pitch_deg), None
+
+    _reject_nonzero(roll_deg, "roll_deg", mode)
+    _reject_nonzero(pitch_deg, "pitch_deg", mode)
+    return Orientation(alpha_deg=alpha_deg, beta_deg=beta_deg), None
+
+
+def _require_direction(direction: str | None, mode: AttitudeMode) -> None:
+    if direction is None:
+        raise ValueError(f"direction is required with attitude {mode!r}")
+
+
+def _reject_nonzero(value: float, name: str, mode: AttitudeMode) -> None:
+    if value != 0.0:
+        raise ValueError(f"{name} cannot be used with attitude {mode!r}")
+
+
+def _reject_nondefault_sweep(value: SweepValue, name: str, mode: AttitudeMode) -> None:
+    if parse_sweep_values(value) != [0.0]:
+        raise ValueError(f"{name} cannot be used with attitude {mode!r}")
 
 
 def _selected_component_names(model: ModelData) -> tuple[str, ...]:

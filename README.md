@@ -165,22 +165,39 @@ See [Attitude Definition](docs/attitude.md) for formulas and examples.
 from cadmetrics import inspect_model, measure, project, sweep
 
 metrics = measure("model.stl")
-single = project("model.stl", alpha_deg=10)
-rows = sweep("model.stl", alpha="-10:20:1", beta="-5:5:1", roll="0")
+single = project("model.stl", attitude="alpha-beta", alpha_deg=10)
+rows = sweep(
+    "model.stl",
+    attitude="alpha-beta",
+    alpha_deg="-10:20:1",
+    beta_deg="-5:5:1",
+)
 
-assembly = project(["fuselage.step", "wing.step", "tail.step"], alpha_deg=10)
+roll_pitch = project(
+    "model.stl",
+    attitude="roll-pitch",
+    roll_deg=30,
+    pitch_deg=10,
+)
+
+assembly = project(
+    ["fuselage.step", "wing.step", "tail.step"],
+    attitude="alpha-beta",
+    alpha_deg=10,
+)
 components = inspect_model(["fuselage.step", "wing.step"]).component_names
 filtered = project(["fuselage.step", "wing.step"], step_components=(1, 3))
 ```
 
-The Python API keeps lower-level `alpha`, `beta`, `roll`, and `direction` arguments. The CLI and
-GUI present these as explicit `alpha-beta`, `roll-pitch`, and `vector` input modes.
+The Python API uses the same explicit `alpha-beta`, `roll-pitch`, and `vector` input modes as the
+CLI and GUI. API angle names end in `_deg` to make their unit explicit.
 For multi-file STEP component filtering, `step_components` uses the 1-based global order reported
 by `inspect_model([...]).component_names`.
 
 ## Documentation
 
 - [CLI Usage](docs/cli.md)
+- [Python API](docs/api.md)
 - [GUI Usage](docs/gui.md)
 - [Attitude Definition](docs/attitude.md)
 - [Accuracy Notes](docs/accuracy.md)

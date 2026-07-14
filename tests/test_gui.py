@@ -328,9 +328,9 @@ def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:
 
     assert run_calculation(request) == expected
     assert captured["path"] == Path("model.stl")
-    assert captured["kwargs"]["roll"] == 0.0
-    assert captured["kwargs"]["alpha"] == "2.0:4.0:2.0"
-    assert captured["kwargs"]["beta"] == "-1.0:1.0:1.0"
+    assert captured["kwargs"]["attitude"] == "alpha-beta"
+    assert captured["kwargs"]["alpha_deg"] == "2.0:4.0:2.0"
+    assert captured["kwargs"]["beta_deg"] == "-1.0:1.0:1.0"
     assert captured["kwargs"]["input_unit"] == "mm"
     assert captured["kwargs"]["output_unit"] == "m"
     assert captured["kwargs"]["step_metric_source"] == "mesh"
@@ -359,9 +359,9 @@ def test_gui_job_delegates_roll_pitch_sweep(monkeypatch) -> None:
     )
 
     assert run_calculation(request) == expected
-    assert captured["kwargs"]["roll"] == "0.0:10.0:10.0"
-    assert captured["kwargs"]["alpha"] == "5.0"
-    assert captured["kwargs"]["beta"] == 0.0
+    assert captured["kwargs"]["attitude"] == "roll-pitch"
+    assert captured["kwargs"]["roll_deg"] == "0.0:10.0:10.0"
+    assert captured["kwargs"]["pitch_deg"] == "5.0"
 
 
 def test_gui_job_delegates_single_vector(monkeypatch) -> None:
@@ -383,6 +383,7 @@ def test_gui_job_delegates_single_vector(monkeypatch) -> None:
     rows = run_calculation(request)
 
     assert len(rows) == 1
+    assert [kwargs["attitude"] for _, kwargs in captured] == ["vector"]
     assert [kwargs["direction"] for _, kwargs in captured] == ["1.0,1.0,0.0"]
 
 

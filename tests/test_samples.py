@@ -114,7 +114,7 @@ def test_frame_sample_preserves_hole_in_z_projection(kind: str) -> None:
         pytest.skip("STEP sample checks require cadmetrics[step]")
     path = ROOT / SAMPLES["frame_with_hole"]["files"][kind]
     measured = measure(path)
-    projected = project(path, direction="0,0,1")
+    projected = project(path, attitude="vector", direction="0,0,1")
 
     assert measured.volume == pytest.approx(0.8)
     assert measured.surface_area == pytest.approx(17.6)

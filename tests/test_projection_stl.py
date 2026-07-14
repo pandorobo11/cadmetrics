@@ -85,7 +85,11 @@ def test_axis_map_rejects_duplicate_source_axes() -> None:
 
 
 def test_cube_sweep_combinations() -> None:
-    rows = sweep(DATA_DIR / "unit_cube.stl", alpha="0:1:1", beta="0:1:1", roll="0")
+    rows = sweep(
+        DATA_DIR / "unit_cube.stl",
+        alpha_deg="0:1:1",
+        beta_deg="0:1:1",
+    )
     assert len(rows) == 4
     assert all(row.projected_area is not None for row in rows)
 
@@ -103,7 +107,7 @@ def test_alpha_direction_is_reported_in_model_coordinates() -> None:
 
 
 def test_vector_direction_reports_equivalent_attitudes() -> None:
-    row = project(DATA_DIR / "unit_cube.stl", direction="0,1,0")
+    row = project(DATA_DIR / "unit_cube.stl", attitude="vector", direction="0,1,0")
 
     assert row.direction_x == pytest.approx(0.0)
     assert row.direction_y == pytest.approx(1.0)
@@ -117,17 +121,88 @@ def test_vector_direction_reports_equivalent_attitudes() -> None:
 @pytest.mark.parametrize("direction", ["nan,0,0", "inf,0,0", "1,-inf,0"])
 def test_vector_direction_rejects_non_finite_components(direction: str) -> None:
     with pytest.raises(ValueError, match="finite"):
-        project(DATA_DIR / "unit_cube.stl", direction=direction)
+        project(DATA_DIR / "unit_cube.stl", attitude="vector", direction=direction)
 
 
 def test_positive_roll_uses_positive_x_right_hand_rule() -> None:
-    row = project(DATA_DIR / "unit_cube.stl", roll_deg=90, alpha_deg=90)
+    row = project(
+        DATA_DIR / "unit_cube.stl",
+        attitude="roll-pitch",
+        roll_deg=90,
+        pitch_deg=90,
+    )
 
     assert row.direction_x == pytest.approx(0.0)
     assert row.direction_y == pytest.approx(-1.0)
     assert row.direction_z == pytest.approx(0.0)
     assert row.roll_deg == pytest.approx(90.0)
     assert row.pitch_deg == pytest.approx(90.0)
+
+
+def test_roll_pitch_api_uses_explicit_degree_arguments() -> None:
+    row = project(
+        DATA_DIR / "unit_cube.stl",
+        attitude="roll-pitch",
+        roll_deg=30,
+        pitch_deg=60,
+    )
+
+    assert row.direction_x == pytest.approx(0.5)
+    assert row.direction_y == pytest.approx(-0.4330127018922193)
+    assert row.direction_z == pytest.approx(0.75)
+    assert row.roll_deg == pytest.approx(30.0)
+    assert row.pitch_deg == pytest.approx(60.0)
+
+
+def test_roll_pitch_sweep_reports_public_angles_to_progress_callback() -> None:
+    progress = []
+
+    rows = sweep(
+        DATA_DIR / "unit_cube.stl",
+        attitude="roll-pitch",
+        roll_deg="0:90:90",
+        pitch_deg=90,
+        progress_callback=lambda index, total, row: progress.append(
+            (index, total, row.roll_deg, row.pitch_deg)
+        ),
+    )
+
+    assert len(rows) == 2
+    assert progress == [(1, 2, 0.0, 90.0), (2, 2, 90.0, 90.0)]
+
+
+def test_vector_sweep_returns_one_row() -> None:
+    rows = sweep(
+        DATA_DIR / "unit_cube.stl",
+        attitude="vector",
+        direction="0,1,0",
+    )
+
+    assert len(rows) == 1
+    assert rows[0].direction_y == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "argument"),
+    [
+        ({"attitude": "alpha-beta", "pitch_deg": 10}, "pitch_deg"),
+        ({"attitude": "roll-pitch", "alpha_deg": 10}, "alpha_deg"),
+        ({"attitude": "vector", "direction": "1,0,0", "roll_deg": 10}, "roll_deg"),
+    ],
+)
+def test_project_rejects_angles_from_another_attitude(kwargs, argument: str) -> None:
+    with pytest.raises(ValueError, match=argument):
+        project(DATA_DIR / "unit_cube.stl", **kwargs)
+
+
+def test_project_requires_direction_for_vector_attitude() -> None:
+    with pytest.raises(ValueError, match="direction is required"):
+        project(DATA_DIR / "unit_cube.stl", attitude="vector")
+
+
+def test_project_rejects_unknown_attitude() -> None:
+    with pytest.raises(ValueError, match="attitude must be one of"):
+        project(DATA_DIR / "unit_cube.stl", attitude="yaw-pitch")
 
 
 def test_base_area_default_tolerance_allows_small_xmax_face_variation() -> None:
