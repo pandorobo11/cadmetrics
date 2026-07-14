@@ -14,7 +14,7 @@ from cadmetrics.cli import CSV_FIELDS
 from cadmetrics.gui.control_panel import ControlPanel
 from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.results_panel import ResultsPanel
-from cadmetrics.gui.results_panel import DEFAULT_COLUMN_WIDTH, WIDE_COLUMN_WIDTHS
+from cadmetrics.gui.results_panel import DEFAULT_COLUMN_WIDTH
 from cadmetrics.gui.styles import application_stylesheet
 from cadmetrics.types import MeasurementRow, ModelData
 
@@ -201,14 +201,14 @@ def test_results_panel_cells_are_left_aligned_with_full_text_tooltips(qtbot) -> 
     row = _row()
     panel.set_rows([row])
     file_column = CSV_FIELDS.index("file")
-    warnings_column = CSV_FIELDS.index("warnings")
     file_item = panel.table.item(0, file_column)
 
     assert file_item.textAlignment() & QtCore.Qt.AlignmentFlag.AlignLeft
     assert file_item.toolTip() == file_item.text()
-    assert panel.table.columnWidth(file_column) == WIDE_COLUMN_WIDTHS["file"]
-    assert panel.table.columnWidth(warnings_column) == WIDE_COLUMN_WIDTHS["warnings"]
-    assert panel.table.columnWidth(CSV_FIELDS.index("roll_deg")) == DEFAULT_COLUMN_WIDTH
+    assert all(
+        panel.table.columnWidth(column_index) == DEFAULT_COLUMN_WIDTH
+        for column_index in range(len(CSV_FIELDS))
+    )
 
 
 def test_main_window_only_composes_gui_components(qtbot, monkeypatch) -> None:

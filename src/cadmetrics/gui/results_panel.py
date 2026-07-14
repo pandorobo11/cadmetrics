@@ -9,12 +9,7 @@ from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.gui_formatters import format_cell
 from cadmetrics.types import MeasurementRow
 
-DEFAULT_COLUMN_WIDTH = 110
-WIDE_COLUMN_WIDTHS = {
-    "file": 180,
-    "step_component_names": 160,
-    "warnings": 200,
-}
+DEFAULT_COLUMN_WIDTH = 130
 
 
 class ResultsPanel(QtWidgets.QWidget):
@@ -61,7 +56,7 @@ class ResultsPanel(QtWidgets.QWidget):
             header_item.setToolTip(column)
             self.table.setColumnWidth(
                 column_index,
-                WIDE_COLUMN_WIDTHS.get(column, DEFAULT_COLUMN_WIDTH),
+                DEFAULT_COLUMN_WIDTH,
             )
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
