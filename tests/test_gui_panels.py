@@ -198,12 +198,29 @@ def test_detailed_overlay_option_is_opt_in(qtbot) -> None:
     assert panel.viewer_options().detailed_overlay is True
 
 
-def test_advanced_changes_show_pending_state(qtbot) -> None:
+def test_advanced_changes_show_pending_state_only_after_model_load(qtbot, tmp_path: Path) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)
 
     assert panel.advanced_status.isVisible() is False
+    assert panel.apply_advanced_button.toolTip() == (
+        "Load a model before reloading it with Advanced settings."
+    )
     panel.axis_x.setCurrentIndex(panel.axis_x.findData("-x"))
+
+    assert panel._advanced_dirty is False
+    assert panel.advanced_status.isHidden() is True
+    assert panel._section_toggles["Advanced"].text() == "Advanced"
+    assert panel.apply_advanced_button.isEnabled() is False
+    assert panel.apply_advanced_button.toolTip() == (
+        "Load a model before reloading it with Advanced settings."
+    )
+
+    path = tmp_path / "model.step"
+    path.touch()
+    panel.set_file_paths((path,))
+    panel.set_model(_model(path, component_names=("Body",)))
+    panel.axis_x.setCurrentIndex(panel.axis_x.findData("x"))
 
     assert panel._advanced_dirty is True
     assert panel.advanced_status.isHidden() is False
