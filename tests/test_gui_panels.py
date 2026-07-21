@@ -16,7 +16,7 @@ from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.results_panel import ResultsPanel
 from cadmetrics.gui.results_panel import DEFAULT_COLUMN_WIDTH
 from cadmetrics.gui.results_panel import DISPLAY_FIELDS, RESULT_HEADER_LABELS
-from cadmetrics.gui.styles import application_stylesheet
+from cadmetrics.gui.styles import application_stylesheet, spinbox_arrow_image_urls
 from cadmetrics.types import MeasurementRow, ModelData
 
 
@@ -129,10 +129,16 @@ def test_collapsible_sections_and_model_details_stay_compact(qtbot) -> None:
 
 def test_application_stylesheet_restores_indicator_and_spinbox_rules() -> None:
     stylesheet = application_stylesheet()
+    arrow_assets = [Path(path).read_text(encoding="utf-8") for path in spinbox_arrow_image_urls()]
 
     assert "QCheckBox::indicator" in stylesheet
     assert "width: 16px" in stylesheet
     assert "subcontrol-position: top right" in stylesheet
+    assert 'width="8" height="5"' in arrow_assets[0]
+    assert "#657383" in arrow_assets[0]
+    assert "#a9b2bc" in arrow_assets[2]
+    assert "width: 8px; height: 5px" in stylesheet
+    assert "__SPIN_" not in stylesheet
 
 
 def test_run_button_is_outside_scrolling_settings(qtbot) -> None:

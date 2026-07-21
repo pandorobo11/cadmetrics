@@ -4,27 +4,39 @@ import tempfile
 from pathlib import Path
 
 
-def spinbox_arrow_image_urls() -> tuple[str, str]:
+def spinbox_arrow_image_urls() -> tuple[str, str, str, str]:
     asset_dir = Path(tempfile.gettempdir()) / "cadmetrics-gui-assets"
     asset_dir.mkdir(parents=True, exist_ok=True)
-    up = asset_dir / "spin-up.svg"
-    down = asset_dir / "spin-down.svg"
-    up.write_text(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="8" viewBox="0 0 10 8">'
-        '<path d="M5 1 L9 6 H1 Z" fill="#43505d"/></svg>',
-        encoding="utf-8",
+    assets = (
+        ("spin-up.svg", "M1 4 L4 1 L7 4 Z", "#657383"),
+        ("spin-down.svg", "M1 1 L7 1 L4 4 Z", "#657383"),
+        ("spin-up-disabled.svg", "M1 4 L4 1 L7 4 Z", "#a9b2bc"),
+        ("spin-down-disabled.svg", "M1 1 L7 1 L4 4 Z", "#a9b2bc"),
     )
-    down.write_text(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="8" viewBox="0 0 10 8">'
-        '<path d="M1 2 H9 L5 7 Z" fill="#43505d"/></svg>',
-        encoding="utf-8",
-    )
-    return up.as_posix(), down.as_posix()
+    urls: list[str] = []
+    for filename, path, color in assets:
+        asset = asset_dir / filename
+        asset.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="5" '
+            'viewBox="0 0 8 5">'
+            f'<path d="{path}" fill="{color}"/></svg>',
+            encoding="utf-8",
+        )
+        urls.append(asset.as_posix())
+    return urls[0], urls[1], urls[2], urls[3]
 
 
 def with_spinbox_assets(stylesheet: str) -> str:
-    up, down = spinbox_arrow_image_urls()
-    return stylesheet.replace("__SPIN_UP_URL__", up).replace("__SPIN_DOWN_URL__", down)
+    up, down, up_disabled, down_disabled = spinbox_arrow_image_urls()
+    replacements = {
+        "__SPIN_UP_URL__": up,
+        "__SPIN_DOWN_URL__": down,
+        "__SPIN_UP_DISABLED_URL__": up_disabled,
+        "__SPIN_DOWN_DISABLED_URL__": down_disabled,
+    }
+    for placeholder, url in replacements.items():
+        stylesheet = stylesheet.replace(placeholder, url)
+    return stylesheet
 
 
 APPLICATION_STYLESHEET = """
@@ -37,21 +49,25 @@ QLineEdit, QComboBox, QDoubleSpinBox {
 QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus {
     border: 2px solid #2f78c4; padding: 1px 6px;
 }
-QDoubleSpinBox { padding-right: 18px; }
+QDoubleSpinBox { padding-right: 22px; }
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
-    width: 18px; border-left: 1px solid #d5dbe2; background: #f8fafc;
+    width: 21px; border: 0; border-left: 1px solid #e3e8ed; background: #ffffff;
 }
 QDoubleSpinBox::up-button {
     subcontrol-origin: border; subcontrol-position: top right;
-    border-top-right-radius: 5px; height: 13px;
+    border-top-right-radius: 5px; height: 14px;
 }
 QDoubleSpinBox::down-button {
     subcontrol-origin: border; subcontrol-position: bottom right;
-    border-bottom-right-radius: 5px; height: 13px;
+    border-bottom-right-radius: 5px; height: 14px;
 }
 QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { background: #eef3f8; }
-QDoubleSpinBox::up-arrow { image: url("__SPIN_UP_URL__"); width: 10px; height: 8px; }
-QDoubleSpinBox::down-arrow { image: url("__SPIN_DOWN_URL__"); width: 10px; height: 8px; }
+QDoubleSpinBox::up-button:pressed, QDoubleSpinBox::down-button:pressed { background: #e2eaf2; }
+QDoubleSpinBox::up-button:disabled, QDoubleSpinBox::down-button:disabled { background: #f7f9fb; }
+QDoubleSpinBox::up-arrow { image: url("__SPIN_UP_URL__"); width: 8px; height: 5px; }
+QDoubleSpinBox::down-arrow { image: url("__SPIN_DOWN_URL__"); width: 8px; height: 5px; }
+QDoubleSpinBox::up-arrow:disabled { image: url("__SPIN_UP_DISABLED_URL__"); }
+QDoubleSpinBox::down-arrow:disabled { image: url("__SPIN_DOWN_DISABLED_URL__"); }
 QPushButton {
     min-height: 30px; border: 1px solid #aeb9c5; border-radius: 6px;
     padding: 4px 14px; background: #f8fafc; color: #1f2933; font-weight: 500;
