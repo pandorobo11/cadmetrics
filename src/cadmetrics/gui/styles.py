@@ -26,6 +26,25 @@ def spinbox_arrow_image_urls() -> tuple[str, str, str, str]:
     return urls[0], urls[1], urls[2], urls[3]
 
 
+def disclosure_arrow_image_urls() -> tuple[str, str]:
+    asset_dir = Path(tempfile.gettempdir()) / "cadmetrics-gui-assets"
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    assets = (
+        ("disclosure-right.svg", "6", "10", "0 0 6 10", "M1 1 L5 5 L1 9 Z"),
+        ("disclosure-down.svg", "10", "6", "0 0 10 6", "M1 1 L9 1 L5 5 Z"),
+    )
+    urls: list[str] = []
+    for filename, width, height, view_box, path in assets:
+        asset = asset_dir / filename
+        asset.write_text(
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+            f'viewBox="{view_box}"><path d="{path}" fill="#657383"/></svg>',
+            encoding="utf-8",
+        )
+        urls.append(asset.as_posix())
+    return urls[0], urls[1]
+
+
 def with_spinbox_assets(stylesheet: str) -> str:
     up, down, up_disabled, down_disabled = spinbox_arrow_image_urls()
     replacements = {
@@ -49,13 +68,24 @@ QLineEdit, QComboBox, QDoubleSpinBox {
 QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus {
     border: 2px solid #2f78c4; padding: 1px 6px;
 }
+QComboBox { padding-right: 29px; }
+QComboBox::drop-down {
+    subcontrol-origin: padding; subcontrol-position: top right;
+    width: 27px; border: 0; border-left: 1px solid #c7d0da;
+    border-top-right-radius: 5px; border-bottom-right-radius: 5px; background: #f7f9fb;
+}
+QComboBox::drop-down:hover { background: #eef3f8; }
+QComboBox::drop-down:pressed { background: #e2eaf2; }
+QComboBox::drop-down:disabled { background: #f7f9fb; }
+QComboBox::down-arrow { image: url("__SPIN_DOWN_URL__"); width: 8px; height: 5px; }
+QComboBox::down-arrow:disabled { image: url("__SPIN_DOWN_DISABLED_URL__"); }
 QDoubleSpinBox { padding-right: 22px; }
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
-    width: 21px; border: 0; border-left: 1px solid #e3e8ed; background: #ffffff;
+    width: 21px; border: 0; border-left: 1px solid #c7d0da; background: #f7f9fb;
 }
 QDoubleSpinBox::up-button {
     subcontrol-origin: border; subcontrol-position: top right;
-    border-top-right-radius: 5px; height: 14px;
+    border-top-right-radius: 5px; border-bottom: 1px solid #d8dfe6; height: 14px;
 }
 QDoubleSpinBox::down-button {
     subcontrol-origin: border; subcontrol-position: bottom right;
@@ -95,11 +125,15 @@ QGroupBox::title {
     subcontrol-origin: margin; left: 8px; padding: 0 4px;
     font-size: 14px; font-weight: 600; color: #17212b;
 }
+QGroupBox#sectionContent {
+    margin-top: 0; padding: 0; border: 0; border-radius: 8px; background: #ffffff;
+}
 QToolButton#sectionToggle {
-    min-height: 30px; border: 0; border-radius: 7px; background: #ffffff;
-    font-weight: 600; padding: 5px 9px; text-align: left;
+    min-height: 32px; border: 0; border-radius: 7px; background: #ffffff;
+    font-weight: 600; padding: 5px 10px; text-align: left;
 }
 QToolButton#sectionToggle:hover { background: #eaf0f6; }
+QToolButton#sectionToggle:checked { background: #eaf0f6; }
 QProgressBar {
     min-height: 8px; max-height: 8px; border: 0; border-radius: 4px; background: #dce2e8;
 }

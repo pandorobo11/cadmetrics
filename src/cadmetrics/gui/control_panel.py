@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from cadmetrics.coordinates import AXIS_CHOICES
 from cadmetrics.gui.gui_formatters import (
@@ -12,6 +12,7 @@ from cadmetrics.gui.gui_formatters import (
 )
 from cadmetrics.gui.gui_types import OperationState, ViewerOptions
 from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath
+from cadmetrics.gui.styles import disclosure_arrow_image_urls
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.sweep import parse_sweep_values
 from cadmetrics.types import ModelData
@@ -632,26 +633,39 @@ class ControlPanel(QtWidgets.QWidget):
         return form
 
     def _collapsible_widget(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QWidget:
-        toggle = QtWidgets.QToolButton()
+        right_arrow, down_arrow = disclosure_arrow_image_urls()
+        section = QtWidgets.QWidget()
+        section.setObjectName("collapsibleSection")
+        section_layout = QtWidgets.QVBoxLayout(section)
+        section_layout.setContentsMargins(0, 0, 0, 0)
+        section_layout.setSpacing(3)
+
+        toggle = QtWidgets.QToolButton(section)
         toggle.setText(title)
         toggle.setCheckable(True)
         toggle.setChecked(False)
         toggle.setObjectName("sectionToggle")
         toggle.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        toggle.setArrowType(QtCore.Qt.ArrowType.RightArrow)
-        content = QtWidgets.QGroupBox()
+        toggle.setArrowType(QtCore.Qt.ArrowType.NoArrow)
+        toggle.setIcon(QtGui.QIcon(right_arrow))
+        toggle.setIconSize(QtCore.QSize(10, 10))
+        toggle.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
+        )
+        content = QtWidgets.QGroupBox(section)
+        content.setObjectName("sectionContent")
         content.setVisible(False)
         self._section_toggles[title] = toggle
 
         def sync_collapsed_state(checked: bool) -> None:
-            toggle.setArrowType(
-                QtCore.Qt.ArrowType.DownArrow if checked else QtCore.Qt.ArrowType.RightArrow
-            )
+            toggle.setIcon(QtGui.QIcon(down_arrow if checked else right_arrow))
             content.setVisible(checked)
 
         toggle.toggled.connect(sync_collapsed_state)
-        parent.addWidget(toggle)
-        parent.addWidget(content)
+        section_layout.addWidget(toggle)
+        section_layout.addWidget(content)
+        parent.addWidget(section)
         return content
 
     def _collapsible(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:

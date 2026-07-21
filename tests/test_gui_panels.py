@@ -16,7 +16,11 @@ from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.results_panel import ResultsPanel
 from cadmetrics.gui.results_panel import DEFAULT_COLUMN_WIDTH
 from cadmetrics.gui.results_panel import DISPLAY_FIELDS, RESULT_HEADER_LABELS
-from cadmetrics.gui.styles import application_stylesheet, spinbox_arrow_image_urls
+from cadmetrics.gui.styles import (
+    application_stylesheet,
+    disclosure_arrow_image_urls,
+    spinbox_arrow_image_urls,
+)
 from cadmetrics.types import MeasurementRow, ModelData
 
 
@@ -120,16 +124,26 @@ def test_collapsible_sections_and_model_details_stay_compact(qtbot) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)
     toggle = panel._section_toggles["Model Details"]
+    collapsed_icon = toggle.icon().cacheKey()
+    section = toggle.parentWidget()
+    content = section.findChild(QtWidgets.QGroupBox, "sectionContent")
 
-    assert toggle.arrowType() == QtCore.Qt.ArrowType.RightArrow
+    assert toggle.arrowType() == QtCore.Qt.ArrowType.NoArrow
+    assert toggle.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Expanding
+    assert section.layout().spacing() == 3
+    assert content is not None
     toggle.setChecked(True)
-    assert toggle.arrowType() == QtCore.Qt.ArrowType.DownArrow
+    assert toggle.icon().cacheKey() != collapsed_icon
+    assert content.isVisibleTo(panel)
     assert panel.model_info.sizePolicy().verticalPolicy() == QtWidgets.QSizePolicy.Policy.Fixed
 
 
 def test_application_stylesheet_restores_indicator_and_spinbox_rules() -> None:
     stylesheet = application_stylesheet()
     arrow_assets = [Path(path).read_text(encoding="utf-8") for path in spinbox_arrow_image_urls()]
+    disclosure_assets = [
+        Path(path).read_text(encoding="utf-8") for path in disclosure_arrow_image_urls()
+    ]
 
     assert "QCheckBox::indicator" in stylesheet
     assert "width: 16px" in stylesheet
@@ -138,6 +152,13 @@ def test_application_stylesheet_restores_indicator_and_spinbox_rules() -> None:
     assert "#657383" in arrow_assets[0]
     assert "#a9b2bc" in arrow_assets[2]
     assert "width: 8px; height: 5px" in stylesheet
+    assert stylesheet.count("border-left: 1px solid #c7d0da") == 2
+    assert stylesheet.count("background: #f7f9fb") >= 3
+    assert "border-bottom: 1px solid #d8dfe6" in stylesheet
+    assert "QComboBox::down-arrow" in stylesheet
+    assert "QGroupBox#sectionContent" in stylesheet
+    assert "QToolButton#sectionToggle:checked" in stylesheet
+    assert 'width="6" height="10"' in disclosure_assets[0]
     assert "__SPIN_" not in stylesheet
 
 
