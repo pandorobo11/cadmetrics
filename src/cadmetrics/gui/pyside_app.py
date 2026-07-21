@@ -104,6 +104,9 @@ if QtWidgets is not None:
             self.controls.request_changed.connect(self._preview_request)
             self.controls.save_image_button.clicked.connect(self.viewer.choose_and_save_image)
             self.viewer.base_face_available.connect(self._set_base_face_available)
+            self.viewer.newly_exposed_surface_available.connect(
+                self._set_newly_exposed_surface_available
+            )
             self.viewer.error.connect(self._show_error)
             self.viewer.message.connect(self.status.setText)
             self.results.selected_row_changed.connect(self._show_result)
@@ -183,6 +186,15 @@ if QtWidgets is not None:
             )
             if not available:
                 self.controls.show_base_face.setChecked(False)
+
+        @QtCore.Slot(bool)
+        def _set_newly_exposed_surface_available(self, available: bool) -> None:
+            self.controls.show_newly_exposed_surface.setEnabled(available)
+            self.controls.show_newly_exposed_surface.setToolTip(
+                "Highlight surfaces newly exposed by subtraction."
+                if available
+                else "No newly exposed subtraction surfaces found."
+            )
 
         def _show_documentation(self) -> None:
             if self._documentation_index is None:

@@ -12,6 +12,7 @@ from cadmetrics.gui.jobs import CalculationRequest
 from cadmetrics.gui.viewer_geometry import (
     base_face_polydata,
     camera_geometry,
+    newly_exposed_surface_polydata,
     projection_arrow_geometry,
     projection_camera_geometry,
     row_centroid_point,
@@ -26,6 +27,7 @@ class ModelViewer(QtWidgets.QWidget):
     error = QtCore.Signal(str)
     message = QtCore.Signal(str)
     base_face_available = QtCore.Signal(bool)
+    newly_exposed_surface_available = QtCore.Signal(bool)
 
     def __init__(
         self,
@@ -44,6 +46,8 @@ class ModelViewer(QtWidgets.QWidget):
         self._feature_edges_actor: Any | None = None
         self._base_face_actor: Any | None = None
         self._base_face_polydata: Any | None = None
+        self._newly_exposed_surface_actor: Any | None = None
+        self._newly_exposed_surface_polydata: Any | None = None
         self._vector_actor: Any | None = None
         self._centroid_actor: Any | None = None
         self._overlay_actor: Any | None = None
@@ -71,6 +75,10 @@ class ModelViewer(QtWidgets.QWidget):
         self._reset_actors()
         self._base_face_polydata = base_face_polydata(model, pv)
         self.base_face_available.emit(self._base_face_polydata is not None)
+        self._newly_exposed_surface_polydata = newly_exposed_surface_polydata(model, pv)
+        self.newly_exposed_surface_available.emit(
+            self._newly_exposed_surface_polydata is not None
+        )
         self._configure_lighting()
         self._plotter.add_axes()
         self._plotter.show_grid()
@@ -90,6 +98,7 @@ class ModelViewer(QtWidgets.QWidget):
         self._apply_mesh_shading()
         self._update_feature_edges(render=False)
         self._update_base_face(render=False)
+        self._update_newly_exposed_surface(render=False)
         self.set_camera(self._options.camera_direction)
         self._update_projection()
 
@@ -114,6 +123,7 @@ class ModelViewer(QtWidgets.QWidget):
         self._options = options
         self._apply_display_options()
         self._update_base_face(render=False)
+        self._update_newly_exposed_surface(render=False)
         self._update_projection()
         if camera_changed:
             self.set_camera(options.camera_direction)
@@ -173,6 +183,7 @@ class ModelViewer(QtWidgets.QWidget):
         self._mesh_actor = None
         self._feature_edges_actor = None
         self._base_face_actor = None
+        self._newly_exposed_surface_actor = None
         self._vector_actor = None
         self._centroid_actor = None
         self._overlay_actor = None
@@ -281,6 +292,26 @@ class ModelViewer(QtWidgets.QWidget):
                 smooth_shading=False,
                 ambient=0.75,
                 diffuse=0.25,
+            )
+        if render:
+            self._plotter.render()
+
+    def _update_newly_exposed_surface(self, *, render: bool) -> None:
+        if self._plotter is None:
+            return
+        self._remove_actor("_newly_exposed_surface_actor")
+        if (
+            self._newly_exposed_surface_polydata is not None
+            and self._options.show_newly_exposed_surface
+        ):
+            self._newly_exposed_surface_actor = self._plotter.add_mesh(
+                self._newly_exposed_surface_polydata,
+                color="#ff7a00",
+                opacity=1.0,
+                smooth_shading=False,
+                ambient=0.75,
+                diffuse=0.25,
+                pickable=False,
             )
         if render:
             self._plotter.render()

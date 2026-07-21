@@ -99,6 +99,21 @@ supported.
 Saved CSV results include `step_components` and `step_component_names`, so calculations can be
 traced back to the component checkboxes that were enabled.
 
+`Component mode` controls what an unchecked component means:
+
+- `Filter OFF (default)` removes unchecked components before union and leaves enabled geometry
+  intact.
+- `Subtract OFF` creates `Union(enabled) - Union(disabled)`, so disabled components carve their
+  overlapping volume out of enabled geometry.
+
+Subtraction-mode `surface_area` counts only surviving faces from the enabled union. Newly created
+surfaces newly exposed by subtraction are excluded and reported separately as
+`newly_exposed_surface_area`. Click `Apply Settings` after
+changing the mode or component checkboxes.
+
+When subtraction creates new surfaces, the 3D viewer highlights them in orange. Use the
+`Newly exposed surface` checkbox under `Shape Display` to show or hide this overlay.
+
 ### Tessellation
 
 `STEP metrics` controls how STEP volume and surface area are calculated:
@@ -118,6 +133,8 @@ bounding-box diagonal * 1e-4
 `Base tolerance` controls how close a face must be to cadmetrics-coordinate `Xmax` to count as
 `base_area`. It is relative to the loaded model size: cadmetrics uses
 `max(bounding-box diagonal * value, 1e-12)` in the output length unit. The default is `1e-6`.
+Newly exposed subtraction surfaces are not counted or highlighted as base faces, even when they
+lie at the final model Xmax.
 
 ## Shape Display
 

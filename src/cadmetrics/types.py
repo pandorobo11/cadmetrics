@@ -31,6 +31,9 @@ class ModelData:
     angular_deflection: float | None = None
     base_tolerance: float | None = None
     step_metric_source: str | None = None
+    step_component_mode: str | None = None
+    newly_exposed_surface_area: float | None = None
+    newly_exposed_face_indices: tuple[int, ...] = field(default_factory=tuple)
     is_assembly: bool = False
     component_names: tuple[str, ...] = field(default_factory=tuple)
     selected_components: tuple[int, ...] = field(default_factory=tuple)
@@ -117,6 +120,8 @@ class MeasurementRow:
     mesh_deflection: float | None = None
     angular_deflection: float | None = None
     base_tolerance: float | None = None
+    step_component_mode: str | None = None
+    newly_exposed_surface_area: float | None = None
     method: str | None = None
     elapsed_sec: float | None = None
     cadmetrics_version: str = field(default_factory=cadmetrics_version)
@@ -144,6 +149,7 @@ class MeasurementRow:
             "z_min": self.z_min,
             "z_max": self.z_max,
             "surface_area": self.surface_area,
+            "newly_exposed_surface_area": self.newly_exposed_surface_area,
             "base_area": self.base_area,
             "volume": self.volume,
             "projected_area": self.projected_area,
@@ -156,6 +162,7 @@ class MeasurementRow:
             "mesh_deflection": self.mesh_deflection,
             "angular_deflection": self.angular_deflection,
             "base_tolerance": self.base_tolerance,
+            "step_component_mode": self.step_component_mode,
             "method": self.method,
             "elapsed_sec": self.elapsed_sec,
             "cadmetrics_version": self.cadmetrics_version,

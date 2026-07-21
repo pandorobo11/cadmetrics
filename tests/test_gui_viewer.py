@@ -90,6 +90,8 @@ def test_model_viewer_renders_model_and_result(qtbot) -> None:
     assert viewer.available is True
     assert plotter is not None
     assert plotter.meshes
+    assert any(options.get("color") == "#ff7a00" for _mesh, options in plotter.meshes)
+    assert viewer._base_face_polydata is None
     assert plotter.arrows
     assert any("cadmetrics result" in text for text, _ in plotter.texts)
     assert plotter.camera_position is not None
@@ -161,8 +163,10 @@ def _model() -> ModelData:
         output_unit="m",
         volume=1.0,
         surface_area=6.0,
-        base_area=1.0,
+        base_area=0.0,
         is_watertight=True,
+        newly_exposed_surface_area=1.0,
+        newly_exposed_face_indices=(6, 7),
     )
 
 

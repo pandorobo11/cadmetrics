@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from cadmetrics.api import AttitudeMode, inspect_model
+from cadmetrics.api import AttitudeMode, StepComponentMode, inspect_model
 from cadmetrics.api import measure as measure_api
 from cadmetrics.api import project as project_api
 from cadmetrics.api import sweep as sweep_api
@@ -43,6 +43,7 @@ CSV_FIELDS = [
     "z_min",
     "z_max",
     "surface_area",
+    "newly_exposed_surface_area",
     "base_area",
     "volume",
     "projected_area",
@@ -55,6 +56,7 @@ CSV_FIELDS = [
     "mesh_deflection",
     "angular_deflection",
     "base_tolerance",
+    "step_component_mode",
     "method",
     "elapsed_sec",
     "cadmetrics_version",
@@ -99,6 +101,17 @@ def measure(
         "--step-metrics",
         help="STEP volume/surface metric source: 'brep' for CAD-kernel values or 'mesh' for tessellated mesh values.",
     ),
+    step_component: list[int] | None = typer.Option(
+        None,
+        "--step-component",
+        min=1,
+        help="1-based STEP component to enable; repeat for multiple components.",
+    ),
+    component_mode: str = typer.Option(
+        "filter",
+        "--component-mode",
+        help="STEP component handling: 'filter' hides disabled components; 'subtract' cuts them out.",
+    ),
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
 ) -> None:
     """Calculate volume and surface area."""
@@ -113,6 +126,8 @@ def measure(
             base_tolerance=base_tolerance,
             axis_map=axis_map,
             step_metric_source=step_metrics,
+            step_components=_component_selection(step_component),
+            step_component_mode=cast(StepComponentMode, component_mode),
         )
     )
     if out is None:
@@ -179,6 +194,17 @@ def project(
         "--step-metrics",
         help="STEP volume/surface metric source: 'brep' for CAD-kernel values or 'mesh' for tessellated mesh values.",
     ),
+    step_component: list[int] | None = typer.Option(
+        None,
+        "--step-component",
+        min=1,
+        help="1-based STEP component to enable; repeat for multiple components.",
+    ),
+    component_mode: str = typer.Option(
+        "filter",
+        "--component-mode",
+        help="STEP component handling: 'filter' hides disabled components; 'subtract' cuts them out.",
+    ),
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
 ) -> None:
     """Calculate projected area for one attitude or vector direction."""
@@ -207,6 +233,8 @@ def project(
             base_tolerance=base_tolerance,
             axis_map=axis_map,
             step_metric_source=step_metrics,
+            step_components=_component_selection(step_component),
+            step_component_mode=cast(StepComponentMode, component_mode),
         )
     )
     if out is None:
@@ -281,6 +309,17 @@ def sweep(
         "--step-metrics",
         help="STEP volume/surface metric source: 'brep' for CAD-kernel values or 'mesh' for tessellated mesh values.",
     ),
+    step_component: list[int] | None = typer.Option(
+        None,
+        "--step-component",
+        min=1,
+        help="1-based STEP component to enable; repeat for multiple components.",
+    ),
+    component_mode: str = typer.Option(
+        "filter",
+        "--component-mode",
+        help="STEP component handling: 'filter' hides disabled components; 'subtract' cuts them out.",
+    ),
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
     summary: bool = typer.Option(True, "--summary/--no-summary", help="Print sweep summary."),
 ) -> None:
@@ -332,6 +371,8 @@ def sweep(
                 base_tolerance=base_tolerance,
                 axis_map=axis_map,
                 step_metric_source=step_metrics,
+                step_components=_component_selection(step_component),
+                step_component_mode=cast(StepComponentMode, component_mode),
             )
         )
         rows = [row]
@@ -353,6 +394,8 @@ def sweep(
                     base_tolerance=base_tolerance,
                     axis_map=axis_map,
                     step_metric_source=step_metrics,
+                    step_components=_component_selection(step_component),
+                    step_component_mode=cast(StepComponentMode, component_mode),
                     progress_callback=on_progress,
                 ),
             )
@@ -398,6 +441,17 @@ def inspect(
         "--step-metrics",
         help="STEP volume/surface metric source: 'brep' for CAD-kernel values or 'mesh' for tessellated mesh values.",
     ),
+    step_component: list[int] | None = typer.Option(
+        None,
+        "--step-component",
+        min=1,
+        help="1-based STEP component to enable; repeat for multiple components.",
+    ),
+    component_mode: str = typer.Option(
+        "filter",
+        "--component-mode",
+        help="STEP component handling: 'filter' hides disabled components; 'subtract' cuts them out.",
+    ),
 ) -> None:
     """Show loaded model information."""
 
@@ -411,6 +465,8 @@ def inspect(
             base_tolerance=base_tolerance,
             axis_map=axis_map,
             step_metric_source=step_metrics,
+            step_components=_component_selection(step_component),
+            step_component_mode=cast(StepComponentMode, component_mode),
             require_mesh=step_metrics.strip().lower().replace("_", "-")
             in {"mesh", "tessellated", "stl"},
         )
@@ -424,6 +480,8 @@ def inspect(
     table.add_row("assembly", str(model.is_assembly))
     if model.step_metric_source:
         table.add_row("step_metrics", model.step_metric_source)
+    if model.step_component_mode:
+        table.add_row("component_mode", model.step_component_mode)
     table.add_row("vertices", str(model.vertex_count))
     table.add_row("faces", str(model.face_count))
     table.add_row("x_min", _format_optional(model.x_min))
@@ -433,12 +491,23 @@ def inspect(
     table.add_row("z_min", _format_optional(model.z_min))
     table.add_row("z_max", _format_optional(model.z_max))
     table.add_row("surface_area", _format_optional(model.surface_area))
+    table.add_row(
+        "newly_exposed_surface_area",
+        _format_optional(model.newly_exposed_surface_area),
+    )
     table.add_row("base_area", _format_optional(model.base_area))
     table.add_row("volume", _format_optional(model.volume))
     if model.component_names:
         table.add_row(
             "components",
             f"{len(model.selected_components)} of {len(model.component_names)}",
+        )
+        table.add_row(
+            "component_list",
+            "\n".join(
+                f"{index}: {name}"
+                for index, name in enumerate(model.component_names, start=1)
+            ),
         )
     table.add_row("cadmetrics_version", model.cadmetrics_version)
     table.add_row("cadmetrics_hash", model.cadmetrics_hash)
@@ -470,6 +539,12 @@ def _format_input_files(files: list[Path]) -> str:
     return " + ".join(str(file) for file in files)
 
 
+def _component_selection(values: list[int] | None) -> tuple[int, ...] | None:
+    if values is None:
+        return None
+    return tuple(dict.fromkeys(values))
+
+
 def _emit_measurement_table(row: MeasurementRow, *, title: str) -> None:
     table = Table(title=title)
     table.add_column("field")
@@ -484,6 +559,10 @@ def _emit_measurement_table(row: MeasurementRow, *, title: str) -> None:
     table.add_row("z_min", _format_optional(row.z_min))
     table.add_row("z_max", _format_optional(row.z_max))
     table.add_row("surface_area", _format_optional(row.surface_area))
+    table.add_row(
+        "newly_exposed_surface_area",
+        _format_optional(row.newly_exposed_surface_area),
+    )
     table.add_row("base_area", _format_optional(row.base_area))
     table.add_row("volume", _format_optional(row.volume))
     if row.projected_area is not None:
@@ -504,6 +583,7 @@ def _emit_measurement_table(row: MeasurementRow, *, title: str) -> None:
     table.add_row("mesh_deflection", _format_optional(row.mesh_deflection))
     table.add_row("angular_deflection", _format_optional(row.angular_deflection))
     table.add_row("base_tolerance", _format_optional(row.base_tolerance))
+    table.add_row("component_mode", row.step_component_mode or "")
     table.add_row("method", row.method or "")
     table.add_row("elapsed_sec", _format_optional(row.elapsed_sec))
     table.add_row("cadmetrics_version", row.cadmetrics_version)

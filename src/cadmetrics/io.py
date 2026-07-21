@@ -25,10 +25,12 @@ def load_model(
     angular_deflection: float = 0.1,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
+    step_component_mode: str = "filter",
     base_axis_map: str = DEFAULT_AXIS_MAP,
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
     require_mesh: bool = True,
 ) -> ModelData:
+    component_mode = _normalize_step_component_mode(step_component_mode)
     base_tolerance = _resolve_base_tolerance(base_tolerance)
     angular_deflection = _resolve_angular_deflection(angular_deflection)
     _validate_mesh_deflection_input(mesh_deflection)
@@ -42,6 +44,7 @@ def load_model(
             angular_deflection=angular_deflection,
             step_metric_source=step_metric_source,
             step_components=step_components,
+            step_component_mode=component_mode,
             base_axis_map=base_axis_map,
             base_tolerance=base_tolerance,
             require_mesh=require_mesh,
@@ -50,6 +53,8 @@ def load_model(
     model_path = paths[0]
     suffix = model_path.suffix.lower()
     if suffix in STL_SUFFIXES:
+        if component_mode != "filter":
+            raise ValueError("step_component_mode='subtract' is only available for STEP input.")
         return _load_stl(
             model_path,
             input_unit=input_unit,
@@ -66,6 +71,7 @@ def load_model(
             angular_deflection=angular_deflection,
             step_metric_source=step_metric_source,
             step_components=step_components,
+            step_component_mode=component_mode,
             base_axis_map=base_axis_map,
             base_tolerance=base_tolerance,
             require_mesh=require_mesh,
@@ -91,12 +97,15 @@ def _load_assembly(
     angular_deflection: float,
     step_metric_source: str,
     step_components: tuple[int, ...] | None,
+    step_component_mode: str,
     base_axis_map: str,
     base_tolerance: float,
     require_mesh: bool,
 ) -> ModelData:
     suffixes = {path.suffix.lower() for path in paths}
     if suffixes <= STL_SUFFIXES:
+        if step_component_mode != "filter":
+            raise ValueError("step_component_mode='subtract' is only available for STEP input.")
         return _load_stl_assembly(
             paths,
             input_unit=input_unit,
@@ -113,6 +122,7 @@ def _load_assembly(
             angular_deflection=angular_deflection,
             step_metric_source=step_metric_source,
             step_components=step_components,
+            step_component_mode=step_component_mode,
             base_axis_map=base_axis_map,
             base_tolerance=base_tolerance,
             require_mesh=require_mesh,
@@ -252,6 +262,7 @@ def _load_step(
     angular_deflection: float,
     step_metric_source: str,
     step_components: tuple[int, ...] | None,
+    step_component_mode: str,
     base_axis_map: str,
     base_tolerance: float,
     require_mesh: bool,
@@ -260,7 +271,7 @@ def _load_step(
         from OCP.Bnd import Bnd_Box
         from OCP.BRep import BRep_Builder
         from OCP.BRep import BRep_Tool
-        from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
+        from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
         from OCP.BRepBndLib import BRepBndLib
         from OCP.BRepCheck import BRepCheck_Analyzer
         from OCP.BRepGProp import BRepGProp
@@ -299,25 +310,26 @@ def _load_step(
     if not component_names:
         component_names = tuple(f"Component {index}" for index in range(1, len(solids) + 1))
     selected_components = _resolve_step_component_selection(step_components, len(solids))
-    shape = _shape_from_selected_components(
+    shape, unioned, retained_faces, cut_faces = _build_step_component_shape(
         original_shape,
         solids,
         selected_components,
-        BRep_Builder=BRep_Builder,
-        TopoDS_Compound=TopoDS_Compound,
-    )
-    shape, unioned = _boolean_union_ocp_solids(
-        shape,
+        component_mode=step_component_mode,
+        BRepAlgoAPI_Cut=BRepAlgoAPI_Cut,
         BRepAlgoAPI_Fuse=BRepAlgoAPI_Fuse,
+        BRep_Builder=BRep_Builder,
+        TopAbs_FACE=TopAbs_FACE,
         TopAbs_SOLID=TopAbs_SOLID,
         TopExp_Explorer=TopExp_Explorer,
         TopoDS=TopoDS,
+        TopoDS_Compound=TopoDS_Compound,
     )
     if unioned is None:
         warnings.append(
             "Could not boolean-union STEP solids; volume and surface area may double-count overlaps."
         )
-    topology_watertight = _ocp_shape_is_watertight(
+    empty_result = not _ocp_shape_has_subshape(shape, TopAbs_FACE, TopExp_Explorer)
+    topology_watertight = False if empty_result else _ocp_shape_is_watertight(
         shape,
         BRepCheck_Analyzer=BRepCheck_Analyzer,
         BRep_Tool=BRep_Tool,
@@ -337,12 +349,12 @@ def _load_step(
             warnings.append("Could not detect STEP length unit; assuming m.")
 
     scale = length_scale(resolved_input_unit, output_unit)
-    native_bounds = _ocp_bounds(shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib)
-    bounds = _scaled_output_bounds(native_bounds, scale)
-    native_diagonal = _ocp_bounding_box_diagonal(
-        shape,
-        Bnd_Box=Bnd_Box,
-        BRepBndLib=BRepBndLib,
+    native_bounds = None if empty_result else _ocp_bounds(
+        shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib
+    )
+    bounds = None if native_bounds is None else _scaled_output_bounds(native_bounds, scale)
+    native_diagonal = 1.0 if empty_result else _ocp_bounding_box_diagonal(
+        shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib
     )
     mesh_deflection_value = _resolve_mesh_deflection(
         mesh_deflection,
@@ -353,37 +365,66 @@ def _load_step(
         mesh_deflection_value / scale if scale != 0.0 else mesh_deflection_value
     )
 
-    exact_base_area, exact_base_found, exact_base_failed = _ocp_xmax_base_area(
-        shape,
-        base_axis_map=base_axis_map,
-        scale=scale,
-        native_diagonal=native_diagonal,
-        relative_tolerance=base_tolerance,
-        Bnd_Box=Bnd_Box,
-        BRepBndLib=BRepBndLib,
-        BRepGProp=BRepGProp,
-        GProp_GProps=GProp_GProps,
-        TopAbs_FACE=TopAbs_FACE,
-        TopExp_Explorer=TopExp_Explorer,
-        TopoDS=TopoDS,
+    subtraction_active = (
+        step_component_mode == "subtract" and len(selected_components) < len(solids)
     )
-    brep_volume = _ocp_volume_metric_gk(shape, GProp_GProps=GProp_GProps, BRepGProp=BRepGProp)
-    brep_surface_area = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "SurfaceProperties")
+    face_classification_failed = subtraction_active and cut_faces is None
+    if empty_result:
+        exact_base_area, exact_base_found, exact_base_failed = 0.0, False, False
+    elif face_classification_failed:
+        exact_base_area, exact_base_found, exact_base_failed = None, False, False
+    else:
+        exact_base_area, exact_base_found, exact_base_failed = _ocp_xmax_base_area(
+            shape,
+            base_axis_map=base_axis_map,
+            scale=scale,
+            native_diagonal=native_diagonal,
+            relative_tolerance=base_tolerance,
+            Bnd_Box=Bnd_Box,
+            BRepBndLib=BRepBndLib,
+            BRepGProp=BRepGProp,
+            GProp_GProps=GProp_GProps,
+            TopAbs_FACE=TopAbs_FACE,
+            TopExp_Explorer=TopExp_Explorer,
+            TopoDS=TopoDS,
+            excluded_faces=cut_faces or (),
+        )
+    brep_volume = 0.0 if empty_result else _ocp_volume_metric_gk(
+        shape, GProp_GProps=GProp_GProps, BRepGProp=BRepGProp
+    )
+    brep_surface_area = 0.0 if empty_result else _ocp_shape_metric(
+        shape, GProp_GProps, BRepGProp, "SurfaceProperties"
+    )
+    brep_newly_exposed_surface_area: float | None = None
+    if retained_faces is not None and cut_faces is not None:
+        brep_surface_area = _ocp_shapes_surface_area(retained_faces, GProp_GProps, BRepGProp)
+        brep_newly_exposed_surface_area = _ocp_shapes_surface_area(
+            cut_faces, GProp_GProps, BRepGProp
+        )
+    elif step_component_mode == "subtract" and len(selected_components) < len(solids):
+        brep_surface_area = None
+        warnings.append(
+            "Could not classify STEP cut faces; surface_area was left unset."
+        )
 
     must_tessellate = require_mesh or metric_source == "mesh" or exact_base_failed
-    if must_tessellate:
+    if must_tessellate and not empty_result:
         BRepMesh_IncrementalMesh(shape, native_mesh_deflection, False, angular_deflection, True)
-        vertices, faces = _tessellate_ocp_shape(
-            shape,
-            BRep_Tool=BRep_Tool,
-            TopAbs_FACE=TopAbs_FACE,
-            TopAbs_REVERSED=TopAbs_REVERSED,
-            TopExp_Explorer=TopExp_Explorer,
-            TopLoc_Location=TopLoc_Location,
-            TopoDS=TopoDS,
+        vertices, faces, newly_exposed_face_indices = (
+            _tessellate_ocp_shape_with_marked_faces(
+                shape,
+                marked_faces=cut_faces or (),
+                BRep_Tool=BRep_Tool,
+                TopAbs_FACE=TopAbs_FACE,
+                TopAbs_REVERSED=TopAbs_REVERSED,
+                TopExp_Explorer=TopExp_Explorer,
+                TopLoc_Location=TopLoc_Location,
+                TopoDS=TopoDS,
+            )
         )
     else:
         vertices, faces = _empty_mesh()
+        newly_exposed_face_indices = ()
     if exact_base_failed:
         base_area, base_found = _mesh_xmax_base_area(
             vertices,
@@ -392,6 +433,7 @@ def _load_step(
             scale=scale,
             native_diagonal=native_diagonal,
             relative_tolerance=base_tolerance,
+            excluded_face_indices=newly_exposed_face_indices,
         )
         warnings.append("Could not calculate exact STEP base area; used tessellated mesh fallback.")
     else:
@@ -399,16 +441,44 @@ def _load_step(
         base_found = exact_base_found
 
     if metric_source == "mesh":
-        volume, surface_area, mesh_watertight = _mesh_volume_and_surface_area(vertices, faces)
+        if empty_result:
+            volume, surface_area, mesh_watertight = 0.0, 0.0, False
+        else:
+            volume, surface_area, mesh_watertight = _mesh_volume_and_surface_area(vertices, faces)
+        newly_exposed_surface_area = None
+        if retained_faces is not None and cut_faces is not None:
+            surface_area = _tessellated_ocp_shapes_surface_area(
+                retained_faces,
+                BRep_Tool=BRep_Tool,
+                TopAbs_FACE=TopAbs_FACE,
+                TopAbs_REVERSED=TopAbs_REVERSED,
+                TopExp_Explorer=TopExp_Explorer,
+                TopLoc_Location=TopLoc_Location,
+                TopoDS=TopoDS,
+            )
+            newly_exposed_surface_area = _tessellated_ocp_shapes_surface_area(
+                cut_faces,
+                BRep_Tool=BRep_Tool,
+                TopAbs_FACE=TopAbs_FACE,
+                TopAbs_REVERSED=TopAbs_REVERSED,
+                TopExp_Explorer=TopExp_Explorer,
+                TopLoc_Location=TopLoc_Location,
+                TopoDS=TopoDS,
+            )
+        elif step_component_mode == "subtract" and len(selected_components) < len(solids):
+            surface_area = None
         warnings.append("STEP volume and surface area were calculated from the tessellated mesh.")
         if not mesh_watertight:
             warnings.append("STEP tessellated mesh is not watertight; mesh volume may be unreliable.")
     else:
         volume = brep_volume
         surface_area = brep_surface_area
+        newly_exposed_surface_area = brep_newly_exposed_surface_area
         mesh_watertight = None
 
-    if not topology_watertight:
+    if empty_result:
+        warnings.append("STEP component subtraction produced an empty shape.")
+    elif not topology_watertight:
         volume = None
         warnings.append(
             "STEP shape is open, invalid, or contains non-solid faces; volume was left unset."
@@ -419,8 +489,18 @@ def _load_step(
         warnings.append(f"Could not calculate {metric_label} STEP volume.")
     if surface_area is None:
         warnings.append(f"Could not calculate {metric_label} STEP surface area.")
-    if not base_found:
-        warnings.append("Could not find an Xmax base face; base_area set to 0.")
+    if face_classification_failed:
+        warnings.append(
+            "Could not classify newly exposed STEP faces; base_area was left unset."
+        )
+    elif not base_found:
+        if subtraction_active:
+            warnings.append(
+                "No retained Xmax base face after excluding newly exposed surfaces; "
+                "base_area set to 0."
+            )
+        else:
+            warnings.append("Could not find an Xmax base face; base_area set to 0.")
 
     scaled_volume = (
         abs(volume) * volume_scale(resolved_input_unit, output_unit)
@@ -430,6 +510,11 @@ def _load_step(
     scaled_surface_area = (
         surface_area * area_scale(resolved_input_unit, output_unit)
         if surface_area is not None
+        else None
+    )
+    scaled_newly_exposed_surface_area = (
+        newly_exposed_surface_area * area_scale(resolved_input_unit, output_unit)
+        if newly_exposed_surface_area is not None
         else None
     )
     is_watertight = None
@@ -451,12 +536,15 @@ def _load_step(
         output_unit=normalize_unit(output_unit),
         volume=scaled_volume,
         surface_area=scaled_surface_area,
+        newly_exposed_surface_area=scaled_newly_exposed_surface_area,
+        newly_exposed_face_indices=newly_exposed_face_indices,
         base_area=base_area,
         is_watertight=is_watertight,
         mesh_deflection=mesh_deflection_value,
         angular_deflection=angular_deflection,
         base_tolerance=base_tolerance,
         step_metric_source=metric_source,
+        step_component_mode=step_component_mode,
         component_names=component_names,
         selected_components=selected_components,
         bounds=bounds,
@@ -473,6 +561,7 @@ def _load_step_assembly(
     angular_deflection: float,
     step_metric_source: str,
     step_components: tuple[int, ...] | None,
+    step_component_mode: str,
     base_axis_map: str,
     base_tolerance: float,
     require_mesh: bool,
@@ -481,7 +570,7 @@ def _load_step_assembly(
         from OCP.Bnd import Bnd_Box
         from OCP.BRep import BRep_Builder
         from OCP.BRep import BRep_Tool
-        from OCP.BRepAlgoAPI import BRepAlgoAPI_Fuse
+        from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
         from OCP.BRepBndLib import BRepBndLib
         from OCP.BRepCheck import BRepCheck_Analyzer
         from OCP.BRepGProp import BRepGProp
@@ -549,14 +638,14 @@ def _load_step_assembly(
         len(solids_by_component),
     )
     builder = BRep_Builder()
-    compound = TopoDS_Compound()
-    builder.MakeCompound(compound)
+    original_shape = TopoDS_Compound()
+    builder.MakeCompound(original_shape)
     if solids_by_component:
-        for component_index in selected_components:
-            builder.Add(compound, solids_by_component[component_index - 1])
+        for solid in solids_by_component:
+            builder.Add(original_shape, solid)
     elif non_solid_shapes:
         for shape_item in non_solid_shapes:
-            builder.Add(compound, shape_item)
+            builder.Add(original_shape, shape_item)
         warnings.append("STEP assembly did not contain solid components.")
     else:
         warnings.append("STEP assembly did not contain solid components.")
@@ -573,18 +662,26 @@ def _load_step_assembly(
     else:
         resolved_input_unit = input_unit
 
-    shape, unioned = _boolean_union_ocp_solids(
-        compound,
+    shape, unioned, retained_faces, cut_faces = _build_step_component_shape(
+        original_shape,
+        solids_by_component,
+        selected_components,
+        component_mode=step_component_mode,
+        BRepAlgoAPI_Cut=BRepAlgoAPI_Cut,
         BRepAlgoAPI_Fuse=BRepAlgoAPI_Fuse,
+        BRep_Builder=BRep_Builder,
+        TopAbs_FACE=TopAbs_FACE,
         TopAbs_SOLID=TopAbs_SOLID,
         TopExp_Explorer=TopExp_Explorer,
         TopoDS=TopoDS,
+        TopoDS_Compound=TopoDS_Compound,
     )
     if unioned is None:
         warnings.append(
             "Could not boolean-union STEP assembly solids; volume and surface area may double-count overlaps."
         )
-    topology_watertight = _ocp_shape_is_watertight(
+    empty_result = not _ocp_shape_has_subshape(shape, TopAbs_FACE, TopExp_Explorer)
+    topology_watertight = False if empty_result else _ocp_shape_is_watertight(
         shape,
         BRepCheck_Analyzer=BRepCheck_Analyzer,
         BRep_Tool=BRep_Tool,
@@ -595,12 +692,12 @@ def _load_step_assembly(
     )
 
     scale = length_scale(resolved_input_unit, output_unit)
-    native_bounds = _ocp_bounds(shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib)
-    bounds = _scaled_output_bounds(native_bounds, scale)
-    native_diagonal = _ocp_bounding_box_diagonal(
-        shape,
-        Bnd_Box=Bnd_Box,
-        BRepBndLib=BRepBndLib,
+    native_bounds = None if empty_result else _ocp_bounds(
+        shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib
+    )
+    bounds = None if native_bounds is None else _scaled_output_bounds(native_bounds, scale)
+    native_diagonal = 1.0 if empty_result else _ocp_bounding_box_diagonal(
+        shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib
     )
     mesh_deflection_value = _resolve_mesh_deflection(
         mesh_deflection,
@@ -611,37 +708,67 @@ def _load_step_assembly(
         mesh_deflection_value / scale if scale != 0.0 else mesh_deflection_value
     )
 
-    exact_base_area, exact_base_found, exact_base_failed = _ocp_xmax_base_area(
-        shape,
-        base_axis_map=base_axis_map,
-        scale=scale,
-        native_diagonal=native_diagonal,
-        relative_tolerance=base_tolerance,
-        Bnd_Box=Bnd_Box,
-        BRepBndLib=BRepBndLib,
-        BRepGProp=BRepGProp,
-        GProp_GProps=GProp_GProps,
-        TopAbs_FACE=TopAbs_FACE,
-        TopExp_Explorer=TopExp_Explorer,
-        TopoDS=TopoDS,
+    subtraction_active = (
+        step_component_mode == "subtract"
+        and len(selected_components) < len(solids_by_component)
     )
-    brep_volume = _ocp_volume_metric_gk(shape, GProp_GProps=GProp_GProps, BRepGProp=BRepGProp)
-    brep_surface_area = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "SurfaceProperties")
+    face_classification_failed = subtraction_active and cut_faces is None
+    if empty_result:
+        exact_base_area, exact_base_found, exact_base_failed = 0.0, False, False
+    elif face_classification_failed:
+        exact_base_area, exact_base_found, exact_base_failed = None, False, False
+    else:
+        exact_base_area, exact_base_found, exact_base_failed = _ocp_xmax_base_area(
+            shape,
+            base_axis_map=base_axis_map,
+            scale=scale,
+            native_diagonal=native_diagonal,
+            relative_tolerance=base_tolerance,
+            Bnd_Box=Bnd_Box,
+            BRepBndLib=BRepBndLib,
+            BRepGProp=BRepGProp,
+            GProp_GProps=GProp_GProps,
+            TopAbs_FACE=TopAbs_FACE,
+            TopExp_Explorer=TopExp_Explorer,
+            TopoDS=TopoDS,
+            excluded_faces=cut_faces or (),
+        )
+    brep_volume = 0.0 if empty_result else _ocp_volume_metric_gk(
+        shape, GProp_GProps=GProp_GProps, BRepGProp=BRepGProp
+    )
+    brep_surface_area = 0.0 if empty_result else _ocp_shape_metric(
+        shape, GProp_GProps, BRepGProp, "SurfaceProperties"
+    )
+    brep_newly_exposed_surface_area: float | None = None
+    if retained_faces is not None and cut_faces is not None:
+        brep_surface_area = _ocp_shapes_surface_area(retained_faces, GProp_GProps, BRepGProp)
+        brep_newly_exposed_surface_area = _ocp_shapes_surface_area(
+            cut_faces, GProp_GProps, BRepGProp
+        )
+    elif step_component_mode == "subtract" and len(selected_components) < len(solids_by_component):
+        brep_surface_area = None
+        warnings.append(
+            "Could not classify STEP cut faces; surface_area was left unset."
+        )
 
     must_tessellate = require_mesh or metric_source == "mesh" or exact_base_failed
-    if must_tessellate:
+    if must_tessellate and not empty_result:
         BRepMesh_IncrementalMesh(shape, native_mesh_deflection, False, angular_deflection, True)
-        vertices, faces = _tessellate_ocp_shape(
-            shape,
-            BRep_Tool=BRep_Tool,
-            TopAbs_FACE=TopAbs_FACE,
-            TopAbs_REVERSED=TopAbs_REVERSED,
-            TopExp_Explorer=TopExp_Explorer,
-            TopLoc_Location=TopLoc_Location,
-            TopoDS=TopoDS,
+        vertices, faces, newly_exposed_face_indices = (
+            _tessellate_ocp_shape_with_marked_faces(
+                shape,
+                marked_faces=cut_faces or (),
+                BRep_Tool=BRep_Tool,
+                TopAbs_FACE=TopAbs_FACE,
+                TopAbs_REVERSED=TopAbs_REVERSED,
+                TopExp_Explorer=TopExp_Explorer,
+                TopLoc_Location=TopLoc_Location,
+                TopoDS=TopoDS,
+            )
         )
     else:
         vertices, faces = _empty_mesh()
+        newly_exposed_face_indices = ()
     if exact_base_failed:
         base_area, base_found = _mesh_xmax_base_area(
             vertices,
@@ -650,6 +777,7 @@ def _load_step_assembly(
             scale=scale,
             native_diagonal=native_diagonal,
             relative_tolerance=base_tolerance,
+            excluded_face_indices=newly_exposed_face_indices,
         )
         warnings.append("Could not calculate exact STEP base area; used tessellated mesh fallback.")
     else:
@@ -657,16 +785,47 @@ def _load_step_assembly(
         base_found = exact_base_found
 
     if metric_source == "mesh":
-        volume, surface_area, mesh_watertight = _mesh_volume_and_surface_area(vertices, faces)
+        if empty_result:
+            volume, surface_area, mesh_watertight = 0.0, 0.0, False
+        else:
+            volume, surface_area, mesh_watertight = _mesh_volume_and_surface_area(vertices, faces)
+        newly_exposed_surface_area = None
+        if retained_faces is not None and cut_faces is not None:
+            surface_area = _tessellated_ocp_shapes_surface_area(
+                retained_faces,
+                BRep_Tool=BRep_Tool,
+                TopAbs_FACE=TopAbs_FACE,
+                TopAbs_REVERSED=TopAbs_REVERSED,
+                TopExp_Explorer=TopExp_Explorer,
+                TopLoc_Location=TopLoc_Location,
+                TopoDS=TopoDS,
+            )
+            newly_exposed_surface_area = _tessellated_ocp_shapes_surface_area(
+                cut_faces,
+                BRep_Tool=BRep_Tool,
+                TopAbs_FACE=TopAbs_FACE,
+                TopAbs_REVERSED=TopAbs_REVERSED,
+                TopExp_Explorer=TopExp_Explorer,
+                TopLoc_Location=TopLoc_Location,
+                TopoDS=TopoDS,
+            )
+        elif (
+            step_component_mode == "subtract"
+            and len(selected_components) < len(solids_by_component)
+        ):
+            surface_area = None
         warnings.append("STEP volume and surface area were calculated from the tessellated mesh.")
         if not mesh_watertight:
             warnings.append("STEP tessellated mesh is not watertight; mesh volume may be unreliable.")
     else:
         volume = brep_volume
         surface_area = brep_surface_area
+        newly_exposed_surface_area = brep_newly_exposed_surface_area
         mesh_watertight = None
 
-    if not topology_watertight:
+    if empty_result:
+        warnings.append("STEP component subtraction produced an empty shape.")
+    elif not topology_watertight:
         volume = None
         warnings.append(
             "STEP shape is open, invalid, or contains non-solid faces; volume was left unset."
@@ -677,8 +836,18 @@ def _load_step_assembly(
         warnings.append(f"Could not calculate {metric_label} STEP volume.")
     if surface_area is None:
         warnings.append(f"Could not calculate {metric_label} STEP surface area.")
-    if not base_found:
-        warnings.append("Could not find an Xmax base face; base_area set to 0.")
+    if face_classification_failed:
+        warnings.append(
+            "Could not classify newly exposed STEP faces; base_area was left unset."
+        )
+    elif not base_found:
+        if subtraction_active:
+            warnings.append(
+                "No retained Xmax base face after excluding newly exposed surfaces; "
+                "base_area set to 0."
+            )
+        else:
+            warnings.append("Could not find an Xmax base face; base_area set to 0.")
 
     scaled_volume = (
         abs(volume) * volume_scale(resolved_input_unit, output_unit)
@@ -688,6 +857,11 @@ def _load_step_assembly(
     scaled_surface_area = (
         surface_area * area_scale(resolved_input_unit, output_unit)
         if surface_area is not None
+        else None
+    )
+    scaled_newly_exposed_surface_area = (
+        newly_exposed_surface_area * area_scale(resolved_input_unit, output_unit)
+        if newly_exposed_surface_area is not None
         else None
     )
     is_watertight = None
@@ -709,12 +883,15 @@ def _load_step_assembly(
         output_unit=normalize_unit(output_unit),
         volume=scaled_volume,
         surface_area=scaled_surface_area,
+        newly_exposed_surface_area=scaled_newly_exposed_surface_area,
+        newly_exposed_face_indices=newly_exposed_face_indices,
         base_area=base_area,
         is_watertight=is_watertight,
         mesh_deflection=mesh_deflection_value,
         angular_deflection=angular_deflection,
         base_tolerance=base_tolerance,
         step_metric_source=metric_source,
+        step_component_mode=step_component_mode,
         is_assembly=True,
         component_names=tuple(component_names),
         selected_components=tuple(selected_components),
@@ -791,6 +968,15 @@ def _normalize_step_metric_source(value: str) -> str:
     raise ValueError("step_metric_source must be 'brep' or 'mesh'")
 
 
+def _normalize_step_component_mode(value: str) -> str:
+    text = value.strip().lower().replace("_", "-")
+    if text in {"filter", "exclude", "hide"}:
+        return "filter"
+    if text in {"subtract", "cut", "difference"}:
+        return "subtract"
+    raise ValueError("step_component_mode must be 'filter' or 'subtract'")
+
+
 def _mesh_volume_and_surface_area(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -816,6 +1002,7 @@ def _mesh_xmax_base_area(
     scale: float,
     native_diagonal: float,
     relative_tolerance: float,
+    excluded_face_indices: Sequence[int] = (),
 ) -> tuple[float, bool]:
     if vertices.size == 0 or faces.size == 0:
         return 0.0, False
@@ -830,6 +1017,9 @@ def _mesh_xmax_base_area(
     )
     face_coordinates = coordinates[faces]
     on_base = np.all(np.abs(face_coordinates - target) <= tolerance, axis=1)
+    for face_index in excluded_face_indices:
+        if 0 <= face_index < on_base.shape[0]:
+            on_base[face_index] = False
     if not bool(np.any(on_base)):
         return 0.0, False
 
@@ -907,6 +1097,7 @@ def _ocp_xmax_base_area(
     TopAbs_FACE: Any,
     TopExp_Explorer: Any,
     TopoDS: Any,
+    excluded_faces: Sequence[Any] = (),
 ) -> tuple[float, bool, bool]:
     try:
         source_axis, sign = _base_source_axis(base_axis_map)
@@ -924,6 +1115,9 @@ def _ocp_xmax_base_area(
 
         while explorer.More():
             face = face_method(explorer.Current())
+            if _contains_same_ocp_shape(excluded_faces, face):
+                explorer.Next()
+                continue
             face_bounds = _ocp_bounds(face, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib)
             face_min = face_bounds[source_axis]
             face_max = face_bounds[source_axis + 3]
@@ -1089,6 +1283,26 @@ def _explore_ocp_subshapes(shape: Any, shape_type: Any, TopExp_Explorer: Any) ->
     return subshapes
 
 
+def _ocp_shape_has_subshape(shape: Any, shape_type: Any, TopExp_Explorer: Any) -> bool:
+    try:
+        explorer = TopExp_Explorer(shape, shape_type)
+        return bool(explorer.More())
+    except Exception:
+        return False
+
+
+def _ocp_shapes_surface_area(
+    shapes: Sequence[Any], GProp_GProps: Any, BRepGProp: Any
+) -> float | None:
+    total = 0.0
+    for shape in shapes:
+        area = _ocp_shape_metric(shape, GProp_GProps, BRepGProp, "SurfaceProperties")
+        if area is None:
+            return None
+        total += area
+    return total
+
+
 def _extract_ocp_solids(
     shape: Any,
     *,
@@ -1149,6 +1363,132 @@ def _shape_from_selected_components(
     for component_index in selected_components:
         builder.Add(compound, solids[component_index - 1])
     return compound
+
+
+def _build_step_component_shape(
+    original_shape: Any,
+    solids: list[Any],
+    selected_components: tuple[int, ...],
+    *,
+    component_mode: str,
+    BRepAlgoAPI_Cut: Any,
+    BRepAlgoAPI_Fuse: Any,
+    BRep_Builder: Any,
+    TopAbs_FACE: Any,
+    TopAbs_SOLID: Any,
+    TopExp_Explorer: Any,
+    TopoDS: Any,
+    TopoDS_Compound: Any,
+) -> tuple[Any, bool | None, list[Any] | None, list[Any] | None]:
+    enabled_shape = _shape_from_selected_components(
+        original_shape,
+        solids,
+        selected_components,
+        BRep_Builder=BRep_Builder,
+        TopoDS_Compound=TopoDS_Compound,
+    )
+    enabled_shape, unioned = _boolean_union_ocp_solids(
+        enabled_shape,
+        BRepAlgoAPI_Fuse=BRepAlgoAPI_Fuse,
+        TopAbs_SOLID=TopAbs_SOLID,
+        TopExp_Explorer=TopExp_Explorer,
+        TopoDS=TopoDS,
+    )
+    if component_mode == "filter" or not solids or len(selected_components) == len(solids):
+        return enabled_shape, unioned, None, None
+    if unioned is None:
+        raise ValueError(
+            "Could not boolean-union enabled STEP components before subtraction: "
+            f"{', '.join(str(index) for index in selected_components)}"
+        )
+
+    selected = set(selected_components)
+    disabled_components = tuple(
+        index for index in range(1, len(solids) + 1) if index not in selected
+    )
+    disabled_shape = _shape_from_selected_components(
+        original_shape,
+        solids,
+        disabled_components,
+        BRep_Builder=BRep_Builder,
+        TopoDS_Compound=TopoDS_Compound,
+    )
+    disabled_shape, disabled_unioned = _boolean_union_ocp_solids(
+        disabled_shape,
+        BRepAlgoAPI_Fuse=BRepAlgoAPI_Fuse,
+        TopAbs_SOLID=TopAbs_SOLID,
+        TopExp_Explorer=TopExp_Explorer,
+        TopoDS=TopoDS,
+    )
+    if disabled_unioned is None:
+        raise ValueError(
+            "Could not boolean-union disabled STEP components before subtraction: "
+            f"{', '.join(str(index) for index in disabled_components)}"
+        )
+
+    cut = BRepAlgoAPI_Cut(enabled_shape, disabled_shape)
+    if hasattr(cut, "SetRunParallel"):
+        cut.SetRunParallel(True)
+    if hasattr(cut, "SetToFillHistory"):
+        cut.SetToFillHistory(True)
+    cut.Build()
+    if not cut.IsDone():
+        raise ValueError(
+            "Could not subtract disabled STEP components: "
+            f"{', '.join(str(index) for index in disabled_components)}"
+        )
+
+    result = cut.Shape()
+    retained_faces, cut_faces = _classify_cut_result_faces(
+        enabled_shape,
+        result,
+        cut,
+        TopAbs_FACE=TopAbs_FACE,
+        TopExp_Explorer=TopExp_Explorer,
+    )
+    return result, unioned, retained_faces, cut_faces
+
+
+def _classify_cut_result_faces(
+    source_shape: Any,
+    result_shape: Any,
+    cut: Any,
+    *,
+    TopAbs_FACE: Any,
+    TopExp_Explorer: Any,
+) -> tuple[list[Any] | None, list[Any] | None]:
+    if hasattr(cut, "HasHistory") and not cut.HasHistory():
+        return None, None
+
+    result_faces = _explore_ocp_subshapes(result_shape, TopAbs_FACE, TopExp_Explorer)
+    retained_faces: list[Any] = []
+    source_faces = _explore_ocp_subshapes(source_shape, TopAbs_FACE, TopExp_Explorer)
+    try:
+        for source_face in source_faces:
+            modified = list(cut.Modified(source_face))
+            if modified:
+                for face in modified:
+                    _append_unique_ocp_shape(retained_faces, face)
+            elif not cut.IsDeleted(source_face):
+                _append_unique_ocp_shape(retained_faces, source_face)
+    except Exception:
+        return None, None
+
+    if any(not _contains_same_ocp_shape(result_faces, face) for face in retained_faces):
+        return None, None
+    generated_faces = [
+        face for face in result_faces if not _contains_same_ocp_shape(retained_faces, face)
+    ]
+    return retained_faces, generated_faces
+
+
+def _append_unique_ocp_shape(shapes: list[Any], candidate: Any) -> None:
+    if not _contains_same_ocp_shape(shapes, candidate):
+        shapes.append(candidate)
+
+
+def _contains_same_ocp_shape(shapes: Sequence[Any], candidate: Any) -> bool:
+    return any(shape.IsSame(candidate) for shape in shapes)
 
 
 def _step_component_names_from_xcaf(path: Path, *, expected_count: int) -> tuple[str, ...]:
@@ -1310,8 +1650,33 @@ def _tessellate_ocp_shape(
     TopLoc_Location: Any,
     TopoDS: Any,
 ) -> tuple[np.ndarray, np.ndarray]:
+    vertices, faces, _marked_face_indices = _tessellate_ocp_shape_with_marked_faces(
+        shape,
+        marked_faces=(),
+        BRep_Tool=BRep_Tool,
+        TopAbs_FACE=TopAbs_FACE,
+        TopAbs_REVERSED=TopAbs_REVERSED,
+        TopExp_Explorer=TopExp_Explorer,
+        TopLoc_Location=TopLoc_Location,
+        TopoDS=TopoDS,
+    )
+    return vertices, faces
+
+
+def _tessellate_ocp_shape_with_marked_faces(
+    shape: Any,
+    *,
+    marked_faces: Sequence[Any],
+    BRep_Tool: Any,
+    TopAbs_FACE: Any,
+    TopAbs_REVERSED: Any,
+    TopExp_Explorer: Any,
+    TopLoc_Location: Any,
+    TopoDS: Any,
+) -> tuple[np.ndarray, np.ndarray, tuple[int, ...]]:
     rows: list[tuple[float, float, float]] = []
     faces: list[tuple[int, int, int]] = []
+    marked_face_indices: list[int] = []
     explorer = TopExp_Explorer(shape, TopAbs_FACE)
     triangulation_method = getattr(BRep_Tool, "Triangulation_s", None) or getattr(
         BRep_Tool, "Triangulation"
@@ -1333,14 +1698,64 @@ def _tessellate_ocp_shape(
             rows.append((float(point.X()), float(point.Y()), float(point.Z())))
 
         reversed_face = face.Orientation() == TopAbs_REVERSED
+        marked = _contains_same_ocp_shape(marked_faces, face)
         for index in range(1, triangulation.NbTriangles() + 1):
             n1, n2, n3 = triangulation.Triangle(index).Get()
             if reversed_face:
                 n2, n3 = n3, n2
+            if marked:
+                marked_face_indices.append(len(faces))
             faces.append((base_index + n1 - 1, base_index + n2 - 1, base_index + n3 - 1))
         explorer.Next()
 
-    return np.asarray(rows, dtype=float), np.asarray(faces, dtype=np.int64)
+    return (
+        np.asarray(rows, dtype=float),
+        np.asarray(faces, dtype=np.int64),
+        tuple(marked_face_indices),
+    )
+
+
+def _tessellated_ocp_shapes_surface_area(
+    shapes: Sequence[Any],
+    *,
+    BRep_Tool: Any,
+    TopAbs_FACE: Any,
+    TopAbs_REVERSED: Any,
+    TopExp_Explorer: Any,
+    TopLoc_Location: Any,
+    TopoDS: Any,
+) -> float:
+    total = 0.0
+    for shape in shapes:
+        vertices, faces = _tessellate_ocp_shape(
+            shape,
+            BRep_Tool=BRep_Tool,
+            TopAbs_FACE=TopAbs_FACE,
+            TopAbs_REVERSED=TopAbs_REVERSED,
+            TopExp_Explorer=TopExp_Explorer,
+            TopLoc_Location=TopLoc_Location,
+            TopoDS=TopoDS,
+        )
+        total += _triangle_mesh_surface_area(vertices, faces)
+    return total
+
+
+def _triangle_mesh_surface_area(vertices: np.ndarray, faces: np.ndarray) -> float:
+    if vertices.size == 0 or faces.size == 0:
+        return 0.0
+    triangles = vertices[faces]
+    return float(
+        np.sum(
+            0.5
+            * np.linalg.norm(
+                np.cross(
+                    triangles[:, 1] - triangles[:, 0],
+                    triangles[:, 2] - triangles[:, 0],
+                ),
+                axis=1,
+            )
+        )
+    )
 
 
 def _detect_step_length_unit(

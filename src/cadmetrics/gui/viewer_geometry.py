@@ -38,24 +38,61 @@ def base_face_mask(
     vertices: np.ndarray,
     faces: np.ndarray,
     relative_tolerance: float,
+    excluded_face_indices: tuple[int, ...] = (),
 ) -> np.ndarray:
     if vertices.size == 0 or faces.size == 0:
         return np.zeros(faces.shape[0], dtype=bool)
     diagonal = float(np.linalg.norm(np.ptp(vertices, axis=0)))
     tolerance = max(diagonal * relative_tolerance, 1.0e-12)
     xmax = float(np.max(vertices[:, 0]))
-    return np.all(np.abs(vertices[faces, 0] - xmax) <= tolerance, axis=1)
+    mask = np.all(np.abs(vertices[faces, 0] - xmax) <= tolerance, axis=1)
+    for face_index in excluded_face_indices:
+        if 0 <= face_index < mask.shape[0]:
+            mask[face_index] = False
+    return mask
 
 
 def base_face_polydata(model: ModelData, pv: Any) -> Any | None:
+    if model.base_area is None:
+        return None
     relative_tolerance = model.base_tolerance or DEFAULT_BASE_TOLERANCE
-    mask = base_face_mask(model.vertices, model.faces, relative_tolerance)
+    mask = base_face_mask(
+        model.vertices,
+        model.faces,
+        relative_tolerance,
+        model.newly_exposed_face_indices,
+    )
     if not bool(np.any(mask)):
         return None
 
     triangles = model.vertices[model.faces[mask]].copy()
     diagonal = float(np.linalg.norm(np.ptp(model.vertices, axis=0)))
     triangles[:, :, 0] += max(diagonal * 1.0e-5, 1.0e-12)
+    highlight_vertices = triangles.reshape(-1, 3)
+    highlight_faces = np.column_stack(
+        [
+            np.full(triangles.shape[0], 3, dtype=np.int64),
+            np.arange(highlight_vertices.shape[0], dtype=np.int64).reshape(-1, 3),
+        ]
+    ).ravel()
+    return pv.PolyData(highlight_vertices, highlight_faces)
+
+
+def newly_exposed_surface_polydata(model: ModelData, pv: Any) -> Any | None:
+    if not model.newly_exposed_face_indices:
+        return None
+    indices = np.asarray(model.newly_exposed_face_indices, dtype=np.int64)
+    if np.any(indices < 0) or np.any(indices >= model.faces.shape[0]):
+        return None
+
+    triangles = model.vertices[model.faces[indices]].copy()
+    normals = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
+    lengths = np.linalg.norm(normals, axis=1)
+    valid = lengths > 0.0
+    normals[valid] /= lengths[valid, np.newaxis]
+    normals[~valid] = 0.0
+    diagonal = float(np.linalg.norm(np.ptp(model.vertices, axis=0)))
+    triangles += normals[:, np.newaxis, :] * max(diagonal * 1.0e-5, 1.0e-12)
     highlight_vertices = triangles.reshape(-1, 3)
     highlight_faces = np.column_stack(
         [

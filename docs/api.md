@@ -130,4 +130,16 @@ row = project(
     alpha_deg=10,
     step_components=(1, 3),
 )
+
+cut_row = measure(
+    files,
+    step_components=(1, 3),
+    step_component_mode="subtract",
+)
+print(cut_row.surface_area)      # surviving enabled-component faces
+print(cut_row.newly_exposed_surface_area)  # surfaces newly exposed by subtraction
 ```
+
+The default component mode is `filter`, which measures `Union(enabled)`. The `subtract` mode
+measures `Union(enabled) - Union(disabled)` and applies the resulting geometry consistently to
+volume, bounds, base area, display mesh, and projected area.

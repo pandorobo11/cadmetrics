@@ -194,8 +194,21 @@ cadmetrics inspect model.step
 
 This is useful for checking detected units, vertex and face counts, watertightness, and loader
 warnings before running a sweep. For STEP files, it also reports the number of detected solid
-components. Component on/off filtering is available in the GUI and Python API; the CLI currently
-loads all STEP components.
+components and their numbered names. Use repeatable `--step-component INDEX` options with
+`measure`, `project`, `sweep`, or `inspect` to enable a subset.
+
+The default `--component-mode filter` measures the union of enabled components. With
+`--component-mode subtract`, disabled components are boolean-subtracted from that union:
+
+```bash
+cadmetrics measure assembly.step \
+  --step-component 1 --step-component 3 \
+  --component-mode subtract
+```
+
+In subtraction mode, `surface_area` includes only surviving faces from the enabled union;
+surfaces newly exposed by subtraction are reported separately as
+`newly_exposed_surface_area`.
 
 For STEP files in default B-Rep metric mode, CLI `inspect` skips tessellation for faster loading.
 The reported vertex and face counts can therefore be `0`; use `project`, `sweep`, the GUI, or
@@ -225,6 +238,7 @@ All calculation commands use the same CSV schema:
 | `direction_x`, `direction_y`, `direction_z` | normalized projection direction |
 | `x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max` | model coordinate bounds in `output_unit` |
 | `surface_area` | surface area in `output_unit^2` |
+| `newly_exposed_surface_area` | surface area newly exposed and excluded in subtraction mode |
 | `base_area` | exterior face area at cadmetrics-coordinate `Xmax` in `output_unit^2`; `0` with a warning when no face is found |
 | `volume` | volume in `output_unit^3`; empty for open, invalid, or surface-only STEP shapes |
 | `projected_area` | orthographic projected outline area in `output_unit^2` |
@@ -234,6 +248,7 @@ All calculation commands use the same CSV schema:
 | `mesh_deflection` | effective STEP tessellation deflection, if applicable |
 | `angular_deflection` | effective STEP angular deflection, if applicable |
 | `base_tolerance` | relative tolerance used to identify Xmax base faces |
+| `step_component_mode` | `filter` or `subtract` for STEP input |
 | `method` | calculation backend summary |
 | `elapsed_sec` | elapsed time for the row |
 | `cadmetrics_version` | package version used for the calculation |

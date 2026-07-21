@@ -17,6 +17,7 @@ def load_model_for_request(request: CalculationRequest) -> ModelData:
         step_metric_source=request.step_metric_source,
         axis_map=request.axis_map,
         step_components=request.step_components,
+        step_component_mode=request.step_component_mode,
     )
 
 

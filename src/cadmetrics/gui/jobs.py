@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
 
-from cadmetrics.api import project, project_model, sweep, sweep_model
+from cadmetrics.api import StepComponentMode, project, project_model, sweep, sweep_model
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.types import MeasurementRow, ModelData
@@ -26,6 +26,7 @@ class CalculationRequest:
     axis_map: str = DEFAULT_AXIS_MAP
     step_metric_source: str = "brep"
     step_components: tuple[int, ...] | None = None
+    step_component_mode: StepComponentMode = "filter"
     roll_start: float = 0.0
     roll_end: float = 0.0
     roll_step: float = 1.0
@@ -58,6 +59,7 @@ def run_calculation(
         "axis_map": request.axis_map,
         "step_metric_source": request.step_metric_source,
         "step_components": request.step_components,
+        "step_component_mode": request.step_component_mode,
     }
     if request.attitude_mode == "alpha_beta":
         if model is not None:

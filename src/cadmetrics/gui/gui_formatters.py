@@ -79,6 +79,8 @@ def overlay_text(
                 f"Y[{_format_metric(row.y_min)}, {_format_metric(row.y_max)}], "
                 f"Z[{_format_metric(row.z_min)}, {_format_metric(row.z_max)}]",
                 f"surface_area: {_format_metric(row.surface_area)}",
+                "newly_exposed_surface_area: "
+                f"{_format_metric(row.newly_exposed_surface_area)}",
                 f"base_area: {_format_metric(row.base_area)}",
                 f"volume: {_format_metric(row.volume)}",
                 f"projected_area: {_format_metric(row.projected_area)}",
@@ -89,6 +91,8 @@ def overlay_text(
         )
         if row.method:
             lines.append(f"method: {row.method}")
+        if row.step_component_mode:
+            lines.append(f"component_mode: {row.step_component_mode}")
         lines.extend(
             [
                 f"cadmetrics_version: {row.cadmetrics_version}",
@@ -113,6 +117,8 @@ def overlay_text(
                 f"Y[{_format_metric(model.y_min)}, {_format_metric(model.y_max)}], "
                 f"Z[{_format_metric(model.z_min)}, {_format_metric(model.z_max)}]",
                 f"surface_area: {_format_metric(model.surface_area)}",
+                "newly_exposed_surface_area: "
+                f"{_format_metric(model.newly_exposed_surface_area)}",
                 f"base_area: {_format_metric(model.base_area)}",
                 f"volume: {_format_metric(model.volume)}",
                 f"cadmetrics_version: {model.cadmetrics_version}",
@@ -162,6 +168,13 @@ def model_info_text(model: ModelData) -> str:
     ]
     if model.component_names:
         lines.insert(3, f"components: {len(model.selected_components)} of {len(model.component_names)} selected")
+    if model.step_component_mode:
+        lines.append(f"component_mode: {model.step_component_mode}")
+    if model.newly_exposed_surface_area is not None:
+        lines.append(
+            "newly_exposed_surface_area: "
+            f"{_format_metric(model.newly_exposed_surface_area)}"
+        )
     if model.is_assembly:
         lines.insert(1, "assembly: True")
     if model.warnings:

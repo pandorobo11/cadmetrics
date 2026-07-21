@@ -180,6 +180,164 @@ def test_step_overlapping_solids_are_boolean_unioned_for_measurements(tmp_path: 
     assert inspected.surface_area == pytest.approx(6.0)
 
 
+@pytest.mark.parametrize("metric_source", ["brep", "mesh"])
+def test_step_subtract_mode_removes_disabled_overlap_and_excludes_cut_face(
+    tmp_path: Path,
+    metric_source: str,
+) -> None:
+    step_path = tmp_path / "subtracting_boxes.step"
+    enabled = BRepPrimAPI_MakeBox(2000.0, 1000.0, 1000.0).Shape()
+    disabled = BRepPrimAPI_MakeBox(
+        gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
+    ).Shape()
+    _write_step_compound(step_path, [enabled, disabled])
+
+    filtered = measure(step_path, step_components=(1,), step_metric_source=metric_source)
+    subtracted = measure(
+        step_path,
+        step_components=(1,),
+        step_component_mode="subtract",
+        step_metric_source=metric_source,
+    )
+    inspected = inspect_model(
+        step_path,
+        step_components=(1,),
+        step_component_mode="subtract",
+        step_metric_source=metric_source,
+    )
+    reversed_axis = measure(
+        step_path,
+        step_components=(1,),
+        step_component_mode="subtract",
+        step_metric_source=metric_source,
+        axis_map="-x,y,z",
+    )
+
+    assert filtered.volume == pytest.approx(2.0)
+    assert filtered.surface_area == pytest.approx(10.0)
+    assert filtered.newly_exposed_surface_area is None
+    assert subtracted.volume == pytest.approx(1.0)
+    assert subtracted.surface_area == pytest.approx(5.0)
+    assert subtracted.newly_exposed_surface_area == pytest.approx(1.0)
+    assert subtracted.base_area == pytest.approx(0.0)
+    assert subtracted.step_component_mode == "subtract"
+    assert "subtract" in (subtracted.method or "")
+    assert len(inspected.newly_exposed_face_indices) == 2
+    assert reversed_axis.base_area == pytest.approx(1.0)
+
+
+def test_step_subtract_mode_excludes_internal_cavity_surface(tmp_path: Path) -> None:
+    step_path = tmp_path / "internal_cavity.step"
+    enabled = BRepPrimAPI_MakeBox(3000.0, 3000.0, 3000.0).Shape()
+    disabled = BRepPrimAPI_MakeBox(
+        gp_Pnt(1000.0, 1000.0, 1000.0), 1000.0, 1000.0, 1000.0
+    ).Shape()
+    _write_step_compound(step_path, [enabled, disabled])
+
+    measured = measure(
+        step_path,
+        step_components=(1,),
+        step_component_mode="subtract",
+    )
+
+    assert measured.volume == pytest.approx(26.0)
+    assert measured.surface_area == pytest.approx(54.0)
+    assert measured.newly_exposed_surface_area == pytest.approx(6.0)
+    assert measured.base_area == pytest.approx(9.0)
+
+
+def test_step_subtract_mode_returns_zero_for_empty_result(tmp_path: Path) -> None:
+    step_path = tmp_path / "empty_subtraction.step"
+    enabled = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    disabled = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    _write_step_compound(step_path, [enabled, disabled])
+
+    measured = measure(
+        step_path,
+        step_components=(1,),
+        step_component_mode="subtract",
+    )
+    projected = project(
+        step_path,
+        step_components=(1,),
+        step_component_mode="subtract",
+    )
+
+    assert measured.volume == pytest.approx(0.0)
+    assert measured.surface_area == pytest.approx(0.0)
+    assert measured.newly_exposed_surface_area == pytest.approx(0.0)
+    assert measured.x_min is None
+    assert projected.projected_area == pytest.approx(0.0)
+    assert "empty shape" in "; ".join(measured.warnings)
+
+
+def test_step_subtract_mode_with_all_components_selected_is_a_noop(tmp_path: Path) -> None:
+    step_path = tmp_path / "all_selected.step"
+    enabled = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    other = BRepPrimAPI_MakeBox(
+        gp_Pnt(500.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
+    ).Shape()
+    _write_step_compound(step_path, [enabled, other])
+
+    measured = measure(step_path, step_component_mode="subtract")
+
+    assert measured.volume == pytest.approx(1.5)
+    assert measured.surface_area == pytest.approx(8.0)
+    assert measured.newly_exposed_surface_area is None
+
+
+@pytest.mark.parametrize("disabled_x", [1000.0, 2000.0])
+def test_step_subtract_mode_preserves_nonoverlapping_enabled_shape(
+    tmp_path: Path,
+    disabled_x: float,
+) -> None:
+    step_path = tmp_path / f"nonoverlapping_subtraction_{disabled_x:g}.step"
+    enabled = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    disabled = BRepPrimAPI_MakeBox(
+        gp_Pnt(disabled_x, 0.0, 0.0), 1000.0, 1000.0, 1000.0
+    ).Shape()
+    _write_step_compound(step_path, [enabled, disabled])
+
+    measured = measure(
+        step_path,
+        step_components=(1,),
+        step_component_mode="subtract",
+    )
+
+    assert measured.volume == pytest.approx(1.0)
+    assert measured.surface_area == pytest.approx(6.0)
+    assert measured.newly_exposed_surface_area == pytest.approx(0.0)
+
+
+def test_step_subtract_mode_cli_options_and_inspect_component_list(tmp_path: Path) -> None:
+    step_path = tmp_path / "cli_subtract.step"
+    enabled = BRepPrimAPI_MakeBox(2000.0, 1000.0, 1000.0).Shape()
+    disabled = BRepPrimAPI_MakeBox(
+        gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
+    ).Shape()
+    _write_step_compound(step_path, [enabled, disabled])
+
+    measured = CliRunner().invoke(
+        app,
+        [
+            "measure",
+            str(step_path),
+            "--step-component",
+            "1",
+            "--component-mode",
+            "subtract",
+        ],
+    )
+    inspected = CliRunner().invoke(app, ["inspect", str(step_path)])
+
+    assert measured.exit_code == 0, measured.output
+    assert "newly_exposed_surface_area" in measured.output
+    assert "step-brep-subtract" in measured.output
+    assert inspected.exit_code == 0, inspected.output
+    assert "component_list" in inspected.output
+    assert "1: Component 1" in inspected.output
+
+
 def test_step_assembly_files_are_boolean_unioned_for_measurements(tmp_path: Path) -> None:
     step_a = tmp_path / "box_a.step"
     step_b = tmp_path / "box_b.step"
@@ -202,6 +360,17 @@ def test_step_assembly_files_are_boolean_unioned_for_measurements(tmp_path: Path
     projected = project([step_a, step_b])
     assert projected.projected_area == pytest.approx(1.0)
     assert projected.method == "step-brep-assembly+mesh-projection"
+
+    subtracted = measure(
+        [step_a, step_b],
+        step_components=(1,),
+        step_component_mode="subtract",
+    )
+    assert subtracted.volume == pytest.approx(0.5)
+    assert subtracted.surface_area == pytest.approx(3.0)
+    assert subtracted.newly_exposed_surface_area == pytest.approx(1.0)
+    assert subtracted.base_area == pytest.approx(0.0)
+    assert subtracted.method == "step-brep-subtract-assembly"
 
 
 def test_step_assembly_files_accept_global_component_selection(tmp_path: Path) -> None:
@@ -277,6 +446,56 @@ def test_step_base_area_falls_back_to_mesh_when_exact_calculation_fails(
 
     assert measured.base_area == pytest.approx(6.0)
     assert "mesh fallback" in "; ".join(measured.warnings)
+
+
+def test_step_subtract_base_area_mesh_fallback_excludes_newly_exposed_faces(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    step_path = tmp_path / "subtract_base_fallback.step"
+    enabled = BRepPrimAPI_MakeBox(2000.0, 1000.0, 1000.0).Shape()
+    disabled = BRepPrimAPI_MakeBox(
+        gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
+    ).Shape()
+    _write_step_compound(step_path, [enabled, disabled])
+    monkeypatch.setattr(
+        "cadmetrics.io._ocp_xmax_base_area",
+        lambda *args, **kwargs: (0.0, False, True),
+    )
+
+    measured = measure(
+        step_path,
+        step_components=(1,),
+        step_component_mode="subtract",
+    )
+
+    assert measured.base_area == pytest.approx(0.0)
+    assert "excluding newly exposed surfaces" in "; ".join(measured.warnings)
+
+
+def test_step_subtract_base_area_is_unset_when_face_classification_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    step_path = tmp_path / "subtract_unclassified_faces.step"
+    enabled = BRepPrimAPI_MakeBox(2000.0, 1000.0, 1000.0).Shape()
+    disabled = BRepPrimAPI_MakeBox(
+        gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
+    ).Shape()
+    _write_step_compound(step_path, [enabled, disabled])
+    monkeypatch.setattr(
+        "cadmetrics.io._classify_cut_result_faces",
+        lambda *args, **kwargs: (None, None),
+    )
+
+    measured = measure(
+        step_path,
+        step_components=(1,),
+        step_component_mode="subtract",
+    )
+
+    assert measured.base_area is None
+    assert "base_area was left unset" in "; ".join(measured.warnings)
 
 
 def test_step_assembly_component_selection_can_exclude_an_entire_file(tmp_path: Path) -> None:

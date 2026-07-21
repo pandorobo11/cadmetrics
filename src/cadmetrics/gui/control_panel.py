@@ -137,6 +137,8 @@ class ControlPanel(QtWidgets.QScrollArea):
         self.show_projection_arrow = self._check("Projection arrow", True)
         self.show_base_face = self._check("Base face", False)
         self.show_base_face.setEnabled(False)
+        self.show_newly_exposed_surface = self._check("Newly exposed surface", True)
+        self.show_newly_exposed_surface.setEnabled(False)
         self.camera_direction = QtWidgets.QComboBox()
         for label, direction in CAMERA_DIRECTIONS:
             self.camera_direction.addItem(label, direction)
@@ -150,6 +152,7 @@ class ControlPanel(QtWidgets.QScrollArea):
             self.show_overlay,
             self.show_projection_arrow,
             self.show_base_face,
+            self.show_newly_exposed_surface,
         ):
             widget.toggled.connect(self._emit_viewer_options)
         self.camera_direction.currentIndexChanged.connect(self._emit_viewer_options)
@@ -159,9 +162,10 @@ class ControlPanel(QtWidgets.QScrollArea):
         display_layout.addWidget(self.show_overlay, 1, 1)
         display_layout.addWidget(self.show_projection_arrow, 2, 0)
         display_layout.addWidget(self.show_base_face, 2, 1)
-        display_layout.addWidget(QtWidgets.QLabel("Camera"), 3, 0)
-        display_layout.addWidget(self.camera_direction, 3, 1)
-        display_layout.addWidget(self.save_image_button, 4, 0, 1, 2)
+        display_layout.addWidget(self.show_newly_exposed_surface, 3, 0, 1, 2)
+        display_layout.addWidget(QtWidgets.QLabel("Camera"), 4, 0)
+        display_layout.addWidget(self.camera_direction, 4, 1)
+        display_layout.addWidget(self.save_image_button, 5, 0, 1, 2)
         layout.addWidget(display)
 
         advanced = self._collapsible(layout, "Advanced")
@@ -208,6 +212,11 @@ class ControlPanel(QtWidgets.QScrollArea):
         component_buttons.addStretch(1)
         component_layout.addLayout(component_buttons)
         advanced.addRow("Components", component_widget)
+
+        self.step_component_mode = QtWidgets.QComboBox()
+        self.step_component_mode.addItem("Filter OFF (default)", "filter")
+        self.step_component_mode.addItem("Subtract OFF", "subtract")
+        advanced.addRow("Component mode", self.step_component_mode)
 
         self.step_metrics = QtWidgets.QComboBox()
         self.step_metrics.addItem("B-Rep (default)", "brep")
@@ -301,6 +310,7 @@ class ControlPanel(QtWidgets.QScrollArea):
             ),
             step_metric_source=self.step_metrics.currentData(),
             step_components=self._selected_components(paths),
+            step_component_mode=self.step_component_mode.currentData(),
             roll_start=roll_start,
             roll_end=roll_end,
             roll_step=roll_step,
@@ -325,6 +335,7 @@ class ControlPanel(QtWidgets.QScrollArea):
             feature_edges=self.feature_edges.isChecked(),
             show_projection_arrow=self.show_projection_arrow.isChecked(),
             show_base_face=self.show_base_face.isChecked(),
+            show_newly_exposed_surface=self.show_newly_exposed_surface.isChecked(),
             show_overlay=self.show_overlay.isChecked(),
             camera_direction=tuple(self.camera_direction.currentData()),
         )
@@ -338,6 +349,7 @@ class ControlPanel(QtWidgets.QScrollArea):
             self.output_unit,
             self.attitude_box,
             self.apply_advanced_button,
+            self.step_component_mode,
         ):
             widget.setEnabled(not busy)
         self.run_button.setEnabled(not busy)

@@ -44,6 +44,11 @@ selected axis map. Curved bodies that only touch `Xmax` at a point or line repor
 warning because they do not have a finite base face there. For STL input, the same definition is
 approximated by summing triangle faces on the `Xmax` plane.
 
+In STEP `subtract` component mode, surfaces newly exposed by subtraction are excluded from
+`base_area`. The Xmax position still comes from the final subtracted shape; if all faces at that
+position are newly exposed, `base_area` is `0` and cadmetrics does not search inward for another
+plane.
+
 The Xmax face test uses `--base-tolerance`, a relative tolerance applied as
 `max(bounding-box diagonal * value, 1e-12)` in the output length unit. The default is `1e-6`.
 Increase it for noisy or slightly non-planar exported meshes; decrease it when nearby but
@@ -88,6 +93,14 @@ The GUI's component filters operate before that union step. Turning off a compon
 from display, volume, surface-area, and projected-area calculations. Component labels use
 STEP/XCAF names when available and otherwise fall back to solid order in the loaded STEP file.
 Full assembly hierarchy is not preserved yet.
+
+The optional `subtract` component mode treats disabled solids as boolean-cut tools. The measured
+shape is `Union(enabled) - Union(disabled)`, so overlap with disabled geometry is removed rather
+than restored. Boolean history separates surviving enabled faces from surfaces newly exposed by
+subtraction: `surface_area` reports the former and `newly_exposed_surface_area` reports the latter.
+If OpenCascade cannot
+provide usable face history, `surface_area` is left unset with a warning instead of silently
+including generated faces.
 
 The same geometry rule applies to multi-file STEP input. Each STEP file contributes its detected
 solids to one combined model. Python API component filtering uses the global 1-based component

@@ -21,6 +21,7 @@ class ViewerOptions:
     feature_edges: bool = True
     show_projection_arrow: bool = True
     show_base_face: bool = False
+    show_newly_exposed_surface: bool = True
     show_overlay: bool = True
     camera_direction: tuple[float, float, float] = (-1.0, -1.0, 1.0)
 
@@ -36,6 +37,7 @@ class ModelLoadKey:
     axis_map: str
     step_metric_source: str
     step_components: tuple[int, ...] | None
+    step_component_mode: str
 
     @classmethod
     def from_request(cls, request: CalculationRequest) -> ModelLoadKey:
@@ -50,4 +52,5 @@ class ModelLoadKey:
             axis_map=request.axis_map,
             step_metric_source=request.step_metric_source,
             step_components=request.step_components,
+            step_component_mode=request.step_component_mode,
         )

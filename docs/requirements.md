@@ -49,8 +49,9 @@ from STL and STEP files.
 - STEP `measure` and CLI `inspect` should skip tessellation when B-Rep metrics are sufficient
 - Multiple solids are treated as one projected silhouette, so overlapping projected regions are
   counted once
-- The GUI and Python API can turn STEP solid components on or off before boolean union and
-  calculation. The CLI currently loads all STEP components.
+- The GUI, Python API, and CLI can turn STEP solid components on or off before calculation.
+- Optional STEP subtraction mode boolean-cuts disabled components from the enabled union and
+  reports surfaces newly exposed by subtraction separately.
 - Open or non-watertight meshes are accepted with warnings; volume may be unreliable
 - STEP assemblies and compounds are supported geometrically, but assembly metadata is not a
   first-version requirement
@@ -127,6 +128,7 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 - `file`
 - `step_components`
 - `step_component_names`
+- `step_component_mode`
 - `input_unit`
 - `output_unit`
 - `roll_deg`
@@ -143,6 +145,7 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 - `z_min`
 - `z_max`
 - `surface_area`
+- `newly_exposed_surface_area`
 - `base_area`
 - `volume`
 - `projected_area`

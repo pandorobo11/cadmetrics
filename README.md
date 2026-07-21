@@ -19,6 +19,8 @@ drag-area checks.
 - Export CSV from CLI and GUI
 - Inspect geometry in a local PySide6/PyVista GUI
 - Toggle STEP solid components in the GUI advanced settings
+- Optionally subtract disabled STEP components from enabled geometry
+- Highlight surfaces newly exposed by component subtraction in the GUI
 
 ## GUI Preview
 
@@ -187,12 +189,26 @@ assembly = project(
 )
 components = inspect_model(["fuselage.step", "wing.step"]).component_names
 filtered = project(["fuselage.step", "wing.step"], step_components=(1, 3))
+cut = measure(
+    "assembly.step",
+    step_components=(1, 3),
+    step_component_mode="subtract",
+)
 ```
 
 The Python API uses the same explicit `alpha-beta`, `roll-pitch`, and `vector` input modes as the
 CLI and GUI. API angle names end in `_deg` to make their unit explicit.
 For multi-file STEP component filtering, `step_components` uses the 1-based global order reported
 by `inspect_model([...]).component_names`.
+
+`step_component_mode="filter"` (the default) measures the union of enabled components.
+`step_component_mode="subtract"` instead measures `Union(enabled) - Union(disabled)`. Its
+`surface_area` excludes faces newly exposed by subtraction;
+`newly_exposed_surface_area` reports those faces
+separately. The CLI exposes the same behavior with repeatable `--step-component INDEX` options
+and `--component-mode subtract`.
+Newly exposed surfaces are also excluded from `base_area`; if they make up the entire final Xmax
+plane, `base_area` is `0`.
 
 ## Documentation
 

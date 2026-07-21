@@ -22,6 +22,7 @@ from cadmetrics.types import FloatArray, MeasurementRow, ModelData
 
 
 AttitudeMode = Literal["alpha-beta", "roll-pitch", "vector"]
+StepComponentMode = Literal["filter", "subtract"]
 SweepValue = str | int | float
 ATTITUDE_MODES: tuple[AttitudeMode, ...] = ("alpha-beta", "roll-pitch", "vector")
 
@@ -36,6 +37,7 @@ def inspect_model(
     axis_map: str = DEFAULT_AXIS_MAP,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
+    step_component_mode: StepComponentMode = "filter",
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
     require_mesh: bool = True,
 ) -> ModelData:
@@ -47,6 +49,7 @@ def inspect_model(
         angular_deflection=angular_deflection,
         step_metric_source=step_metric_source,
         step_components=step_components,
+        step_component_mode=step_component_mode,
         base_axis_map=axis_map,
         base_tolerance=base_tolerance,
         require_mesh=require_mesh,
@@ -64,6 +67,7 @@ def measure(
     axis_map: str = DEFAULT_AXIS_MAP,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
+    step_component_mode: StepComponentMode = "filter",
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> MeasurementRow:
     start = perf_counter()
@@ -76,6 +80,7 @@ def measure(
         axis_map=axis_map,
         step_metric_source=step_metric_source,
         step_components=step_components,
+        step_component_mode=step_component_mode,
         base_tolerance=base_tolerance,
         require_mesh=_step_metric_source_requires_mesh(step_metric_source),
     )
@@ -93,6 +98,7 @@ def measure_model(model: ModelData, *, elapsed_sec: float | None = None) -> Meas
         pitch_deg=None,
         volume=model.volume,
         surface_area=model.surface_area,
+        newly_exposed_surface_area=model.newly_exposed_surface_area,
         base_area=model.base_area,
         projected_area=None,
         is_watertight=model.is_watertight,
@@ -107,6 +113,7 @@ def measure_model(model: ModelData, *, elapsed_sec: float | None = None) -> Meas
         mesh_deflection=model.mesh_deflection,
         angular_deflection=model.angular_deflection,
         base_tolerance=model.base_tolerance,
+        step_component_mode=model.step_component_mode,
         method=_method_name(model, projected=False),
         elapsed_sec=elapsed_sec,
         cadmetrics_version=model.cadmetrics_version,
@@ -131,6 +138,7 @@ def project(
     axis_map: str = DEFAULT_AXIS_MAP,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
+    step_component_mode: StepComponentMode = "filter",
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> MeasurementRow:
     start = perf_counter()
@@ -143,6 +151,7 @@ def project(
         axis_map=axis_map,
         step_metric_source=step_metric_source,
         step_components=step_components,
+        step_component_mode=step_component_mode,
         base_tolerance=base_tolerance,
     )
     return project_model(
@@ -233,6 +242,7 @@ def _projected_row(
         pitch_deg=pitch_deg,
         volume=volume,
         surface_area=surface_area,
+        newly_exposed_surface_area=model.newly_exposed_surface_area,
         base_area=model.base_area,
         projected_area=projection_metrics.area,
         is_watertight=is_watertight,
@@ -255,6 +265,7 @@ def _projected_row(
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
         base_tolerance=base_tolerance,
+        step_component_mode=model.step_component_mode,
         method=method,
         elapsed_sec=elapsed_sec,
         cadmetrics_version=model.cadmetrics_version,
@@ -296,6 +307,7 @@ def sweep(
     axis_map: str = DEFAULT_AXIS_MAP,
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
+    step_component_mode: StepComponentMode = "filter",
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> list[MeasurementRow]:
     model = inspect_model(
@@ -307,6 +319,7 @@ def sweep(
         axis_map=axis_map,
         step_metric_source=step_metric_source,
         step_components=step_components,
+        step_component_mode=step_component_mode,
         base_tolerance=base_tolerance,
     )
     return sweep_model(
@@ -448,10 +461,11 @@ def _selected_component_names(model: ModelData) -> tuple[str, ...]:
 def _method_name(model: ModelData, *, projected: bool) -> str:
     if model.source_format == "step":
         assembly = "-assembly" if model.is_assembly else ""
+        component_mode = "-subtract" if model.step_component_mode == "subtract" else ""
         if model.step_metric_source == "mesh":
-            base = f"step-mesh{assembly}"
+            base = f"step-mesh{component_mode}{assembly}"
         else:
-            base = f"step-brep{assembly}"
+            base = f"step-brep{component_mode}{assembly}"
         return f"{base}+mesh-projection" if projected else base
     base = "stl-mesh-assembly" if model.is_assembly else "stl-mesh"
     return f"{base}-projection" if projected else base

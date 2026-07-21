@@ -129,6 +129,23 @@ def test_base_face_mask_selects_only_xmax_triangles() -> None:
     assert mask.tolist() == [True, False]
 
 
+def test_base_face_mask_excludes_newly_exposed_triangles() -> None:
+    vertices = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0],
+        ],
+        dtype=float,
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
+
+    mask = _base_face_mask(vertices, faces, 1.0e-6, (0,))
+
+    assert mask.tolist() == [False, False]
+
+
 def test_base_face_mask_uses_relative_tolerance() -> None:
     vertices = np.array(
         [
@@ -324,6 +341,7 @@ def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:
         beta_step=1.0,
         step_metric_source="mesh",
         step_components=(1, 3),
+        step_component_mode="subtract",
     )
 
     assert run_calculation(request) == expected
@@ -335,6 +353,7 @@ def test_gui_job_delegates_alpha_beta_sweep(monkeypatch) -> None:
     assert captured["kwargs"]["output_unit"] == "m"
     assert captured["kwargs"]["step_metric_source"] == "mesh"
     assert captured["kwargs"]["step_components"] == (1, 3)
+    assert captured["kwargs"]["step_component_mode"] == "subtract"
 
 
 def test_gui_job_delegates_roll_pitch_sweep(monkeypatch) -> None:
@@ -564,6 +583,7 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
             "z_min": "0.0",
             "z_max": "1.0",
             "surface_area": "6.0",
+            "newly_exposed_surface_area": "",
             "base_area": "1.0",
             "volume": "1.0",
             "projected_area": "1.0",
@@ -576,6 +596,7 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
             "mesh_deflection": "0.001",
             "angular_deflection": "0.1",
             "base_tolerance": "1e-06",
+            "step_component_mode": "",
             "method": "stl-mesh-projection",
             "elapsed_sec": "0.01",
             "cadmetrics_version": row.cadmetrics_version,

@@ -23,6 +23,7 @@ class _FakeViewer(QtWidgets.QWidget):
     error = QtCore.Signal(str)
     message = QtCore.Signal(str)
     base_face_available = QtCore.Signal(bool)
+    newly_exposed_surface_available = QtCore.Signal(bool)
 
     def set_options(self, options) -> None:
         pass
@@ -144,9 +145,13 @@ def test_control_panel_populates_step_components(qtbot, tmp_path: Path) -> None:
     panel.set_model(_model(path, component_names=("Body", "Wing")))
 
     panel._component_checkboxes[1].setChecked(False)
+    panel.step_component_mode.setCurrentIndex(
+        panel.step_component_mode.findData("subtract")
+    )
     request = panel.request()
 
     assert request.step_components == (1,)
+    assert request.step_component_mode == "subtract"
     assert panel.component_summary.text() == "1 of 2 components enabled."
 
 
