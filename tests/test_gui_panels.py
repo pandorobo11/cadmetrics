@@ -154,6 +154,8 @@ def test_application_stylesheet_restores_indicator_and_spinbox_rules() -> None:
     assert "width: 8px; height: 5px" in stylesheet
     assert stylesheet.count("border-left: 1px solid #c7d0da") == 2
     assert stylesheet.count("background: #f7f9fb") >= 3
+    assert "QDoubleSpinBox { padding-right: 28px; }" in stylesheet
+    assert "width: 27px; border: 0; border-left: 1px solid #c7d0da" in stylesheet
     assert "border-bottom: 1px solid #d8dfe6" in stylesheet
     assert "QComboBox::down-arrow" in stylesheet
     assert "QGroupBox#sectionContent" in stylesheet
