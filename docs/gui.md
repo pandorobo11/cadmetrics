@@ -75,13 +75,14 @@ settings are applied.
 
 `Advanced` is collapsed by default because these settings are usually changed less often.
 Expand it when the loaded CAD axes, component selection, STEP metric source, or tessellation
-settings need adjustment. Changes in this section are applied together with `Apply Settings`.
+settings need adjustment. Changed controls are marked as not applied until you run the sweep or
+click `Reload Model with Settings`.
 
 ### Axis Map
 
 `Axis map` remaps the loaded model axes before calculation and display. Choose which input axis
 becomes cadmetrics `X`, `Y`, and `Z`. Use signs such as `-Z` when an axis is reversed. Changing
-the combo boxes does not reload the model immediately; click `Apply Settings`, browse a file,
+the combo boxes does not reload the model immediately; click `Reload Model with Settings`, browse a file,
 or run a calculation to use the new mapping.
 
 ### Component Filters
@@ -89,7 +90,7 @@ or run a calculation to use the new mapping.
 For multi-solid STEP files, `Components` lists the loaded solid components. cadmetrics uses
 STEP/XCAF names when they are available and falls back to `Component 1`, `Component 2`, and so
 on when a useful name is not stored in the file. Clear a component checkbox to exclude that
-solid from the displayed model and subsequent calculations, then click `Apply Settings`.
+solid from the displayed model and subsequent calculations, then click `Reload Model with Settings`.
 
 The filters operate on STEP solid geometry after loading and before boolean union. Keeping all
 components enabled preserves the default behavior. For multi-file STEP assemblies, components are
@@ -108,7 +109,7 @@ traced back to the component checkboxes that were enabled.
 
 Subtraction-mode `surface_area` counts only surviving faces from the enabled union. Newly created
 surfaces newly exposed by subtraction are excluded and reported separately as
-`newly_exposed_surface_area`. Click `Apply Settings` after
+`newly_exposed_surface_area`. Click `Reload Model with Settings` after
 changing the mode or component checkboxes.
 
 When subtraction creates new surfaces, the 3D viewer highlights them in orange. Use the
@@ -146,8 +147,14 @@ The 3D view supports:
 - projection-arrow display (enabled by default)
 - optional yellow highlighting of the Xmax base face
 - camera direction selection from `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`, and two ISO views
-- overlay text with current conditions or selected result values
+- compact overlay text with file, unit, surface area, base area, and volume
+- optional detailed overlay text with geometry bounds and calculation metadata
 - PNG export with `Save Image`
+
+The compact overlay is the default so it does not compete with the model. Before calculation it
+shows only model-level values. Selecting a result appends that row's attitude and projected area
+without moving or replacing the common model values. Unavailable base areas are shown as `n/a`.
+Expand `Shape Display` and enable `Detailed overlay` when diagnostic values are needed.
 
 The viewer uses parallel projection. After a calculation, selecting a result row points the
 camera along that row's projection direction.
@@ -160,7 +167,9 @@ bundled documents.
 
 ## Attitude Input
 
-The GUI supports three input modes:
+The GUI supports three input modes. Angle inputs show separate `Start`, `End`, and `Step` columns
+and display the number of results the sweep will produce. `Step` remains editable but is ignored
+when `Start` and `End` are the same:
 
 - `Alpha / Beta`: sweeps angle of attack and sideslip
 - `Roll / Pitch`: sweeps roll and pitch
@@ -173,7 +182,9 @@ See [Attitude Definition](attitude.md) for the coordinate convention and formula
 
 ## Results
 
-The result table uses the same columns as the CLI CSV output. Important fields include:
+The result table starts with the attitude, projected-area, centroid, and geometry columns most
+useful for inspection; all CSV fields remain available by scrolling horizontally. Before a sweep,
+the result area shows an empty-state prompt instead of an empty table. Important fields include:
 
 - `x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max`
 - `surface_area`

@@ -13,6 +13,7 @@ from cadmetrics.gui.gui_formatters import (
 from cadmetrics.gui.gui_types import OperationState, ViewerOptions
 from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
+from cadmetrics.sweep import parse_sweep_values
 from cadmetrics.types import ModelData
 
 UNIT_OPTIONS = ["auto", "m", "mm", "cm", "in", "ft"]
@@ -35,7 +36,7 @@ class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
         return text if "." in text else f"{text}.0"
 
 
-class ControlPanel(QtWidgets.QScrollArea):
+class ControlPanel(QtWidgets.QWidget):
     calculation_requested = QtCore.Signal(object)
     model_reload_requested = QtCore.Signal(object)
     cancel_requested = QtCore.Signal()
@@ -48,19 +49,29 @@ class ControlPanel(QtWidgets.QScrollArea):
         self._file_paths: tuple[Path, ...] = ()
         self._component_filter_path: tuple[Path, ...] | None = None
         self._component_checkboxes: list[QtWidgets.QCheckBox] = []
+        self._section_toggles: dict[str, QtWidgets.QToolButton] = {}
+        self._advanced_dirty = False
         self.setMinimumWidth(430)
         self.setMaximumWidth(540)
-        self.setWidgetResizable(True)
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setObjectName("controlPanel")
         self._build()
         self.set_busy(OperationState.IDLE)
 
     def _build(self) -> None:
+        root_layout = QtWidgets.QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+        self.scroll_area = QtWidgets.QScrollArea()
+        self.scroll_area.setObjectName("controlScroll")
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         content = QtWidgets.QWidget()
-        self.setWidget(content)
+        content.setObjectName("controlContent")
+        self.scroll_area.setWidget(content)
+        root_layout.addWidget(self.scroll_area, 1)
         layout = QtWidgets.QVBoxLayout(content)
-        layout.setContentsMargins(12, 4, 12, 8)
-        layout.setSpacing(5)
+        layout.setContentsMargins(12, 8, 12, 12)
+        layout.setSpacing(8)
 
         setup = self._section(layout, "Setup")
         self.file_edit = QtWidgets.QLineEdit()
@@ -100,6 +111,10 @@ class ControlPanel(QtWidgets.QScrollArea):
         attitude_layout.addWidget(self.alpha_beta_group)
         attitude_layout.addWidget(self.roll_pitch_group)
         attitude_layout.addWidget(self.vector_group)
+        self.case_count = QtWidgets.QLabel("1 result")
+        self.case_count.setObjectName("caseCountLabel")
+        self.case_count.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        attitude_layout.addWidget(self.case_count)
         layout.addWidget(self.attitude_box)
         self.attitude_mode.currentIndexChanged.connect(self._sync_attitude_controls)
         self.attitude_mode.currentIndexChanged.connect(self._emit_preview_request)
@@ -116,16 +131,15 @@ class ControlPanel(QtWidgets.QScrollArea):
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Fixed,
         )
-        self.run_button.clicked.connect(lambda: self._emit_request(self.calculation_requested))
+        self.run_button.clicked.connect(self._run_calculation)
         self.cancel_button.clicked.connect(self.cancel_requested)
         run_row = QtWidgets.QHBoxLayout()
         run_row.setContentsMargins(0, 0, 0, 0)
         run_row.setSpacing(8)
         run_row.addWidget(self.run_button)
         run_row.addWidget(self.cancel_button)
-        layout.addLayout(run_row)
 
-        display = QtWidgets.QGroupBox("Shape Display")
+        display = self._collapsible_widget(layout, "Shape Display")
         display_layout = QtWidgets.QGridLayout(display)
         display_layout.setContentsMargins(8, 6, 8, 6)
         display_layout.setHorizontalSpacing(12)
@@ -139,6 +153,13 @@ class ControlPanel(QtWidgets.QScrollArea):
         self.show_base_face.setEnabled(False)
         self.show_newly_exposed_surface = self._check("Newly exposed surface", True)
         self.show_newly_exposed_surface.setEnabled(False)
+        self.show_newly_exposed_surface.setToolTip(
+            "Available when component subtraction creates newly exposed surfaces."
+        )
+        self.detailed_overlay = self._check("Detailed overlay", False)
+        self.detailed_overlay.setToolTip(
+            "Show geometry bounds, calculation metadata, and diagnostic values in the 3D view."
+        )
         self.camera_direction = QtWidgets.QComboBox()
         for label, direction in CAMERA_DIRECTIONS:
             self.camera_direction.addItem(label, direction)
@@ -153,6 +174,7 @@ class ControlPanel(QtWidgets.QScrollArea):
             self.show_projection_arrow,
             self.show_base_face,
             self.show_newly_exposed_surface,
+            self.detailed_overlay,
         ):
             widget.toggled.connect(self._emit_viewer_options)
         self.camera_direction.currentIndexChanged.connect(self._emit_viewer_options)
@@ -163,10 +185,10 @@ class ControlPanel(QtWidgets.QScrollArea):
         display_layout.addWidget(self.show_projection_arrow, 2, 0)
         display_layout.addWidget(self.show_base_face, 2, 1)
         display_layout.addWidget(self.show_newly_exposed_surface, 3, 0, 1, 2)
-        display_layout.addWidget(QtWidgets.QLabel("Camera"), 4, 0)
-        display_layout.addWidget(self.camera_direction, 4, 1)
-        display_layout.addWidget(self.save_image_button, 5, 0, 1, 2)
-        layout.addWidget(display)
+        display_layout.addWidget(self.detailed_overlay, 4, 0, 1, 2)
+        display_layout.addWidget(QtWidgets.QLabel("Camera"), 5, 0)
+        display_layout.addWidget(self.camera_direction, 5, 1)
+        display_layout.addWidget(self.save_image_button, 6, 0, 1, 2)
 
         advanced = self._collapsible(layout, "Advanced")
         self.axis_x = self._axis_combo("x")
@@ -192,9 +214,7 @@ class ControlPanel(QtWidgets.QScrollArea):
         self.component_list_layout.setSpacing(2)
         component_scroll = QtWidgets.QScrollArea()
         component_scroll.setWidgetResizable(True)
-        component_scroll.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        component_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         component_scroll.setMaximumHeight(105)
         component_scroll.setWidget(component_list)
         component_layout.addWidget(component_scroll)
@@ -245,30 +265,59 @@ class ControlPanel(QtWidgets.QScrollArea):
         self.base_tolerance.setDecimals(12)
         self.base_tolerance.setValue(DEFAULT_BASE_TOLERANCE)
         advanced.addRow("Base tolerance", self.base_tolerance)
-        self.apply_advanced_button = QtWidgets.QPushButton("Apply Settings")
-        self.apply_advanced_button.clicked.connect(
-            lambda: self._emit_request(self.model_reload_requested)
+        self.apply_advanced_button = QtWidgets.QPushButton("Reload Model with Settings")
+        self.apply_advanced_button.setToolTip(
+            "Reload the model using the changed axis, component, and tessellation settings."
         )
+        self.apply_advanced_button.clicked.connect(self._apply_advanced_settings)
+        self.advanced_status = QtWidgets.QLabel("Changes not applied")
+        self.advanced_status.setObjectName("dirtyStatusLabel")
+        self.advanced_status.setVisible(False)
+        advanced.addRow(self.advanced_status)
         advanced.addRow(self.apply_advanced_button)
 
-        model_box = QtWidgets.QGroupBox("Model Info")
-        model_box.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred,
-            QtWidgets.QSizePolicy.Policy.Expanding,
-        )
-        model_layout = QtWidgets.QVBoxLayout(model_box)
-        model_layout.setContentsMargins(8, 6, 8, 8)
+        model_details = self._collapsible(layout, "Model Details")
         self.model_info = QtWidgets.QTextEdit()
         self.model_info.setReadOnly(True)
-        self.model_info.setMinimumHeight(130)
+        self.model_info.setPlaceholderText("Load a model to inspect geometry details.")
+        self.model_info.setMinimumHeight(150)
         self.model_info.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Expanding,
-            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Fixed,
         )
-        model_layout.addWidget(self.model_info)
-        layout.addWidget(model_box)
+        model_details.addRow(self.model_info)
+        layout.addStretch(1)
+
+        action_bar = QtWidgets.QWidget()
+        action_bar.setObjectName("actionBar")
+        action_layout = QtWidgets.QVBoxLayout(action_bar)
+        action_layout.setContentsMargins(12, 9, 12, 11)
+        action_layout.setSpacing(6)
+        self.operation_label = QtWidgets.QLabel()
+        self.operation_label.setObjectName("operationLabel")
+        self.operation_label.setVisible(False)
+        self.model_summary = QtWidgets.QLabel("No model loaded")
+        self.model_summary.setObjectName("modelSummaryLabel")
+        self.model_summary.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        action_layout.addWidget(self.operation_label)
+        action_layout.addWidget(self.model_summary)
+        action_layout.addLayout(run_row)
+        root_layout.addWidget(action_bar)
+
+        self.run_button.setToolTip("Run the configured attitude sweep.")
+        self.cancel_button.setToolTip("Cancel the active load or calculation.")
+        self.component_all_button.setToolTip(
+            "Available after loading a STEP file with multiple components."
+        )
+        self.component_none_button.setToolTip(
+            "Available after loading a STEP file with multiple components."
+        )
+        self._connect_advanced_dirty_signals()
         self._sync_attitude_controls()
         self.mesh_deflection.setEnabled(False)
+        self._sync_case_count()
 
     @property
     def file_paths(self) -> tuple[Path, ...]:
@@ -337,6 +386,7 @@ class ControlPanel(QtWidgets.QScrollArea):
             show_base_face=self.show_base_face.isChecked(),
             show_newly_exposed_surface=self.show_newly_exposed_surface.isChecked(),
             show_overlay=self.show_overlay.isChecked(),
+            detailed_overlay=self.detailed_overlay.isChecked(),
             camera_direction=tuple(self.camera_direction.currentData()),
         )
 
@@ -348,18 +398,41 @@ class ControlPanel(QtWidgets.QScrollArea):
             self.input_unit,
             self.output_unit,
             self.attitude_box,
-            self.apply_advanced_button,
             self.step_component_mode,
         ):
             widget.setEnabled(not busy)
+        for checkbox in self._component_checkboxes:
+            checkbox.setEnabled(not busy)
         self.run_button.setEnabled(not busy)
+        self.apply_advanced_button.setEnabled(not busy and self._advanced_dirty)
         self.cancel_button.setVisible(busy)
         self.cancel_button.setEnabled(busy and state is not OperationState.CANCELLING)
+        messages = {
+            OperationState.LOADING: "Loading model…",
+            OperationState.CALCULATING: "Calculating sweep…",
+            OperationState.CANCELLING: "Cancelling…",
+        }
+        self.operation_label.setText(messages.get(state, ""))
+        self.operation_label.setVisible(busy)
         self._sync_component_controls(not busy and bool(self._component_checkboxes))
 
     def set_model(self, model: ModelData) -> None:
         self.model_info.setText(model_info_text(model))
+        component_text = ""
+        if model.component_names:
+            component_text = (
+                f" · {len(model.selected_components)}/{len(model.component_names)} components"
+            )
+        self.model_summary.setText(
+            f"{model.path.name} · {model.source_format.upper()}{component_text}"
+        )
+        self.model_summary.setToolTip(str(model.path))
         self._populate_components(model)
+        self._set_advanced_dirty(False)
+
+    def set_operation_message(self, message: str) -> None:
+        self.operation_label.setText(message)
+        self.operation_label.setVisible(bool(message))
 
     def _browse(self) -> None:
         names, _ = QtWidgets.QFileDialog.getOpenFileNames(
@@ -369,15 +442,25 @@ class ControlPanel(QtWidgets.QScrollArea):
             return
         self.set_file_paths(tuple(Path(name) for name in names))
         self._clear_components()
-        self._emit_request(self.model_reload_requested)
+        if self._emit_request(self.model_reload_requested):
+            self._set_advanced_dirty(False)
 
-    def _emit_request(self, signal: QtCore.SignalInstance) -> None:
+    def _emit_request(self, signal: QtCore.SignalInstance) -> bool:
         try:
             request = self.request()
         except Exception as exc:
             self.error.emit(str(exc))
-            return
+            return False
         signal.emit(request)
+        return True
+
+    def _run_calculation(self) -> None:
+        if self._emit_request(self.calculation_requested):
+            self._set_advanced_dirty(False)
+
+    def _apply_advanced_settings(self) -> None:
+        if self._emit_request(self.model_reload_requested):
+            self._set_advanced_dirty(False)
 
     def _emit_viewer_options(self) -> None:
         self.viewer_options_changed.emit(self.viewer_options())
@@ -412,6 +495,7 @@ class ControlPanel(QtWidgets.QScrollArea):
                 checkbox.setProperty("component_index", index)
                 checkbox.setChecked(index in selected)
                 checkbox.toggled.connect(self._sync_component_summary)
+                checkbox.toggled.connect(self._mark_advanced_dirty)
                 self.component_list_layout.addWidget(checkbox)
                 self._component_checkboxes.append(checkbox)
         self.component_list_layout.addStretch(1)
@@ -465,6 +549,80 @@ class ControlPanel(QtWidgets.QScrollArea):
         self.alpha_beta_group.setVisible(mode == "alpha_beta")
         self.roll_pitch_group.setVisible(mode == "roll_pitch")
         self.vector_group.setVisible(mode == "vector")
+        self._sync_sweep_inputs()
+
+    def _sync_sweep_inputs(self) -> None:
+        for fields in (
+            self.alpha_fields,
+            self.beta_fields,
+            self.roll_fields,
+            self.pitch_fields,
+        ):
+            is_range = fields[0].value() != fields[1].value()
+            fields[2].setToolTip(
+                "Increment between sweep values."
+                if is_range
+                else "Ignored when Start and End are the same."
+            )
+        self._sync_case_count()
+
+    def _sync_case_count(self) -> None:
+        mode = self.attitude_mode.currentData()
+        if mode == "vector":
+            count = 1
+        else:
+            groups = (
+                (self.roll_fields, self.pitch_fields)
+                if mode == "roll_pitch"
+                else (self.alpha_fields, self.beta_fields)
+            )
+            try:
+                count = 1
+                for fields in groups:
+                    spec = self._sweep_spec(*(field.value() for field in fields))
+                    count *= len(parse_sweep_values(spec))
+            except ValueError:
+                self.case_count.setText("Check sweep values")
+                self.case_count.setProperty("invalid", True)
+                self.case_count.style().unpolish(self.case_count)
+                self.case_count.style().polish(self.case_count)
+                return
+        self.case_count.setProperty("invalid", False)
+        self.case_count.setText(f"{count:,} result{'s' if count != 1 else ''}")
+        self.case_count.style().unpolish(self.case_count)
+        self.case_count.style().polish(self.case_count)
+
+    @staticmethod
+    def _sweep_spec(start: float, end: float, step: float) -> str:
+        return f"{start}" if start == end else f"{start}:{end}:{step}"
+
+    def _connect_advanced_dirty_signals(self) -> None:
+        for combo in (
+            self.axis_x,
+            self.axis_y,
+            self.axis_z,
+            self.step_component_mode,
+            self.step_metrics,
+        ):
+            combo.currentIndexChanged.connect(self._mark_advanced_dirty)
+        for field in (
+            self.mesh_deflection,
+            self.angular_deflection,
+            self.base_tolerance,
+        ):
+            field.valueChanged.connect(self._mark_advanced_dirty)
+        self.mesh_deflection_auto.toggled.connect(self._mark_advanced_dirty)
+
+    def _mark_advanced_dirty(self, *_args: object) -> None:
+        self._set_advanced_dirty(True)
+
+    def _set_advanced_dirty(self, dirty: bool) -> None:
+        self._advanced_dirty = dirty
+        self.advanced_status.setVisible(dirty)
+        self.apply_advanced_button.setEnabled(dirty and self.run_button.isEnabled())
+        toggle = self._section_toggles.get("Advanced")
+        if toggle is not None:
+            toggle.setText("Advanced · changes not applied" if dirty else "Advanced")
 
     def _section(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:
         box = QtWidgets.QGroupBox(title)
@@ -473,7 +631,7 @@ class ControlPanel(QtWidgets.QScrollArea):
         parent.addWidget(box)
         return form
 
-    def _collapsible(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:
+    def _collapsible_widget(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QWidget:
         toggle = QtWidgets.QToolButton()
         toggle.setText(title)
         toggle.setCheckable(True)
@@ -483,20 +641,23 @@ class ControlPanel(QtWidgets.QScrollArea):
         toggle.setArrowType(QtCore.Qt.ArrowType.RightArrow)
         content = QtWidgets.QGroupBox()
         content.setVisible(False)
-        form = QtWidgets.QFormLayout(content)
-        self._configure_form_layout(form, margins=(8, 8, 8, 8))
+        self._section_toggles[title] = toggle
 
         def sync_collapsed_state(checked: bool) -> None:
             toggle.setArrowType(
-                QtCore.Qt.ArrowType.DownArrow
-                if checked
-                else QtCore.Qt.ArrowType.RightArrow
+                QtCore.Qt.ArrowType.DownArrow if checked else QtCore.Qt.ArrowType.RightArrow
             )
             content.setVisible(checked)
 
         toggle.toggled.connect(sync_collapsed_state)
         parent.addWidget(toggle)
         parent.addWidget(content)
+        return content
+
+    def _collapsible(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:
+        content = self._collapsible_widget(parent, title)
+        form = QtWidgets.QFormLayout(content)
+        self._configure_form_layout(form, margins=(8, 8, 8, 8))
         return form
 
     def _sweep_grid(
@@ -534,6 +695,7 @@ class ControlPanel(QtWidgets.QScrollArea):
         for column, field in enumerate(fields, start=1):
             grid.addWidget(field, row, column)
             field.valueChanged.connect(self._emit_preview_request)
+            field.valueChanged.connect(self._sync_sweep_inputs)
         return fields
 
     def _vector_inputs(
@@ -585,9 +747,7 @@ class ControlPanel(QtWidgets.QScrollArea):
         *,
         margins: tuple[int, int, int, int],
     ) -> None:
-        form.setFieldGrowthPolicy(
-            QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
-        )
+        form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         form.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
         form.setVerticalSpacing(6)

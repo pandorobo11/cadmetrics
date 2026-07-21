@@ -168,7 +168,7 @@ Mesh generation is still required for:
 
 The GUI reuses the already loaded display model for `Run Sweep`, so browsing a STEP file and then
 calculating projected area does not reload and tessellate the same model a second time. If you
-change Advanced settings that affect geometry, click `Apply Settings` or run the calculation to
+change Advanced settings that affect geometry, click `Reload Model with Settings` or run the calculation to
 load the updated model.
 
 Use coarser `--mesh-deflection` and `--angular-deflection` values for quick previews, then tighten

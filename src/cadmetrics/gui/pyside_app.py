@@ -161,6 +161,7 @@ if QtWidgets is not None:
             self.progress_bar.setRange(0, total)
             self.progress_bar.setValue(index)
             self.status.setText(f"Sweep {index}/{total}: {description}")
+            self.controls.set_operation_message(f"Sweep {index:,} of {total:,} · {description}")
 
         @QtCore.Slot(object)
         def _on_state_changed(self, state: OperationState) -> None:

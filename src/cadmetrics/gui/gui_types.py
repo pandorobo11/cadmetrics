@@ -23,6 +23,7 @@ class ViewerOptions:
     show_base_face: bool = False
     show_newly_exposed_surface: bool = True
     show_overlay: bool = True
+    detailed_overlay: bool = False
     camera_direction: tuple[float, float, float] = (-1.0, -1.0, 1.0)
 
 

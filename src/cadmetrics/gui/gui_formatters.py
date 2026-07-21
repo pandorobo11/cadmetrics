@@ -57,6 +57,52 @@ def overlay_text(
     *,
     model: ModelData | None,
     request: CalculationRequest | None,
+    detailed: bool = False,
+) -> str:
+    if detailed:
+        return _detailed_overlay_text(row, model=model, request=request)
+    if model is None and row is None:
+        return ""
+
+    if model is not None:
+        unit = model.output_unit
+        file_label = format_model_file_label(model.path)
+        surface_area = model.surface_area
+        base_area = model.base_area
+        volume = model.volume
+    elif row is not None:
+        unit = row.output_unit
+        file_label = format_model_file_label(Path(row.file))
+        surface_area = row.surface_area
+        base_area = row.base_area
+        volume = row.volume
+    else:  # pragma: no cover - guarded above, explicit for type narrowing
+        return ""
+    lines = ["CADMETRICS", file_label]
+    if model is not None:
+        lines.append(f"{model.source_format.upper()}  ·  {unit}")
+    lines.extend(
+        [
+            f"Surface area  {_format_metric(surface_area)} {unit}²",
+            f"Base area  {_format_metric(base_area)} {unit}²",
+            f"Volume  {_format_metric(volume)} {unit}³",
+        ]
+    )
+    if row is not None:
+        lines.extend(
+            [
+                _compact_result_attitude(row, request),
+                f"Projected area  {_format_metric(row.projected_area)} {unit}²",
+            ]
+        )
+    return "\n".join(line for line in lines if line)
+
+
+def _detailed_overlay_text(
+    row: MeasurementRow | None,
+    *,
+    model: ModelData | None,
+    request: CalculationRequest | None,
 ) -> str:
     if row is not None:
         lines = [
@@ -79,8 +125,7 @@ def overlay_text(
                 f"Y[{_format_metric(row.y_min)}, {_format_metric(row.y_max)}], "
                 f"Z[{_format_metric(row.z_min)}, {_format_metric(row.z_max)}]",
                 f"surface_area: {_format_metric(row.surface_area)}",
-                "newly_exposed_surface_area: "
-                f"{_format_metric(row.newly_exposed_surface_area)}",
+                f"newly_exposed_surface_area: {_format_metric(row.newly_exposed_surface_area)}",
                 f"base_area: {_format_metric(row.base_area)}",
                 f"volume: {_format_metric(row.volume)}",
                 f"projected_area: {_format_metric(row.projected_area)}",
@@ -117,8 +162,7 @@ def overlay_text(
                 f"Y[{_format_metric(model.y_min)}, {_format_metric(model.y_max)}], "
                 f"Z[{_format_metric(model.z_min)}, {_format_metric(model.z_max)}]",
                 f"surface_area: {_format_metric(model.surface_area)}",
-                "newly_exposed_surface_area: "
-                f"{_format_metric(model.newly_exposed_surface_area)}",
+                f"newly_exposed_surface_area: {_format_metric(model.newly_exposed_surface_area)}",
                 f"base_area: {_format_metric(model.base_area)}",
                 f"volume: {_format_metric(model.volume)}",
                 f"cadmetrics_version: {model.cadmetrics_version}",
@@ -152,6 +196,26 @@ def overlay_text(
     return "\n".join(lines)
 
 
+def _compact_result_attitude(row: MeasurementRow, request: CalculationRequest | None) -> str:
+    mode = request.attitude_mode if request is not None else None
+    if mode == "vector" or (
+        mode is None
+        and row.direction_x is not None
+        and row.alpha_deg is None
+        and row.beta_deg is None
+    ):
+        return (
+            "Direction  "
+            f"({_format_vector(row.direction_x)}, {_format_vector(row.direction_y)}, "
+            f"{_format_vector(row.direction_z)})"
+        )
+    if mode == "roll_pitch" or (
+        mode is None and row.alpha_deg is None and row.roll_deg is not None
+    ):
+        return f"Roll {_format_angle(row.roll_deg)}°  ·  Pitch {_format_angle(row.pitch_deg)}°"
+    return f"Alpha {_format_angle(row.alpha_deg)}°  ·  Beta {_format_angle(row.beta_deg)}°"
+
+
 def model_info_text(model: ModelData) -> str:
     lines = [
         f"file: {format_model_file_label(model.path)}",
@@ -167,13 +231,15 @@ def model_info_text(model: ModelData) -> str:
         f"watertight: {model.is_watertight}",
     ]
     if model.component_names:
-        lines.insert(3, f"components: {len(model.selected_components)} of {len(model.component_names)} selected")
+        lines.insert(
+            3,
+            f"components: {len(model.selected_components)} of {len(model.component_names)} selected",
+        )
     if model.step_component_mode:
         lines.append(f"component_mode: {model.step_component_mode}")
     if model.newly_exposed_surface_area is not None:
         lines.append(
-            "newly_exposed_surface_area: "
-            f"{_format_metric(model.newly_exposed_surface_area)}"
+            f"newly_exposed_surface_area: {_format_metric(model.newly_exposed_surface_area)}"
         )
     if model.is_assembly:
         lines.insert(1, "assembly: True")

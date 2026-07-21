@@ -76,9 +76,7 @@ class ModelViewer(QtWidgets.QWidget):
         self._base_face_polydata = base_face_polydata(model, pv)
         self.base_face_available.emit(self._base_face_polydata is not None)
         self._newly_exposed_surface_polydata = newly_exposed_surface_polydata(model, pv)
-        self.newly_exposed_surface_available.emit(
-            self._newly_exposed_surface_polydata is not None
-        )
+        self.newly_exposed_surface_available.emit(self._newly_exposed_surface_polydata is not None)
         self._configure_lighting()
         self._plotter.add_axes()
         self._plotter.show_grid()
@@ -373,7 +371,9 @@ class ModelViewer(QtWidgets.QWidget):
         import pyvista as pv
 
         radius = max(float(np.ptp(self._model.vertices, axis=0).max()) * 0.025, 1.0e-6)
-        marker = pv.Sphere(radius=radius, center=tuple(point), theta_resolution=24, phi_resolution=12)
+        marker = pv.Sphere(
+            radius=radius, center=tuple(point), theta_resolution=24, phi_resolution=12
+        )
         self._centroid_actor = self._plotter.add_mesh(
             marker, color="#ffd400", edge_color="#111111", show_edges=True
         )
@@ -384,14 +384,19 @@ class ModelViewer(QtWidgets.QWidget):
         self._remove_actor("_overlay_actor")
         if not self._options.show_overlay:
             return
-        text = overlay_text(self._row, model=self._model, request=self._request)
+        text = overlay_text(
+            self._row,
+            model=self._model,
+            request=self._request,
+            detailed=self._options.detailed_overlay,
+        )
         if text:
             self._overlay_actor = self._plotter.add_text(
                 text,
                 position="upper_left",
-                font_size=10,
-                color="#111111",
-                shadow=True,
+                font_size=9,
+                color="#1f2933",
+                shadow=False,
             )
 
     def _set_camera(

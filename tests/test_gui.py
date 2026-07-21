@@ -88,7 +88,7 @@ def test_release_workflow_packages_html_documentation() -> None:
     source = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
 
     assert "cd .hatch-build/cadmetrics-docs-site" in source
-    assert 'cadmetrics-docs-${GITHUB_REF_NAME}.zip' in source
+    assert "cadmetrics-docs-${GITHUB_REF_NAME}.zip" in source
     assert "dist/cadmetrics-docs-*.zip" in source
 
 
@@ -283,7 +283,7 @@ def test_overlay_text_includes_selected_result_values() -> None:
         method="stl-mesh-projection",
     )
 
-    text = _overlay_text(row, model=None, request=None)
+    text = _overlay_text(row, model=None, request=None, detailed=True)
 
     assert "cadmetrics result" in text
     assert "model.stl" in text

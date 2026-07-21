@@ -15,6 +15,7 @@ from cadmetrics.gui.control_panel import ControlPanel
 from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.results_panel import ResultsPanel
 from cadmetrics.gui.results_panel import DEFAULT_COLUMN_WIDTH
+from cadmetrics.gui.results_panel import DISPLAY_FIELDS, RESULT_HEADER_LABELS
 from cadmetrics.gui.styles import application_stylesheet
 from cadmetrics.types import MeasurementRow, ModelData
 
@@ -115,25 +116,72 @@ def test_sweep_grid_keeps_columns_even_and_unclipped(qtbot) -> None:
     assert all(field.minimumWidth() == 70 for field in panel.alpha_fields)
 
 
-def test_advanced_toggle_and_model_info_restore_visual_policy(qtbot) -> None:
+def test_collapsible_sections_and_model_details_stay_compact(qtbot) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)
-    toggle = panel.findChild(QtWidgets.QToolButton, "sectionToggle")
+    toggle = panel._section_toggles["Model Details"]
 
     assert toggle.arrowType() == QtCore.Qt.ArrowType.RightArrow
     toggle.setChecked(True)
     assert toggle.arrowType() == QtCore.Qt.ArrowType.DownArrow
-    assert panel.model_info.sizePolicy().verticalPolicy() == (
-        QtWidgets.QSizePolicy.Policy.Expanding
-    )
+    assert panel.model_info.sizePolicy().verticalPolicy() == QtWidgets.QSizePolicy.Policy.Fixed
 
 
 def test_application_stylesheet_restores_indicator_and_spinbox_rules() -> None:
     stylesheet = application_stylesheet()
 
     assert "QCheckBox::indicator" in stylesheet
-    assert "width: 14px" in stylesheet
+    assert "width: 16px" in stylesheet
     assert "subcontrol-position: top right" in stylesheet
+
+
+def test_run_button_is_outside_scrolling_settings(qtbot) -> None:
+    panel = ControlPanel()
+    qtbot.addWidget(panel)
+
+    assert panel.run_button.isAncestorOf(panel.scroll_area) is False
+    assert panel.scroll_area.isAncestorOf(panel.run_button) is False
+    assert panel.run_button.parentWidget().objectName() == "actionBar"
+
+
+def test_sweep_case_count_and_single_point_step_state(qtbot) -> None:
+    panel = ControlPanel()
+    qtbot.addWidget(panel)
+
+    assert panel.case_count.text() == "1 result"
+    assert panel.alpha_fields[2].isEnabled() is True
+    assert panel.alpha_fields[2].toolTip() == "Ignored when Start and End are the same."
+
+    panel.alpha_fields[1].setValue(10.0)
+    panel.alpha_fields[2].setValue(5.0)
+    panel.beta_fields[1].setValue(10.0)
+    panel.beta_fields[2].setValue(5.0)
+
+    assert panel.case_count.text() == "9 results"
+    assert panel.alpha_fields[2].isEnabled() is True
+    assert panel.alpha_fields[2].toolTip() == "Increment between sweep values."
+
+
+def test_detailed_overlay_option_is_opt_in(qtbot) -> None:
+    panel = ControlPanel()
+    qtbot.addWidget(panel)
+
+    assert panel.viewer_options().detailed_overlay is False
+    panel.detailed_overlay.setChecked(True)
+    assert panel.viewer_options().detailed_overlay is True
+
+
+def test_advanced_changes_show_pending_state(qtbot) -> None:
+    panel = ControlPanel()
+    qtbot.addWidget(panel)
+
+    assert panel.advanced_status.isVisible() is False
+    panel.axis_x.setCurrentIndex(panel.axis_x.findData("-x"))
+
+    assert panel._advanced_dirty is True
+    assert panel.advanced_status.isHidden() is False
+    assert "changes not applied" in panel._section_toggles["Advanced"].text()
+    assert panel.apply_advanced_button.isEnabled() is True
 
 
 def test_control_panel_populates_step_components(qtbot, tmp_path: Path) -> None:
@@ -145,9 +193,7 @@ def test_control_panel_populates_step_components(qtbot, tmp_path: Path) -> None:
     panel.set_model(_model(path, component_names=("Body", "Wing")))
 
     panel._component_checkboxes[1].setChecked(False)
-    panel.step_component_mode.setCurrentIndex(
-        panel.step_component_mode.findData("subtract")
-    )
+    panel.step_component_mode.setCurrentIndex(panel.step_component_mode.findData("subtract"))
     request = panel.request()
 
     assert request.step_components == (1,)
@@ -184,6 +230,19 @@ def test_results_panel_restores_table_density(qtbot) -> None:
     assert panel.table.verticalHeader().defaultSectionSize() == 24
 
 
+def test_results_panel_uses_empty_state_until_rows_exist(qtbot) -> None:
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+
+    assert panel.stack.currentWidget() is panel.empty_state
+    assert panel.empty_title.text() == "No results yet"
+    assert "Run Sweep" in panel.empty_message.text()
+
+    panel.set_rows([_row()])
+
+    assert panel.stack.currentWidget() is panel.table
+
+
 def test_results_panel_keeps_all_field_names_left_aligned_and_discoverable(qtbot) -> None:
     panel = ResultsPanel()
     qtbot.addWidget(panel)
@@ -193,10 +252,18 @@ def test_results_panel_keeps_all_field_names_left_aligned_and_discoverable(qtbot
     assert panel.table.columnCount() == len(CSV_FIELDS)
     assert panel.table.textElideMode() == QtCore.Qt.TextElideMode.ElideRight
     assert header.sectionResizeMode(0) == QtWidgets.QHeaderView.ResizeMode.Interactive
-    for column_index, column in enumerate(CSV_FIELDS):
+    assert DISPLAY_FIELDS[:6] == [
+        "file",
+        "alpha_deg",
+        "beta_deg",
+        "roll_deg",
+        "pitch_deg",
+        "projected_area",
+    ]
+    for column_index, column in enumerate(DISPLAY_FIELDS):
         item = panel.table.horizontalHeaderItem(column_index)
-        assert item.text() == column
-        assert item.toolTip() == column
+        assert item.text() == RESULT_HEADER_LABELS.get(column, column.replace("_", " ").title())
+        assert item.toolTip() == f"CSV field: {column}"
         assert item.textAlignment() & QtCore.Qt.AlignmentFlag.AlignLeft
 
 
@@ -205,7 +272,7 @@ def test_results_panel_cells_are_left_aligned_with_full_text_tooltips(qtbot) -> 
     qtbot.addWidget(panel)
     row = _row()
     panel.set_rows([row])
-    file_column = CSV_FIELDS.index("file")
+    file_column = DISPLAY_FIELDS.index("file")
     file_item = panel.table.item(0, file_column)
 
     assert file_item.textAlignment() & QtCore.Qt.AlignmentFlag.AlignLeft

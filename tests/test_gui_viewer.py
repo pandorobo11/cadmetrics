@@ -85,7 +85,9 @@ def test_model_viewer_renders_model_and_result(qtbot) -> None:
     qtbot.addWidget(viewer)
     viewer.set_request(CalculationRequest(file=Path("model.stl")))
     viewer.set_model(_model())
+    view_text = plotter.texts[-1][0]
     viewer.set_result(_row(), CalculationRequest(file=Path("model.stl")), align_camera=True)
+    result_text = plotter.texts[-1][0]
 
     assert viewer.available is True
     assert plotter is not None
@@ -93,7 +95,19 @@ def test_model_viewer_renders_model_and_result(qtbot) -> None:
     assert any(options.get("color") == "#ff7a00" for _mesh, options in plotter.meshes)
     assert viewer._base_face_polydata is None
     assert plotter.arrows
-    assert any("cadmetrics result" in text for text, _ in plotter.texts)
+    assert view_text.splitlines() == [
+        "CADMETRICS",
+        "model.stl",
+        "STL  ·  m",
+        "Surface area  6 m²",
+        "Base area  0 m²",
+        "Volume  1 m³",
+    ]
+    assert result_text.splitlines() == [
+        *view_text.splitlines(),
+        "Alpha 0°  ·  Beta 0°",
+        "Projected area  1 m²",
+    ]
     assert plotter.camera_position is not None
 
 

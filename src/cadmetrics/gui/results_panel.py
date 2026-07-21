@@ -10,6 +10,47 @@ from cadmetrics.gui.gui_formatters import format_cell
 from cadmetrics.types import MeasurementRow
 
 DEFAULT_COLUMN_WIDTH = 130
+PRIMARY_DISPLAY_FIELDS = [
+    "file",
+    "alpha_deg",
+    "beta_deg",
+    "roll_deg",
+    "pitch_deg",
+    "projected_area",
+    "centroid_u",
+    "centroid_v",
+    "centroid_x",
+    "centroid_y",
+    "centroid_z",
+    "volume",
+    "surface_area",
+    "base_area",
+]
+DISPLAY_FIELDS = PRIMARY_DISPLAY_FIELDS + [
+    field for field in CSV_FIELDS if field not in PRIMARY_DISPLAY_FIELDS
+]
+RESULT_HEADER_LABELS = {
+    "file": "File",
+    "alpha_deg": "Alpha (°)",
+    "beta_deg": "Beta (°)",
+    "roll_deg": "Roll (°)",
+    "pitch_deg": "Pitch (°)",
+    "projected_area": "Projected area",
+    "centroid_u": "Centroid U",
+    "centroid_v": "Centroid V",
+    "centroid_x": "Centroid X",
+    "centroid_y": "Centroid Y",
+    "centroid_z": "Centroid Z",
+    "volume": "Volume",
+    "surface_area": "Surface area",
+    "base_area": "Base area",
+    "step_components": "Components",
+    "step_component_names": "Component names",
+    "input_unit": "Input unit",
+    "output_unit": "Output unit",
+    "is_watertight": "Watertight",
+    "elapsed_sec": "Elapsed (s)",
+}
 
 
 class ResultsPanel(QtWidgets.QWidget):
@@ -30,13 +71,35 @@ class ResultsPanel(QtWidgets.QWidget):
         self.result_count.setObjectName("resultCountLabel")
         self.save_button = QtWidgets.QPushButton("Save CSV")
         self.save_button.setObjectName("secondaryButton")
+        self.save_button.setToolTip("Run a sweep before saving results.")
         self.save_button.clicked.connect(self._choose_csv_path)
         toolbar_layout.addWidget(self.result_count)
         toolbar_layout.addStretch(1)
         toolbar_layout.addWidget(self.save_button)
         layout.addWidget(toolbar)
-        self.table = QtWidgets.QTableWidget(0, len(CSV_FIELDS))
-        self.table.setHorizontalHeaderLabels(CSV_FIELDS)
+        self.stack = QtWidgets.QStackedWidget()
+        self.empty_state = QtWidgets.QWidget()
+        empty_layout = QtWidgets.QVBoxLayout(self.empty_state)
+        empty_layout.setContentsMargins(24, 24, 24, 24)
+        empty_layout.addStretch(1)
+        self.empty_title = QtWidgets.QLabel("No results yet")
+        self.empty_title.setObjectName("emptyStateTitle")
+        self.empty_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.empty_message = QtWidgets.QLabel("Run Sweep to generate results.")
+        self.empty_message.setObjectName("emptyStateMessage")
+        self.empty_message.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(self.empty_title)
+        empty_layout.addWidget(self.empty_message)
+        empty_layout.addStretch(1)
+        self.stack.addWidget(self.empty_state)
+
+        self.table = QtWidgets.QTableWidget(0, len(DISPLAY_FIELDS))
+        self.table.setHorizontalHeaderLabels(
+            [
+                RESULT_HEADER_LABELS.get(field, field.replace("_", " ").title())
+                for field in DISPLAY_FIELDS
+            ]
+        )
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
         header.setDefaultSectionSize(DEFAULT_COLUMN_WIDTH)
@@ -46,14 +109,14 @@ class ResultsPanel(QtWidgets.QWidget):
             QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
         )
         self.table.setTextElideMode(QtCore.Qt.TextElideMode.ElideRight)
-        for column_index, column in enumerate(CSV_FIELDS):
+        for column_index, column in enumerate(DISPLAY_FIELDS):
             header_item = self.table.horizontalHeaderItem(column_index)
             if header_item is None:
                 raise RuntimeError(f"Could not create table header for {column}")
             header_item.setTextAlignment(
                 QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
             )
-            header_item.setToolTip(column)
+            header_item.setToolTip(f"CSV field: {column}")
             self.table.setColumnWidth(
                 column_index,
                 DEFAULT_COLUMN_WIDTH,
@@ -64,7 +127,8 @@ class ResultsPanel(QtWidgets.QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(24)
         self.table.itemSelectionChanged.connect(self._emit_selected_row)
-        layout.addWidget(self.table)
+        self.stack.addWidget(self.table)
+        layout.addWidget(self.stack)
         self.set_busy(False)
 
     @property
@@ -76,7 +140,7 @@ class ResultsPanel(QtWidgets.QWidget):
         self.table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
             values = row.to_csv_row()
-            for column_index, column in enumerate(CSV_FIELDS):
+            for column_index, column in enumerate(DISPLAY_FIELDS):
                 text = format_cell(values[column])
                 item = QtWidgets.QTableWidgetItem(text)
                 item.setTextAlignment(
@@ -90,6 +154,10 @@ class ResultsPanel(QtWidgets.QWidget):
                 )
         self.result_count.setText(f"Rows: {len(rows)}")
         self.save_button.setEnabled(bool(rows))
+        self.save_button.setToolTip(
+            "Save all result columns to CSV." if rows else "Run a sweep before saving results."
+        )
+        self.stack.setCurrentWidget(self.table if rows else self.empty_state)
 
     def clear(self) -> None:
         self.set_rows([])
@@ -100,6 +168,13 @@ class ResultsPanel(QtWidgets.QWidget):
 
     def set_busy(self, busy: bool) -> None:
         self.save_button.setEnabled(not busy and bool(self._rows))
+        if busy and not self._rows:
+            self.empty_title.setText("Calculating…")
+            self.empty_message.setText("Results will appear here as soon as the sweep finishes.")
+            self.stack.setCurrentWidget(self.empty_state)
+        elif not self._rows:
+            self.empty_title.setText("No results yet")
+            self.empty_message.setText("Run Sweep to generate results.")
 
     def save_csv(self, path: str | Path) -> None:
         if not self._rows:

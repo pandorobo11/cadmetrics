@@ -72,6 +72,9 @@ def test_overlay_formatter_preserves_result_summary() -> None:
 
     text = overlay_text(row, model=None, request=None)
 
-    assert "cadmetrics result" in text
-    assert "projected_area: 1" in text
-    assert "volume: 1" in text
+    assert text.startswith("CADMETRICS\nmodel.stl")
+    assert "Surface area  6 m²" in text
+    assert "Base area  1 m²" in text
+    assert "Projected area  1 m²" in text
+    assert "Volume  1 m³" in text
+    assert "surface_area" not in text
