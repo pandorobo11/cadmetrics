@@ -30,6 +30,7 @@ def test_viewer_options_and_operation_states_have_stable_defaults() -> None:
 
     assert options.feature_edges is True
     assert options.show_projection_arrow is True
+    assert options.show_centroid is True
     assert options.show_newly_exposed_surface is True
     assert options.camera_direction == (-1.0, -1.0, 1.0)
     assert [state.value for state in OperationState] == [

@@ -20,6 +20,7 @@ class ViewerOptions:
     mesh_edges: bool = False
     feature_edges: bool = True
     show_projection_arrow: bool = True
+    show_centroid: bool = True
     show_base_face: bool = False
     show_newly_exposed_surface: bool = True
     show_overlay: bool = True

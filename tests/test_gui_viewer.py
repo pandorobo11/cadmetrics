@@ -95,6 +95,7 @@ def test_model_viewer_renders_model_and_result(qtbot) -> None:
     assert any(options.get("color") == "#ff7a00" for _mesh, options in plotter.meshes)
     assert viewer._base_face_polydata is None
     assert plotter.arrows
+    assert viewer._centroid_actor is not None
     assert view_text.splitlines() == [
         "CADMETRICS",
         "model.stl",
@@ -109,6 +110,11 @@ def test_model_viewer_renders_model_and_result(qtbot) -> None:
         "Projected area  1 m²",
     ]
     assert plotter.camera_position is not None
+
+    viewer.set_options(ViewerOptions(show_centroid=False))
+    assert viewer._centroid_actor is None
+    viewer.set_options(ViewerOptions(show_centroid=True))
+    assert viewer._centroid_actor is not None
 
 
 def test_model_viewer_applies_options_and_saves_image(qtbot, tmp_path: Path) -> None:

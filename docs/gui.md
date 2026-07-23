@@ -148,6 +148,7 @@ The 3D view supports:
 - mesh-edge display
 - feature-edge display
 - projection-arrow display (enabled by default)
+- centroid-marker display (enabled by default)
 - optional yellow highlighting of the Xmax base face
 - camera direction selection from `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`, and two ISO views
 - compact overlay text with file, unit, surface area, base area, and volume
@@ -213,9 +214,10 @@ the result area shows an empty-state prompt instead of an empty table. Important
 - `cadmetrics_version`, `cadmetrics_hash`
 - `base_tolerance`
 
-The yellow centroid marker is shown when a projected-area result row is selected. The red
-projection arrow is placed outside the model and aligned with the selected projected centroid
-when available.
+The yellow centroid marker is shown when a projected-area result row is selected. Use the
+`Centroid` checkbox under `Shape Display` to show or hide it. The red projection arrow is placed
+outside the model and aligned with the selected projected centroid when available, even when the
+marker is hidden.
 
 ## Current Scope
 

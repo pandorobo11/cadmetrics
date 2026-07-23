@@ -204,8 +204,11 @@ def test_detailed_overlay_option_is_opt_in(qtbot) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)
 
+    assert panel.viewer_options().show_centroid is True
     assert panel.viewer_options().detailed_overlay is False
+    panel.show_centroid.setChecked(False)
     panel.detailed_overlay.setChecked(True)
+    assert panel.viewer_options().show_centroid is False
     assert panel.viewer_options().detailed_overlay is True
 
 

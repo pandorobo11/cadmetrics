@@ -365,6 +365,8 @@ class ModelViewer(QtWidgets.QWidget):
         if self._plotter is None:
             return
         self._remove_actor("_centroid_actor")
+        if not self._options.show_centroid:
+            return
         point = row_centroid_point(self._row)
         if point is None or self._model is None:
             return
