@@ -14,6 +14,11 @@ total uncached time is the sum of both fields. Non-watertight STL volume is now 
 an unreliable mesh-derived value. The GUI also adds cooperative sweep cancellation, a native
 Windows GUI launcher, improved component selector sizing, and a centroid visibility control.
 
+v0.12.1 fixes CLI validation of alternate zero-valued sweep specifications and escapes
+user-controlled text in Rich error output. It also separates mesh, STEP, and OCP loading
+internals, expands mypy coverage to every production module, and upgrades the packaged-GUI smoke
+check from an import check to offscreen main-window construction.
+
 Before tagging a release:
 
 1. Update `project.version` in `pyproject.toml`.
