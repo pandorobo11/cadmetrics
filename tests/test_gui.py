@@ -95,6 +95,19 @@ def test_release_workflow_packages_html_documentation() -> None:
     assert "dist/cadmetrics-docs-*.zip" in source
 
 
+def test_package_workflows_construct_installed_gui_window() -> None:
+    smoke_script = Path("scripts/smoke_gui.py")
+    assert smoke_script.is_file()
+
+    for workflow_path in (
+        Path(".github/workflows/ci.yml"),
+        Path(".github/workflows/release.yml"),
+    ):
+        source = workflow_path.read_text(encoding="utf-8")
+        assert "QT_QPA_PLATFORM: offscreen" in source
+        assert "bin/python scripts/smoke_gui.py" in source
+
+
 def test_projection_arrow_stays_outside_model_bounds() -> None:
     vertices = np.array(
         [

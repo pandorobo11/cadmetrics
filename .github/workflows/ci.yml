@@ -34,7 +34,7 @@ jobs:
       - name: Lint
         run: uv run ruff check .
 
-      - name: Type check core modules
+      - name: Type check production modules
         run: uv run mypy
 
       - name: Test
@@ -59,6 +59,9 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Install Qt runtime libraries
+        run: sudo apt-get update && sudo apt-get install --yes libegl1
+
       - name: Build package
         run: uv build
 
@@ -77,8 +80,10 @@ jobs:
           /tmp/cadmetrics-smoke-step/bin/cadmetrics inspect samples/unit_cube/unit_cube.step
 
       - name: Smoke install gui extra
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
           WHEEL="$(ls dist/cadmetrics-*.whl)"
           python -m venv /tmp/cadmetrics-smoke-gui
           /tmp/cadmetrics-smoke-gui/bin/python -m pip install "$WHEEL[gui]"
-          /tmp/cadmetrics-smoke-gui/bin/python -c "import importlib.metadata as m; import cadmetrics.gui.pyside_app; [m.version(name) for name in ('PySide6', 'pyvista', 'pyvistaqt')]"
+          /tmp/cadmetrics-smoke-gui/bin/python scripts/smoke_gui.py

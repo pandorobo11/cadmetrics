@@ -34,7 +34,9 @@ wheel and source distribution attached.
 
 CI also runs a package smoke job on Ubuntu. It builds the wheel, installs the base package,
 installs the `step` extra and reads a STEP sample, then installs the `gui` extra and imports the
-GUI dependencies without launching the desktop app.
+GUI dependencies. The GUI smoke check constructs and displays the packaged main window with an
+offscreen Qt backend and a lightweight viewer substitute, so packaging and widget-composition
+failures are detected without depending on a working GPU or VTK rendering context.
 
 During `uv build`, `hatch_build.py` embeds the current git hash into the package as
 `cadmetrics._build.GIT_HASH`. This lets installed wheels report `cadmetrics_hash` even though
