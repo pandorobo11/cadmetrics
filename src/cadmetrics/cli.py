@@ -7,6 +7,7 @@ from typing import cast
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
@@ -16,6 +17,7 @@ from cadmetrics.api import project as project_api
 from cadmetrics.api import sweep as sweep_api
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
+from cadmetrics.sweep import parse_sweep_values
 from cadmetrics.types import MeasurementRow
 
 app = typer.Typer(no_args_is_help=True, help="Calculate CAD volume, surface, and projected area.")
@@ -764,7 +766,7 @@ def _reject_nonzero(value: float, option: str, mode: str) -> None:
 
 
 def _reject_nondefault_spec(value: str, option: str, mode: str) -> None:
-    if str(value).strip() not in {"0", "0.0"}:
+    if parse_sweep_values(value) != [0.0]:
         raise typer.BadParameter(f"{option} cannot be used with --attitude {mode}")
 
 
@@ -783,5 +785,5 @@ def _run_or_exit(action):
     try:
         return action()
     except Exception as exc:
-        err_console.print(f"[red]Error:[/red] {exc}")
+        err_console.print(f"[red]Error:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc

@@ -228,6 +228,43 @@ def test_sweep_cli_vector_mode_returns_one_row(runner: CliRunner) -> None:
     assert float(rows[0]["direction_x"]) == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize("zero_spec", ["0", "0.0", "0.00", "-0", "0e0"])
+def test_sweep_cli_accepts_equivalent_zero_specs_in_vector_mode(
+    runner: CliRunner,
+    zero_spec: str,
+) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "sweep",
+            str(DATA_DIR / "unit_cube.stl"),
+            "--attitude",
+            "vector",
+            "--direction",
+            "1,0,0",
+            "--alpha",
+            zero_spec,
+            "--no-summary",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+
+
+def test_cli_error_preserves_optional_extra_markup(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_measure(*args, **kwargs):
+        raise RuntimeError("STEP support requires cadmetrics[step].")
+
+    monkeypatch.setattr("cadmetrics.cli.measure_api", fail_measure)
+    result = runner.invoke(app, ["measure", str(DATA_DIR / "unit_cube.stl")])
+
+    assert result.exit_code == 1
+    assert "cadmetrics[step]" in result.output
+
+
 def test_cli_rejects_mixed_attitude_inputs(runner: CliRunner) -> None:
     result = runner.invoke(
         app,
