@@ -161,9 +161,13 @@ def _load_stl(
     warnings: list[str] = []
     is_watertight = bool(mesh.is_watertight)
     if not is_watertight:
-        warnings.append("Mesh is not watertight; volume may be unreliable.")
+        warnings.append("Mesh is not watertight; volume is unavailable.")
 
-    volume = abs(float(mesh.volume)) * volume_scale(resolved_input_unit, output_unit)
+    volume = (
+        abs(float(mesh.volume)) * volume_scale(resolved_input_unit, output_unit)
+        if is_watertight
+        else None
+    )
     surface_area = float(mesh.area) * area_scale(resolved_input_unit, output_unit)
     native_vertices = np.asarray(mesh.vertices, dtype=float)
     faces = np.asarray(mesh.faces, dtype=np.int64)
@@ -218,6 +222,8 @@ def _load_stl_assembly(
         [(model.vertices, model.faces) for model in models]
     )
     volume, surface_area, is_watertight = _mesh_volume_and_surface_area(vertices, faces)
+    if is_watertight is not True or any(model.is_watertight is not True for model in models):
+        volume = None
     base_area, base_found = _mesh_xmax_base_area(
         vertices,
         faces,
@@ -1080,7 +1086,7 @@ def _ocp_bounding_box_diagonal(
     except Exception:
         return 1.0
     diagonal = float(np.linalg.norm([xmax - xmin, ymax - ymin, zmax - zmin]))
-    return max(diagonal, 1.0)
+    return diagonal if isfinite(diagonal) and diagonal >= 0.0 else 1.0
 
 
 def _ocp_xmax_base_area(

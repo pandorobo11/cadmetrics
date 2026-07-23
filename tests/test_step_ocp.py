@@ -5,7 +5,7 @@ import pytest
 pytest.importorskip("OCP")
 
 from OCP.BRep import BRep_Builder
-from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeSphere
 from OCP.gp import gp_Pnt
 from OCP.IFSelect import IFSelect_RetDone
 from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
@@ -37,6 +37,30 @@ def test_generated_step_box_measurements(tmp_path: Path) -> None:
     assert projected.projected_area == pytest.approx(6.0)
     assert projected.input_unit == "mm"
     assert projected.mesh_deflection == measured.mesh_deflection
+
+
+def test_auto_mesh_deflection_uses_actual_sub_unit_diagonal(tmp_path: Path) -> None:
+    step_path = tmp_path / "tiny_sphere.step"
+    radius_mm = 0.01
+    shape = BRepPrimAPI_MakeSphere(radius_mm).Shape()
+    writer = STEPControl_Writer()
+    writer.Transfer(shape, STEPControl_AsIs)
+    assert writer.Write(str(step_path)) == IFSelect_RetDone
+
+    inspected = inspect_model(step_path, output_unit="mm")
+    projected = project(
+        step_path,
+        output_unit="mm",
+        attitude="vector",
+        direction="1,0,0",
+    )
+
+    expected_diagonal = 2.0 * radius_mm * 3.0**0.5
+    assert inspected.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-4)
+    assert projected.projected_area == pytest.approx(
+        3.141592653589793 * radius_mm**2,
+        rel=1.0e-3,
+    )
 
 
 def test_step_measure_brep_does_not_require_tessellation(

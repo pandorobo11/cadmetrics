@@ -108,11 +108,16 @@ row = measure("model.step", input_unit="auto", output_unit="mm")
 print(row.volume)
 print(row.surface_area)
 print(row.base_area)
+print(row.load_elapsed_sec)
+print(row.elapsed_sec)
 print(row.warnings)
 ```
 
 `project` returns one `MeasurementRow`; `sweep` returns a list of them. Use
 `MeasurementRow.to_csv_row()` when writing API results in the same schema as the CLI and GUI.
+`load_elapsed_sec` records model preparation, while `elapsed_sec` records only the calculation
+for that result row. Sweep rows retain the same model preparation time and have individual
+calculation times.
 
 ## Multiple STEP components
 

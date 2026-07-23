@@ -49,6 +49,7 @@ def run_calculation(
     *,
     model: ModelData | None = None,
     progress_callback: ProgressCallback | None = None,
+    cancel_callback: Callable[[], None] | None = None,
 ) -> list[MeasurementRow]:
     common = {
         "input_unit": request.input_unit,
@@ -69,6 +70,7 @@ def run_calculation(
                 alpha_deg=_range_spec(request.alpha_start, request.alpha_end, request.alpha_step),
                 beta_deg=_range_spec(request.beta_start, request.beta_end, request.beta_step),
                 progress_callback=_orientation_progress(progress_callback, "alpha_beta"),
+                cancel_callback=cancel_callback,
             )
         return sweep(
             request.file,
@@ -86,6 +88,7 @@ def run_calculation(
                 roll_deg=_range_spec(request.roll_start, request.roll_end, request.roll_step),
                 pitch_deg=_range_spec(request.pitch_start, request.pitch_end, request.pitch_step),
                 progress_callback=_orientation_progress(progress_callback, "roll_pitch"),
+                cancel_callback=cancel_callback,
             )
         return sweep(
             request.file,
@@ -98,7 +101,11 @@ def run_calculation(
 
     direction = f"{request.vector_x},{request.vector_y},{request.vector_z}"
     if model is not None:
+        if cancel_callback is not None:
+            cancel_callback()
         row = project_model(model, attitude="vector", direction=direction)
+        if cancel_callback is not None:
+            cancel_callback()
     else:
         row = project(
             request.file,

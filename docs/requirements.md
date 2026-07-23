@@ -52,7 +52,7 @@ from STL and STEP files.
 - The GUI, Python API, and CLI can turn STEP solid components on or off before calculation.
 - Optional STEP subtraction mode boolean-cuts disabled components from the enabled union and
   reports surfaces newly exposed by subtraction separately.
-- Open or non-watertight meshes are accepted with warnings; volume may be unreliable
+- Open or non-watertight STL meshes are accepted with warnings and report no volume
 - STEP assemblies and compounds are supported geometrically, but assembly metadata is not a
   first-version requirement
 - Surface-only STEP geometry is allowed to load if tessellation succeeds, but volume may be zero
@@ -159,6 +159,7 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 - `angular_deflection`
 - `base_tolerance`
 - `method`
+- `load_elapsed_sec`
 - `elapsed_sec`
 - `cadmetrics_version`
 - `cadmetrics_hash`

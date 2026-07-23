@@ -240,7 +240,7 @@ All calculation commands use the same CSV schema:
 | `surface_area` | surface area in `output_unit^2` |
 | `newly_exposed_surface_area` | surface area newly exposed and excluded in subtraction mode |
 | `base_area` | exterior face area at cadmetrics-coordinate `Xmax` in `output_unit^2`; `0` with a warning when no face is found |
-| `volume` | volume in `output_unit^3`; empty for open, invalid, or surface-only STEP shapes |
+| `volume` | volume in `output_unit^3`; empty for non-watertight STL and open, invalid, or surface-only STEP shapes |
 | `projected_area` | orthographic projected outline area in `output_unit^2` |
 | `centroid_u`, `centroid_v` | projected 2D centroid in the projection plane |
 | `centroid_x`, `centroid_y`, `centroid_z` | corresponding 3D marker position |
@@ -250,10 +250,15 @@ All calculation commands use the same CSV schema:
 | `base_tolerance` | relative tolerance used to identify Xmax base faces |
 | `step_component_mode` | `filter` or `subtract` for STEP input |
 | `method` | calculation backend summary |
-| `elapsed_sec` | elapsed time for the row |
+| `load_elapsed_sec` | model preparation time, including file loading, validation, geometry operations, metrics, tessellation, and axis conversion |
+| `elapsed_sec` | calculation time for this result row after the model is prepared |
 | `cadmetrics_version` | package version used for the calculation |
 | `cadmetrics_hash` | git commit hash used for the calculation, with `-dirty` when tracked files differ |
 | `warnings` | semicolon-separated warnings |
+
+For an uncached API or CLI operation, add `load_elapsed_sec` and `elapsed_sec` to obtain the
+model-preparation plus row-calculation time. Sweep rows share the model preparation time and each
+record their own row-calculation time.
 
 ## Examples
 

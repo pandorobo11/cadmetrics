@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from itertools import product
-from math import isfinite
+from math import floor, isfinite
 
 from cadmetrics.orientation import Orientation
 
@@ -39,17 +39,23 @@ def parse_sweep_values(spec: str | int | float) -> list[float]:
     if end < start and step > 0.0:
         raise ValueError("Sweep step must be negative when end is less than start")
 
-    values: list[float] = []
-    value = start
-    epsilon = abs(step) * 1.0e-9
-    if step > 0.0:
-        while value <= end + epsilon:
-            values.append(_clean_float(value))
-            value += step
-    else:
-        while value >= end - epsilon:
-            values.append(_clean_float(value))
-            value += step
+    if start == end:
+        return [_clean_float(start)]
+
+    span = abs(end - start)
+    ratio = span / abs(step)
+    if not isfinite(span) or not isfinite(ratio):
+        _raise_too_many_values()
+    count = floor(ratio + 1.0e-9) + 1
+    if count > MAX_SWEEP_COMBINATIONS:
+        _raise_too_many_values(count)
+
+    values = [_clean_float(start + index * step) for index in range(count)]
+    for previous, current in zip(values, values[1:]):
+        if (step > 0.0 and current <= previous) or (step < 0.0 and current >= previous):
+            raise ValueError(
+                "Sweep step is too small to advance at the requested floating-point precision"
+            )
     return values
 
 
@@ -97,6 +103,16 @@ def _orientation_axes(
 def _require_finite(value: float, label: str) -> None:
     if not isfinite(value):
         raise ValueError(f"{label} must be finite")
+
+
+def _raise_too_many_values(count: int | None = None) -> None:
+    generated = (
+        f"{count:,} values" if count is not None else "more values than can be represented safely"
+    )
+    raise ValueError(
+        f"Sweep range would generate {generated}; "
+        f"the maximum is {MAX_SWEEP_COMBINATIONS:,}."
+    )
 
 
 def _clean_float(value: float) -> float:

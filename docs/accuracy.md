@@ -139,8 +139,10 @@ The default is:
 auto = STEP bounding-box diagonal * 1e-4
 ```
 
-The value is expressed in the selected output length unit. Smaller values usually improve
-projected-area accuracy for curved geometry but increase calculation time.
+The actual diagonal is used even when every model dimension is smaller than one input unit. The
+value is expressed in the selected output length unit and only the final deflection is floored at
+`1e-9`. Smaller values usually improve projected-area accuracy for curved geometry but increase
+calculation time.
 
 For reproducible validation runs, pass an explicit value:
 
@@ -177,7 +179,7 @@ them for final projected-area validation.
 ## Watertightness
 
 Open or non-watertight STL meshes are accepted with warnings. Surface area and projected area
-can still be useful, but volume may be unreliable or unavailable.
+can still be useful, but volume is unavailable.
 
 STEP surface-only geometry may load if tessellation succeeds. In that case, volume may be zero
 or unavailable.

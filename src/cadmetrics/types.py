@@ -38,6 +38,7 @@ class ModelData:
     component_names: tuple[str, ...] = field(default_factory=tuple)
     selected_components: tuple[int, ...] = field(default_factory=tuple)
     bounds: tuple[float, float, float, float, float, float] | None = None
+    load_elapsed_sec: float | None = None
     cadmetrics_version: str = field(default_factory=cadmetrics_version)
     cadmetrics_hash: str = field(default_factory=cadmetrics_hash)
     warnings: tuple[str, ...] = field(default_factory=tuple)
@@ -123,6 +124,7 @@ class MeasurementRow:
     step_component_mode: str | None = None
     newly_exposed_surface_area: float | None = None
     method: str | None = None
+    load_elapsed_sec: float | None = None
     elapsed_sec: float | None = None
     cadmetrics_version: str = field(default_factory=cadmetrics_version)
     cadmetrics_hash: str = field(default_factory=cadmetrics_hash)
@@ -164,6 +166,7 @@ class MeasurementRow:
             "base_tolerance": self.base_tolerance,
             "step_component_mode": self.step_component_mode,
             "method": self.method,
+            "load_elapsed_sec": self.load_elapsed_sec,
             "elapsed_sec": self.elapsed_sec,
             "cadmetrics_version": self.cadmetrics_version,
             "cadmetrics_hash": self.cadmetrics_hash,

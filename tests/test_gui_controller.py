@@ -24,8 +24,9 @@ def test_controller_loads_then_reuses_model(qtbot, monkeypatch) -> None:
         loads.append(request)
         return model
 
-    def fake_calculate(request, *, model, progress_callback):
+    def fake_calculate(request, *, model, progress_callback, cancel_callback):
         calculations.append((request, model))
+        cancel_callback()
         return [row]
 
     monkeypatch.setattr("cadmetrics.gui.calculation_controller.load_model_for_request", fake_load)
@@ -94,9 +95,10 @@ def test_controller_cancel_and_shutdown_wait_for_worker(qtbot, monkeypatch) -> N
     started = Event()
     release = Event()
 
-    def fake_calculate(request, *, model, progress_callback):
+    def fake_calculate(request, *, model, progress_callback, cancel_callback):
         started.set()
         release.wait(timeout=2)
+        cancel_callback()
         progress_callback(1, 1, "done")
         return [_row()]
 

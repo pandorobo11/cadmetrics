@@ -123,18 +123,22 @@ if QtWidgets is not None:
         @QtCore.Slot(object)
         def _calculate(self, request: CalculationRequest) -> None:
             self._request = request
+            self._invalidate_results()
             self.viewer.set_request(request)
             self.controller.calculate(request)
 
         @QtCore.Slot(object)
         def _load_model(self, request: CalculationRequest) -> None:
             self._request = request
+            self._invalidate_results()
             self.viewer.set_request(request)
             self.controller.load_only(request)
 
         @QtCore.Slot(object)
         def _preview_request(self, request: CalculationRequest) -> None:
-            self._request = request
+            if request != self._request:
+                self._request = request
+                self._invalidate_results()
             self.viewer.set_request(request)
 
         @QtCore.Slot(object)
@@ -174,7 +178,7 @@ if QtWidgets is not None:
                 self.progress_bar.setRange(0, 0)
                 self.status.setText("Calculating")
             elif state is OperationState.CANCELLING:
-                self.status.setText("Cancelling")
+                self.status.setText("Finishing the current geometry operation")
             elif state is OperationState.IDLE and self.progress_bar.maximum() == 0:
                 self.progress_bar.setRange(0, 1)
                 self.progress_bar.setValue(0)
@@ -215,10 +219,23 @@ if QtWidgets is not None:
             self.status.setText(f"Error: {message}")
             QtWidgets.QMessageBox.critical(self, "cadmetrics error", message)
 
+        def _invalidate_results(self) -> None:
+            self.results.clear()
+            self.viewer.set_result(None, self._request)
+            self.progress_bar.setRange(0, 1)
+            self.progress_bar.setValue(0)
+
         def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
             if self.controller.state is not OperationState.IDLE:
                 self._close_when_idle = True
+                previous_state = self.controller.state
                 self.controller.shutdown()
+                if previous_state is OperationState.LOADING:
+                    self.status.setText(
+                        "Waiting for the current geometry operation to finish before exit"
+                    )
+                else:
+                    self.status.setText("Stopping after the current sweep case before exit")
                 event.ignore()
                 return
             self._documentation_resources.close()

@@ -307,7 +307,7 @@ class ControlPanel(QtWidgets.QWidget):
         root_layout.addWidget(action_bar)
 
         self.run_button.setToolTip("Run the configured attitude sweep.")
-        self.cancel_button.setToolTip("Cancel the active load or calculation.")
+        self.cancel_button.setToolTip("Stop the sweep after the current case finishes.")
         self.component_all_button.setToolTip(
             "Available after loading a STEP file with multiple components."
         )
@@ -405,12 +405,13 @@ class ControlPanel(QtWidgets.QWidget):
             checkbox.setEnabled(not busy)
         self.run_button.setEnabled(not busy)
         self.apply_advanced_button.setEnabled(not busy and self._advanced_dirty)
-        self.cancel_button.setVisible(busy)
-        self.cancel_button.setEnabled(busy and state is not OperationState.CANCELLING)
+        cancellable = state in (OperationState.CALCULATING, OperationState.CANCELLING)
+        self.cancel_button.setVisible(cancellable)
+        self.cancel_button.setEnabled(state is OperationState.CALCULATING)
         messages = {
             OperationState.LOADING: "Loading model…",
-            OperationState.CALCULATING: "Calculating sweep…",
-            OperationState.CANCELLING: "Cancelling…",
+            OperationState.CALCULATING: "Calculating sweep… Cancel stops after the current case.",
+            OperationState.CANCELLING: "Finishing the current geometry operation…",
         }
         self.operation_label.setText(messages.get(state, ""))
         self.operation_label.setVisible(busy)

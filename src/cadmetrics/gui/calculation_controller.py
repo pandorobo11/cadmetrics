@@ -55,6 +55,7 @@ class _OperationWorker(QtCore.QObject):
                 self._request,
                 model=model,
                 progress_callback=self._on_progress,
+                cancel_callback=self._raise_if_cancelled,
             )
         except CancelledOperation:
             self.cancelled.emit()
@@ -110,7 +111,7 @@ class CalculationController(QtCore.QObject):
         self._start(request, calculate=True)
 
     def cancel(self) -> None:
-        if self._worker is None:
+        if self._worker is None or self._state is not OperationState.CALCULATING:
             return
         self._set_state(OperationState.CANCELLING)
         self._worker.cancel()
@@ -120,7 +121,11 @@ class CalculationController(QtCore.QObject):
             self.shutdown_ready.emit()
             return
         self._shutdown_requested = True
-        self.cancel()
+        if self._state is OperationState.CALCULATING:
+            self.cancel()
+        elif self._worker is not None:
+            self._set_state(OperationState.CANCELLING)
+            self._worker.cancel()
 
     def _start(self, request: CalculationRequest, *, calculate: bool) -> None:
         if self._thread is not None:

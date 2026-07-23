@@ -234,12 +234,15 @@ STEP projected area is always calculated from a tessellated mesh, so the result 
 tessellation quality.
 Open, invalid, or surface-only STEP shapes keep calculable area results but report no volume and
 set `is_watertight` to false.
+Open or non-watertight STL meshes likewise report `volume=None` with a warning while retaining
+calculable surface, base, and projected areas.
 For faster large STEP checks, default B-Rep `measure` and CLI `inspect` skip tessellation when a
 display/projected-area mesh is not needed. The GUI reuses the loaded display mesh when running a
 sweep.
 
 The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the
-selected output length unit. Xmax base-face detection uses `--base-tolerance 1e-6` by default,
+selected output length unit, including for models whose dimensions are smaller than one input
+unit. Xmax base-face detection uses `--base-tolerance 1e-6` by default,
 applied as a relative tolerance to the model bounding-box diagonal. The current validation target
 is within `0.1%` against Fusion 360 for representative closed solids.
 

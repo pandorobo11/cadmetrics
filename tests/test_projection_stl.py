@@ -6,7 +6,7 @@ import pytest
 pytest.importorskip("shapely")
 pytest.importorskip("trimesh")
 
-from cadmetrics.api import measure, project, sweep
+from cadmetrics.api import inspect_model, measure, project, sweep, sweep_model
 from cadmetrics.io import _mesh_xmax_base_area
 
 
@@ -27,7 +27,7 @@ def test_stl_assembly_concatenates_mesh_measurements() -> None:
     path = DATA_DIR / "unit_cube.stl"
     row = measure([path, path])
 
-    assert row.volume == pytest.approx(2.0)
+    assert row.volume is None
     assert row.surface_area == pytest.approx(12.0)
     assert row.base_area == pytest.approx(2.0)
     assert row.is_watertight is False
@@ -61,10 +61,59 @@ def test_stl_assembly_projects_combined_silhouette_once() -> None:
     row = project([path, path])
 
     assert row.projected_area == pytest.approx(1.0)
-    assert row.volume == pytest.approx(2.0)
+    assert row.volume is None
     assert row.surface_area == pytest.approx(12.0)
     assert row.base_area == pytest.approx(2.0)
     assert row.method == "stl-mesh-assembly-projection"
+
+
+def test_non_watertight_stl_leaves_volume_unset() -> None:
+    row = measure(
+        Path(__file__).parents[1]
+        / "samples"
+        / "open_cube_missing_face"
+        / "open_cube_missing_face_ascii.stl"
+    )
+
+    assert row.volume is None
+    assert row.surface_area == pytest.approx(5.0)
+    assert row.is_watertight is False
+    assert "volume is unavailable" in "; ".join(row.warnings)
+
+
+def test_elapsed_fields_separate_model_loading_from_row_calculation() -> None:
+    projected = project(DATA_DIR / "unit_cube.stl")
+    rows = sweep(DATA_DIR / "unit_cube.stl", alpha_deg="0:1:1")
+
+    assert projected.load_elapsed_sec is not None
+    assert projected.load_elapsed_sec > 0.0
+    assert projected.elapsed_sec is not None
+    assert projected.elapsed_sec > 0.0
+    assert all(row.load_elapsed_sec is not None for row in rows)
+    assert all(row.elapsed_sec is not None and row.elapsed_sec > 0.0 for row in rows)
+
+
+def test_sweep_model_checks_cancellation_before_and_after_each_case() -> None:
+    model = inspect_model(DATA_DIR / "unit_cube.stl")
+    checks = 0
+    completed_rows = []
+
+    def cancel_after_first_projection() -> None:
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            raise RuntimeError("cancelled")
+
+    with pytest.raises(RuntimeError, match="cancelled"):
+        sweep_model(
+            model,
+            alpha_deg="0:1:1",
+            cancel_callback=cancel_after_first_projection,
+            progress_callback=lambda _index, _total, row: completed_rows.append(row),
+        )
+
+    assert checks == 2
+    assert completed_rows == []
 
 
 def test_axis_map_flips_loaded_model_coordinates() -> None:

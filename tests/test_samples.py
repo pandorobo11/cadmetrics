@@ -130,6 +130,7 @@ def test_open_cube_sample_warns_about_non_watertight_mesh(kind: str) -> None:
 
     assert measured.surface_area == pytest.approx(5.0)
     assert measured.base_area == pytest.approx(1.0)
+    assert measured.volume is None
     assert measured.is_watertight is False
     assert measured.warnings
 

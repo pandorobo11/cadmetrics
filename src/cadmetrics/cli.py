@@ -58,6 +58,7 @@ CSV_FIELDS = [
     "base_tolerance",
     "step_component_mode",
     "method",
+    "load_elapsed_sec",
     "elapsed_sec",
     "cadmetrics_version",
     "cadmetrics_hash",
@@ -585,6 +586,7 @@ def _emit_measurement_table(row: MeasurementRow, *, title: str) -> None:
     table.add_row("base_tolerance", _format_optional(row.base_tolerance))
     table.add_row("component_mode", row.step_component_mode or "")
     table.add_row("method", row.method or "")
+    table.add_row("load_elapsed_sec", _format_optional(row.load_elapsed_sec))
     table.add_row("elapsed_sec", _format_optional(row.elapsed_sec))
     table.add_row("cadmetrics_version", row.cadmetrics_version)
     table.add_row("cadmetrics_hash", row.cadmetrics_hash)

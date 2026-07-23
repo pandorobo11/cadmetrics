@@ -49,6 +49,7 @@ RESULT_HEADER_LABELS = {
     "input_unit": "Input unit",
     "output_unit": "Output unit",
     "is_watertight": "Watertight",
+    "load_elapsed_sec": "Load elapsed (s)",
     "elapsed_sec": "Elapsed (s)",
 }
 

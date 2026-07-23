@@ -30,6 +30,10 @@ class _FakeViewer(QtWidgets.QWidget):
     base_face_available = QtCore.Signal(bool)
     newly_exposed_surface_available = QtCore.Signal(bool)
 
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.result_calls = []
+
     def set_options(self, options) -> None:
         pass
 
@@ -40,7 +44,7 @@ class _FakeViewer(QtWidgets.QWidget):
         pass
 
     def set_result(self, row, request, *, align_camera=False) -> None:
-        pass
+        self.result_calls.append((row, request, align_camera))
 
     def choose_and_save_image(self) -> None:
         pass
@@ -65,7 +69,7 @@ def test_control_panel_builds_roll_pitch_request(qtbot, tmp_path: Path) -> None:
     assert request.pitch_start == 2.0
 
 
-def test_control_panel_busy_state_enables_only_cancel(qtbot) -> None:
+def test_control_panel_busy_state_enables_cancel_only_while_calculating(qtbot) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)
 
@@ -73,6 +77,11 @@ def test_control_panel_busy_state_enables_only_cancel(qtbot) -> None:
 
     assert panel.run_button.isEnabled() is False
     assert panel.file_edit.isEnabled() is False
+    assert panel.cancel_button.isHidden() is True
+    assert panel.cancel_button.isEnabled() is False
+
+    panel.set_busy(OperationState.CALCULATING)
+    assert panel.cancel_button.isHidden() is False
     assert panel.cancel_button.isEnabled() is True
 
     panel.set_busy(OperationState.CANCELLING)
@@ -338,6 +347,25 @@ def test_main_window_only_composes_gui_components(qtbot, monkeypatch) -> None:
     assert isinstance(window.results, ResultsPanel)
     assert isinstance(window.viewer, _FakeViewer)
     assert len(Path("src/cadmetrics/gui/pyside_app.py").read_text().splitlines()) <= 400
+
+
+def test_main_window_invalidates_results_when_request_changes(qtbot, monkeypatch) -> None:
+    from cadmetrics.gui.jobs import CalculationRequest
+
+    monkeypatch.setattr(pyside_app, "ModelViewer", _FakeViewer)
+    window = pyside_app.MainWindow()
+    qtbot.addWidget(window)
+    window._on_results_ready([_row()])
+    assert window.results.rows
+    assert window.results.save_button.isEnabled() is True
+
+    request = CalculationRequest(file=Path("new.step"), alpha_start=10.0)
+    window._preview_request(request)
+
+    assert window.results.rows == []
+    assert window.results.save_button.isEnabled() is False
+    assert window.viewer.result_calls[-1][0] is None
+    assert window.progress_bar.value() == 0
 
 
 def _model(path: Path, *, component_names: tuple[str, ...]) -> ModelData:

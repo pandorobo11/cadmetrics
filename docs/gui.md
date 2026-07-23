@@ -129,6 +129,9 @@ is enabled by default and uses:
 bounding-box diagonal * 1e-4
 ```
 
+The actual diagonal is used for sub-unit models as well; only the final output-unit deflection is
+floored at `1e-9`.
+
 `Angular deflection` controls STEP angular tessellation tolerance. Its default is `0.1`.
 
 `Base tolerance` controls how close a face must be to cadmetrics-coordinate `Xmax` to count as
@@ -179,6 +182,17 @@ Angle modes use separate `Start`, `End`, and `Step` fields. The sweep calculates
 combination of the selected angle ranges. Unit-vector mode does not sweep.
 
 See [Attitude Definition](attitude.md) for the coordinate convention and formulas.
+
+## Cancellation
+
+`Cancel` is available while a sweep is calculating. Cancellation is cooperative: cadmetrics
+finishes the current projection case and stops before adding another result. STEP loading,
+boolean operations, tessellation, and a single projection are native geometry operations and
+cannot be interrupted safely; closing the window during one of these operations waits for it to
+finish before exiting.
+
+Changing files or calculation settings immediately clears previous result rows and disables CSV
+export, so results from an earlier model cannot be saved as if they belonged to the new model.
 
 ## Results
 

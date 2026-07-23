@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
 from typing import Callable, Literal
@@ -41,6 +42,7 @@ def inspect_model(
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
     require_mesh: bool = True,
 ) -> ModelData:
+    start = perf_counter()
     model = load_model(
         path,
         input_unit=input_unit,
@@ -54,7 +56,8 @@ def inspect_model(
         base_tolerance=base_tolerance,
         require_mesh=require_mesh,
     )
-    return transform_model_axes(model, axis_map)
+    transformed = transform_model_axes(model, axis_map)
+    return replace(transformed, load_elapsed_sec=perf_counter() - start)
 
 
 def measure(
@@ -70,7 +73,6 @@ def measure(
     step_component_mode: StepComponentMode = "filter",
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> MeasurementRow:
-    start = perf_counter()
     model = inspect_model(
         path,
         input_unit=input_unit,
@@ -84,11 +86,12 @@ def measure(
         base_tolerance=base_tolerance,
         require_mesh=_step_metric_source_requires_mesh(step_metric_source),
     )
-    return measure_model(model, elapsed_sec=perf_counter() - start)
+    return measure_model(model)
 
 
 def measure_model(model: ModelData, *, elapsed_sec: float | None = None) -> MeasurementRow:
-    return MeasurementRow(
+    start = perf_counter()
+    row = MeasurementRow(
         file=str(model.path),
         input_unit=model.input_unit,
         output_unit=model.output_unit,
@@ -115,10 +118,15 @@ def measure_model(model: ModelData, *, elapsed_sec: float | None = None) -> Meas
         base_tolerance=model.base_tolerance,
         step_component_mode=model.step_component_mode,
         method=_method_name(model, projected=False),
-        elapsed_sec=elapsed_sec,
+        load_elapsed_sec=model.load_elapsed_sec,
+        elapsed_sec=0.0,
         cadmetrics_version=model.cadmetrics_version,
         cadmetrics_hash=model.cadmetrics_hash,
         warnings=model.warnings,
+    )
+    return replace(
+        row,
+        elapsed_sec=elapsed_sec if elapsed_sec is not None else perf_counter() - start,
     )
 
 
@@ -141,7 +149,6 @@ def project(
     step_component_mode: StepComponentMode = "filter",
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> MeasurementRow:
-    start = perf_counter()
     model = inspect_model(
         path,
         input_unit=input_unit,
@@ -162,7 +169,6 @@ def project(
         alpha_deg=alpha_deg,
         beta_deg=beta_deg,
         direction=direction,
-        elapsed_sec=perf_counter() - start,
     )
 
 
@@ -175,8 +181,9 @@ def project_model(
     alpha_deg: float = 0.0,
     beta_deg: float = 0.0,
     direction: str | None = None,
-    elapsed_sec: float = 0.0,
+    elapsed_sec: float | None = None,
 ) -> MeasurementRow:
+    start = perf_counter()
     mode = _normalize_attitude(attitude)
     orientation, vector = _resolve_project_orientation(
         mode=mode,
@@ -191,8 +198,12 @@ def project_model(
     else:
         assert orientation is not None
         projection_direction = projection_direction_for_orientation(orientation)
-    metrics = projected_metrics(model, orientation=orientation if vector is None else None, direction=vector)
-    return _projected_row(
+    metrics = projected_metrics(
+        model,
+        orientation=orientation if vector is None else None,
+        direction=vector,
+    )
+    row = _projected_row(
         model,
         projection_direction=projection_direction,
         volume=model.volume,
@@ -203,9 +214,12 @@ def project_model(
         angular_deflection=model.angular_deflection,
         base_tolerance=model.base_tolerance,
         method=_method_name(model, projected=True),
-        elapsed_sec=elapsed_sec,
+        elapsed_sec=elapsed_sec if elapsed_sec is not None else 0.0,
         warnings=model.warnings,
     )
+    if elapsed_sec is not None:
+        return row
+    return replace(row, elapsed_sec=perf_counter() - start)
 
 
 def _projected_row(
@@ -267,6 +281,7 @@ def _projected_row(
         base_tolerance=base_tolerance,
         step_component_mode=model.step_component_mode,
         method=method,
+        load_elapsed_sec=model.load_elapsed_sec,
         elapsed_sec=elapsed_sec,
         cadmetrics_version=model.cadmetrics_version,
         cadmetrics_hash=model.cadmetrics_hash,
@@ -344,9 +359,12 @@ def sweep_model(
     beta_deg: SweepValue = 0.0,
     direction: str | None = None,
     progress_callback: Callable[[int, int, MeasurementRow], None] | None = None,
+    cancel_callback: Callable[[], None] | None = None,
 ) -> list[MeasurementRow]:
     mode = _normalize_attitude(attitude)
     if mode == "vector":
+        if cancel_callback is not None:
+            cancel_callback()
         _require_direction(direction, mode)
         assert direction is not None
         _reject_nondefault_sweep(roll_deg, "roll_deg", mode)
@@ -354,6 +372,8 @@ def sweep_model(
         _reject_nondefault_sweep(alpha_deg, "alpha_deg", mode)
         _reject_nondefault_sweep(beta_deg, "beta_deg", mode)
         row = project_model(model, attitude=mode, direction=direction)
+        if cancel_callback is not None:
+            cancel_callback()
         if progress_callback is not None:
             progress_callback(1, 1, row)
         return [row]
@@ -376,6 +396,8 @@ def sweep_model(
     total = orientation_count(roll=roll, alpha=alpha, beta=beta)
     orientations = iter_orientations(roll=roll, alpha=alpha, beta=beta)
     for index, orientation in enumerate(orientations, start=1):
+        if cancel_callback is not None:
+            cancel_callback()
         row_start = perf_counter()
         projection_direction = projection_direction_for_orientation(orientation)
         row = _projected_row(
@@ -389,9 +411,12 @@ def sweep_model(
             angular_deflection=model.angular_deflection,
             base_tolerance=model.base_tolerance,
             method=_method_name(model, projected=True),
-            elapsed_sec=perf_counter() - row_start,
+            elapsed_sec=0.0,
             warnings=model.warnings,
         )
+        row = replace(row, elapsed_sec=perf_counter() - row_start)
+        if cancel_callback is not None:
+            cancel_callback()
         rows.append(row)
         if progress_callback is not None:
             progress_callback(index, total, row)

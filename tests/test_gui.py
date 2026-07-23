@@ -598,6 +598,7 @@ def test_gui_csv_export_matches_cli_columns(tmp_path: Path) -> None:
             "base_tolerance": "1e-06",
             "step_component_mode": "",
             "method": "stl-mesh-projection",
+            "load_elapsed_sec": "",
             "elapsed_sec": "0.01",
             "cadmetrics_version": row.cadmetrics_version,
             "cadmetrics_hash": row.cadmetrics_hash,
