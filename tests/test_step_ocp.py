@@ -15,7 +15,7 @@ from OCP.TopoDS import TopoDS, TopoDS_Compound
 
 from cadmetrics.api import inspect_model, measure, project
 from cadmetrics.cli import app
-from cadmetrics.io import _usable_step_component_name
+from cadmetrics._ocp import _usable_step_component_name
 from typer.testing import CliRunner
 
 
@@ -76,7 +76,7 @@ def test_step_measure_brep_does_not_require_tessellation(
     def fail_tessellation(*args, **kwargs):
         raise AssertionError("STEP measure should not tessellate in B-Rep metric mode")
 
-    monkeypatch.setattr("cadmetrics.io._tessellate_ocp_shape", fail_tessellation)
+    monkeypatch.setattr("cadmetrics._ocp._tessellate_ocp_shape", fail_tessellation)
 
     measured = measure(step_path)
 
@@ -464,7 +464,10 @@ def test_step_base_area_falls_back_to_mesh_when_exact_calculation_fails(
     writer.Transfer(shape, STEPControl_AsIs)
     assert writer.Write(str(step_path)) == IFSelect_RetDone
 
-    monkeypatch.setattr("cadmetrics.io._ocp_xmax_base_area", lambda *args, **kwargs: (0.0, False, True))
+    monkeypatch.setattr(
+        "cadmetrics._step_io._ocp_xmax_base_area",
+        lambda *args, **kwargs: (0.0, False, True),
+    )
 
     measured = measure(step_path)
 
@@ -483,7 +486,7 @@ def test_step_subtract_base_area_mesh_fallback_excludes_newly_exposed_faces(
     ).Shape()
     _write_step_compound(step_path, [enabled, disabled])
     monkeypatch.setattr(
-        "cadmetrics.io._ocp_xmax_base_area",
+        "cadmetrics._step_io._ocp_xmax_base_area",
         lambda *args, **kwargs: (0.0, False, True),
     )
 
@@ -508,7 +511,7 @@ def test_step_subtract_base_area_is_unset_when_face_classification_fails(
     ).Shape()
     _write_step_compound(step_path, [enabled, disabled])
     monkeypatch.setattr(
-        "cadmetrics.io._classify_cut_result_faces",
+        "cadmetrics._ocp._classify_cut_result_faces",
         lambda *args, **kwargs: (None, None),
     )
 

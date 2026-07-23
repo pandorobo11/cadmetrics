@@ -7,7 +7,7 @@ pytest.importorskip("shapely")
 pytest.importorskip("trimesh")
 
 from cadmetrics.api import inspect_model, measure, project, sweep, sweep_model
-from cadmetrics.io import _mesh_xmax_base_area
+from cadmetrics._mesh_io import _mesh_xmax_base_area
 
 
 DATA_DIR = Path(__file__).parent / "data"
