@@ -245,15 +245,26 @@ def test_control_panel_populates_step_components(qtbot, tmp_path: Path) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)
     panel.set_file_paths((path,))
-    panel.set_model(_model(path, component_names=("Body", "Wing")))
+    panel.set_model(
+        _model(
+            path,
+            component_names=("Body", "Left wing", "Right wing", "Tail", "Rudder"),
+        )
+    )
 
+    assert panel.component_scroll.minimumHeight() == 130
+    assert panel.component_scroll.maximumHeight() == 130
+    panel.component_none_button.click()
+    assert all(not box.isChecked() for box in panel._component_checkboxes)
+    panel.component_all_button.click()
+    assert all(box.isChecked() for box in panel._component_checkboxes)
     panel._component_checkboxes[1].setChecked(False)
     panel.step_component_mode.setCurrentIndex(panel.step_component_mode.findData("subtract"))
     request = panel.request()
 
-    assert request.step_components == (1,)
+    assert request.step_components == (1, 3, 4, 5)
     assert request.step_component_mode == "subtract"
-    assert panel.component_summary.text() == "1 of 2 components enabled."
+    assert panel.component_summary.text() == "4 of 5 components enabled."
 
 
 def test_results_panel_displays_selects_and_exports_rows(qtbot, tmp_path: Path) -> None:
