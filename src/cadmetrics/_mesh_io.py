@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -23,13 +24,14 @@ def _load_stl(
     except ImportError as exc:
         raise RuntimeError("STL support requires the 'trimesh' dependency.") from exc
 
-    mesh = trimesh.load(path, force="mesh", process=False)
-    if isinstance(mesh, trimesh.Scene):
-        mesh = mesh.dump(concatenate=True)
-    if isinstance(mesh, list):
-        mesh = trimesh.util.concatenate(mesh)
-    if not isinstance(mesh, trimesh.Trimesh):
+    loaded: Any = trimesh.load(path, force="mesh", process=False)
+    if isinstance(loaded, trimesh.Scene):
+        loaded = loaded.dump(concatenate=True)
+    if isinstance(loaded, list):
+        loaded = trimesh.util.concatenate(loaded)
+    if not isinstance(loaded, trimesh.Trimesh):
         raise ValueError(f"Could not load STL mesh from {path}")
+    mesh = loaded
     mesh = mesh.copy()
     mesh.merge_vertices()
 

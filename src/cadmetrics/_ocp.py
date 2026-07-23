@@ -164,7 +164,15 @@ def _ocp_bounds(
 ) -> tuple[float, float, float, float, float, float]:
     box = Bnd_Box()
     _add_ocp_bounds(shape, box, BRepBndLib)
-    return tuple(float(value) for value in box.Get())
+    xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+    return (
+        float(xmin),
+        float(ymin),
+        float(zmin),
+        float(xmax),
+        float(ymax),
+        float(zmax),
+    )
 
 
 def _add_ocp_bounds(shape: Any, box: Any, BRepBndLib: Any) -> None:
@@ -186,16 +194,13 @@ def _scaled_output_bounds(
     scale: float,
 ) -> tuple[float, float, float, float, float, float]:
     xmin, ymin, zmin, xmax, ymax, zmax = native_bounds
-    return tuple(
-        _clean_bound(value)
-        for value in (
-            xmin * scale,
-            xmax * scale,
-            ymin * scale,
-            ymax * scale,
-            zmin * scale,
-            zmax * scale,
-        )
+    return (
+        _clean_bound(xmin * scale),
+        _clean_bound(xmax * scale),
+        _clean_bound(ymin * scale),
+        _clean_bound(ymax * scale),
+        _clean_bound(zmin * scale),
+        _clean_bound(zmax * scale),
     )
 
 

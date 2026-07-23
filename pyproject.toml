@@ -64,25 +64,7 @@ testpaths = ["tests"]
 
 [tool.mypy]
 python_version = "3.12"
-files = [
-  "src/cadmetrics/api.py",
-  "src/cadmetrics/coordinates.py",
-  "src/cadmetrics/orientation.py",
-  "src/cadmetrics/projection.py",
-  "src/cadmetrics/sweep.py",
-  "src/cadmetrics/types.py",
-  "src/cadmetrics/units.py",
-  "src/cadmetrics/gui/gui_formatters.py",
-  "src/cadmetrics/gui/gui_types.py",
-  "src/cadmetrics/gui/control_panel.py",
-  "src/cadmetrics/gui/results_panel.py",
-  "src/cadmetrics/gui/viewer.py",
-  "src/cadmetrics/gui/model_loading.py",
-  "src/cadmetrics/gui/calculation_controller.py",
-  "src/cadmetrics/gui/pyside_app.py",
-  "src/cadmetrics/gui/styles.py",
-  "src/cadmetrics/gui/viewer_geometry.py",
-]
+files = ["src/cadmetrics"]
 check_untyped_defs = true
 disallow_untyped_defs = true
 ignore_missing_imports = true

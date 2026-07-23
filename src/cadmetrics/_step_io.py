@@ -133,13 +133,15 @@ def _prepare_step_input(
     component_names = _component_names(path, solids)
     resolved_input_unit = input_unit
     if input_unit.strip().lower() == "auto":
-        resolved_input_unit = _detect_step_length_unit(
+        detected_input_unit = _detect_step_length_unit(
             reader,
             TColStd_SequenceOfAsciiString=ocp.TColStd_SequenceOfAsciiString,
         )
-        if resolved_input_unit is None:
+        if detected_input_unit is None:
             resolved_input_unit = "m"
             warnings.append("Could not detect STEP length unit; assuming m.")
+        else:
+            resolved_input_unit = detected_input_unit
     return PreparedStepInput(
         path=path,
         original_shape=original_shape,
@@ -266,7 +268,7 @@ def _finalize_step_model(
     selected_components = _resolve_step_component_selection(step_components, solid_count)
     shape, unioned, retained_faces, cut_faces = _build_step_component_shape(
         prepared.original_shape,
-        prepared.solids,
+        list(prepared.solids),
         selected_components,
         component_mode=step_component_mode,
         BRepAlgoAPI_Cut=ocp.BRepAlgoAPI_Cut,
@@ -398,6 +400,8 @@ def _finalize_step_model(
         vertices, faces = _empty_mesh()
         newly_exposed_face_indices = ()
 
+    base_area: float | None
+    base_found: bool
     if exact_base_failed:
         base_area, base_found = _mesh_xmax_base_area(
             vertices,
@@ -413,6 +417,10 @@ def _finalize_step_model(
         base_area = exact_base_area
         base_found = exact_base_found
 
+    volume: float | None
+    surface_area: float | None
+    newly_exposed_surface_area: float | None
+    mesh_watertight: bool | None
     if metric_source == "mesh":
         if empty_result:
             volume, surface_area, mesh_watertight = 0.0, 0.0, False

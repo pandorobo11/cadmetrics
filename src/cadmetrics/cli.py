@@ -3,12 +3,19 @@ from __future__ import annotations
 import csv
 import sys
 from pathlib import Path
-from typing import cast
+from typing import Callable, TypeVar, TypedDict, cast
 
 import typer
 from rich.console import Console
 from rich.markup import escape
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TaskID,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 
 from cadmetrics.api import AttitudeMode, StepComponentMode, inspect_model
@@ -24,6 +31,25 @@ app = typer.Typer(no_args_is_help=True, help="Calculate CAD volume, surface, and
 console = Console()
 err_console = Console(stderr=True)
 ATTITUDE_MODES = ("alpha-beta", "roll-pitch", "vector")
+T = TypeVar("T")
+
+
+class ProjectAttitude(TypedDict):
+    mode: AttitudeMode
+    roll: float
+    pitch: float
+    alpha: float
+    beta: float
+    direction: str | None
+
+
+class SweepAttitude(TypedDict):
+    mode: AttitudeMode
+    roll: str
+    pitch: str
+    alpha: str
+    beta: str
+    direction: str | None
 
 CSV_FIELDS = [
     "file",
@@ -223,7 +249,7 @@ def project(
     row = _run_or_exit(
         lambda: project_api(
             file,
-            attitude=cast(AttitudeMode, request["mode"]),
+            attitude=request["mode"],
             roll_deg=request["roll"],
             pitch_deg=request["pitch"],
             alpha_deg=request["alpha"],
@@ -344,7 +370,7 @@ def sweep(
         TimeElapsedColumn(),
         console=err_console,
     )
-    task_id: int | None = None
+    task_id: TaskID | None = None
 
     def on_progress(index: int, total: int, row: MeasurementRow) -> None:
         nonlocal task_id
@@ -385,7 +411,7 @@ def sweep(
                 progress,
                 lambda: sweep_api(
                     file,
-                    attitude=cast(AttitudeMode, request["mode"]),
+                    attitude=request["mode"],
                     roll_deg=request["roll"],
                     pitch_deg=request["pitch"],
                     alpha_deg=request["alpha"],
@@ -640,7 +666,7 @@ def _resolve_project_attitude(
     roll: float,
     pitch: float | None,
     direction: str | None,
-) -> dict[str, float | str | None]:
+) -> ProjectAttitude:
     mode = _normalize_attitude_mode(attitude, pitch=pitch, direction=direction)
     if mode == "vector":
         if direction is None:
@@ -694,7 +720,7 @@ def _resolve_sweep_attitude(
     roll: str,
     pitch: str | None,
     direction: str | None,
-) -> dict[str, str | float | None]:
+) -> SweepAttitude:
     mode = _normalize_attitude_mode(attitude, pitch=pitch, direction=direction)
     if mode == "vector":
         if direction is None:
@@ -723,7 +749,7 @@ def _resolve_sweep_attitude(
             "roll": roll,
             "pitch": "0" if pitch is None else pitch,
             "alpha": "0",
-            "beta": 0.0,
+            "beta": "0",
             "direction": None,
         }
 
@@ -745,7 +771,7 @@ def _normalize_attitude_mode(
     *,
     pitch: float | str | None,
     direction: str | None,
-) -> str:
+) -> AttitudeMode:
     if attitude is None:
         if direction is not None:
             return "vector"
@@ -757,7 +783,7 @@ def _normalize_attitude_mode(
         raise typer.BadParameter(
             f"--attitude must be one of: {', '.join(ATTITUDE_MODES)}"
         )
-    return mode
+    return cast(AttitudeMode, mode)
 
 
 def _reject_nonzero(value: float, option: str, mode: str) -> None:
@@ -770,7 +796,7 @@ def _reject_nondefault_spec(value: str, option: str, mode: str) -> None:
         raise typer.BadParameter(f"{option} cannot be used with --attitude {mode}")
 
 
-def _run_with_progress(progress: Progress, action):
+def _run_with_progress(progress: Progress, action: Callable[[], T]) -> T:
     with progress:
         return action()
 
@@ -781,7 +807,7 @@ def _format_optional(value: float | None) -> str:
     return f"{value:.12g}"
 
 
-def _run_or_exit(action):
+def _run_or_exit(action: Callable[[], T]) -> T:
     try:
         return action()
     except Exception as exc:

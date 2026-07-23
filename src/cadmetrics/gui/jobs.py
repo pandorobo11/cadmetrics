@@ -11,6 +11,7 @@ from cadmetrics.types import MeasurementRow, ModelData
 
 AttitudeInputMode = Literal["alpha_beta", "roll_pitch", "vector"]
 ProgressCallback = Callable[[int, int, str], None]
+OrientationProgressCallback = Callable[[int, int, MeasurementRow], None]
 GuiModelPath = Path | tuple[Path, ...]
 
 
@@ -51,17 +52,6 @@ def run_calculation(
     progress_callback: ProgressCallback | None = None,
     cancel_callback: Callable[[], None] | None = None,
 ) -> list[MeasurementRow]:
-    common = {
-        "input_unit": request.input_unit,
-        "output_unit": request.output_unit,
-        "mesh_deflection": request.mesh_deflection,
-        "angular_deflection": request.angular_deflection,
-        "base_tolerance": request.base_tolerance,
-        "axis_map": request.axis_map,
-        "step_metric_source": request.step_metric_source,
-        "step_components": request.step_components,
-        "step_component_mode": request.step_component_mode,
-    }
     if request.attitude_mode == "alpha_beta":
         if model is not None:
             return sweep_model(
@@ -78,7 +68,15 @@ def run_calculation(
             alpha_deg=_range_spec(request.alpha_start, request.alpha_end, request.alpha_step),
             beta_deg=_range_spec(request.beta_start, request.beta_end, request.beta_step),
             progress_callback=_orientation_progress(progress_callback, "alpha_beta"),
-            **common,
+            input_unit=request.input_unit,
+            output_unit=request.output_unit,
+            mesh_deflection=request.mesh_deflection,
+            angular_deflection=request.angular_deflection,
+            base_tolerance=request.base_tolerance,
+            axis_map=request.axis_map,
+            step_metric_source=request.step_metric_source,
+            step_components=request.step_components,
+            step_component_mode=request.step_component_mode,
         )
     if request.attitude_mode == "roll_pitch":
         if model is not None:
@@ -96,7 +94,15 @@ def run_calculation(
             roll_deg=_range_spec(request.roll_start, request.roll_end, request.roll_step),
             pitch_deg=_range_spec(request.pitch_start, request.pitch_end, request.pitch_step),
             progress_callback=_orientation_progress(progress_callback, "roll_pitch"),
-            **common,
+            input_unit=request.input_unit,
+            output_unit=request.output_unit,
+            mesh_deflection=request.mesh_deflection,
+            angular_deflection=request.angular_deflection,
+            base_tolerance=request.base_tolerance,
+            axis_map=request.axis_map,
+            step_metric_source=request.step_metric_source,
+            step_components=request.step_components,
+            step_component_mode=request.step_component_mode,
         )
 
     direction = f"{request.vector_x},{request.vector_y},{request.vector_z}"
@@ -111,7 +117,15 @@ def run_calculation(
             request.file,
             attitude="vector",
             direction=direction,
-            **common,
+            input_unit=request.input_unit,
+            output_unit=request.output_unit,
+            mesh_deflection=request.mesh_deflection,
+            angular_deflection=request.angular_deflection,
+            base_tolerance=request.base_tolerance,
+            axis_map=request.axis_map,
+            step_metric_source=request.step_metric_source,
+            step_components=request.step_components,
+            step_component_mode=request.step_component_mode,
         )
     if progress_callback is not None:
         progress_callback(
@@ -125,11 +139,11 @@ def run_calculation(
 def _orientation_progress(
     progress_callback: ProgressCallback | None,
     mode: Literal["alpha_beta", "roll_pitch"],
-):
+) -> OrientationProgressCallback | None:
     if progress_callback is None:
         return None
 
-    def on_progress(index, total, row) -> None:
+    def on_progress(index: int, total: int, row: MeasurementRow) -> None:
         if mode == "roll_pitch":
             text = f"roll={row.roll_deg:g}, pitch={row.pitch_deg:g}"
         else:
