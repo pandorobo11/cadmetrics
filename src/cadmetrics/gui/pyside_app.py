@@ -272,3 +272,7 @@ def _documentation_site_index(
     if not index.is_file():
         raise RuntimeError("Bundled cadmetrics documentation index was not found.")
     return index, None
+
+
+if __name__ == "__main__":
+    main()
