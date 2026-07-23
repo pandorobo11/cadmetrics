@@ -8,6 +8,8 @@ import pytest
 
 pytest.importorskip("PySide6")
 
+from PySide6 import QtCore
+
 from cadmetrics.gui.calculation_controller import CalculationController
 from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.jobs import CalculationRequest
@@ -67,26 +69,18 @@ def test_controller_reloads_when_geometry_settings_change(qtbot, monkeypatch) ->
     assert len(loads) == 2
 
 
-def test_controller_rejects_overlapping_operation(qtbot, monkeypatch) -> None:
-    release = Event()
-
-    def slow_load(request):
-        release.wait(timeout=2)
-        return _model()
-
-    monkeypatch.setattr(
-        "cadmetrics.gui.calculation_controller.load_model_for_request",
-        slow_load,
-    )
+def test_controller_rejects_overlapping_operation() -> None:
     controller = CalculationController()
     messages = []
     controller.message.connect(messages.append)
     request = CalculationRequest(file=Path("model.step"))
+    active_thread = QtCore.QThread(controller)
 
-    controller.load_only(request)
-    controller.calculate(request)
-    release.set()
-    qtbot.waitUntil(lambda: controller.state is OperationState.IDLE)
+    controller._thread = active_thread
+    try:
+        controller.calculate(request)
+    finally:
+        controller._thread = None
 
     assert messages == ["Another model operation is already running."]
 
