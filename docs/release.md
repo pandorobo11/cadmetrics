@@ -8,10 +8,11 @@ cadmetrics uses semantic versioning.
 - Major releases (`v1.0.0`) are for stable public compatibility guarantees or breaking changes
   after the package is mature enough.
 
-The v0.11 follow-up adds `load_elapsed_sec` to `ModelData`, `MeasurementRow`, and CSV output.
+The v0.12 release adds `load_elapsed_sec` to `ModelData`, `MeasurementRow`, and CSV output.
 Existing `elapsed_sec` now consistently means row calculation time after model preparation;
 total uncached time is the sum of both fields. Non-watertight STL volume is now empty rather than
-an unreliable mesh-derived value.
+an unreliable mesh-derived value. The GUI also adds cooperative sweep cancellation, a native
+Windows GUI launcher, improved component selector sizing, and a centroid visibility control.
 
 Before tagging a release:
 
