@@ -53,7 +53,7 @@ class PreparedStepInput:
 
 @dataclass(frozen=True)
 class ReadStepFile:
-    reader: Any
+    shape: Any
     declared_unit_name: str | None
     resolved_input_unit: str
     kernel_unit: str
@@ -133,7 +133,7 @@ def _prepare_step_input(
     ocp: OcpBindings,
 ) -> PreparedStepInput:
     read_result = _read_step_file(path, input_unit=input_unit, ocp=ocp)
-    source_shape = read_result.reader.OneShape()
+    source_shape = read_result.shape
     solids = tuple(
         _extract_ocp_solids(
             source_shape,
@@ -196,7 +196,7 @@ def _prepare_step_assembly_input(
             ),
             ocp=ocp,
         )
-        original_shape = read_result.reader.OneShape()
+        original_shape = read_result.shape
         solids = tuple(
             _extract_ocp_solids(
                 original_shape,
@@ -304,48 +304,52 @@ def _read_step_file(
         else _step_unit_name_to_millimetres(declared_unit_name)
     )
     warnings: list[str] = []
+    coordinate_scale = 1.0
     if input_unit.strip().lower() == "auto":
         if declared_unit_name is None:
             resolved_input_unit = "m"
-            kernel_unit = "m"
-            system_length_unit = length_scale(kernel_unit, "mm")
+            kernel_unit = "mm"
+            coordinate_scale = length_scale(resolved_input_unit, "mm")
             warnings.append(missing_unit_warning)
         elif declared_input_unit is None:
             resolved_input_unit = "mm"
             kernel_unit = "mm"
-            system_length_unit = 1.0
             warnings.append(
                 f"STEP length unit '{declared_unit_name}' in {path.name} is not available "
                 "as an input unit; OpenCascade converted it to mm."
             )
         else:
             resolved_input_unit = declared_input_unit
-            kernel_unit = declared_input_unit
-            system_length_unit = length_scale(declared_input_unit, "mm")
+            kernel_unit = "mm"
+        # Keep OpenCascade in its standard millimetre system. Its geometric
+        # tolerances are expressed in kernel coordinates and become unreliable
+        # for very small models if the kernel itself is switched to metres/feet.
     else:
         resolved_input_unit = normalize_unit(input_unit)
-        kernel_unit = resolved_input_unit
+        kernel_unit = "mm"
         if declared_unit_name is not None and declared_unit_mm is None:
             raise ValueError(
                 f"Cannot reinterpret STEP length unit '{declared_unit_name}' in "
                 f"{path.name} as {resolved_input_unit}; its conversion factor is unsupported."
             )
-        system_length_unit = (
-            declared_unit_mm
-            if declared_unit_mm is not None
-            else length_scale(resolved_input_unit, "mm")
+        coordinate_scale = length_scale(resolved_input_unit, "mm") / (
+            declared_unit_mm if declared_unit_mm is not None else 1.0
         )
 
-    # STEPControl normally converts imported coordinates to its default millimetre
-    # system unit. When the declaration has a known scale, use that scale before
-    # transfer so an explicit input unit can reinterpret the raw STEP coordinates.
-    # Unsupported auto-detected units stay in the normalised millimetre kernel unit.
-    reader.SetSystemLengthUnit(system_length_unit)
+    reader.SetSystemLengthUnit(1.0)
     transferred = reader.TransferRoots()
     if transferred == 0:
         raise ValueError(f"STEP file did not contain transferable roots: {path}")
+    shape = reader.OneShape()
+    if coordinate_scale != 1.0:
+        transform = ocp.gp_Trsf()
+        transform.SetScale(ocp.gp_Pnt(0.0, 0.0, 0.0), coordinate_scale)
+        transformed = ocp.BRepBuilderAPI_Transform(shape, transform, True, False)
+        if not transformed.IsDone():
+            raise ValueError(f"Could not reinterpret STEP coordinates for {path}")
+        shape = transformed.Shape()
     return ReadStepFile(
-        reader=reader,
+        shape=shape,
         declared_unit_name=declared_unit_name,
         resolved_input_unit=resolved_input_unit,
         kernel_unit=kernel_unit,

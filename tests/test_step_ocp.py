@@ -68,6 +68,32 @@ def test_declared_step_units_are_converted_once(
     assert projected.projected_area == pytest.approx(6.0)
 
 
+def test_metre_step_keeps_kernel_tolerances_for_sub_micrometre_box(
+    tmp_path: Path,
+) -> None:
+    step_path = tmp_path / "sub_micrometre_box.step"
+    side_mm = 1.0e-4
+    shape = BRepPrimAPI_MakeBox(side_mm, side_mm, side_mm).Shape()
+    _write_step_with_unit(step_path, shape, "M")
+
+    inspected = inspect_model(step_path, output_unit="m")
+    explicitly_metre = inspect_model(step_path, input_unit="m", output_unit="m")
+
+    assert inspected.input_unit == "m"
+    assert inspected.bounds == pytest.approx(
+        (0.0, 1.0e-7, 0.0, 1.0e-7, 0.0, 1.0e-7),
+        rel=1.0e-9,
+        abs=1.0e-18,
+    )
+    assert inspected.volume == pytest.approx(1.0e-21, rel=1.0e-6)
+    assert inspected.surface_area == pytest.approx(6.0e-14, rel=1.0e-6)
+    assert inspected.is_watertight is True
+    assert explicitly_metre.bounds == pytest.approx(inspected.bounds)
+    assert explicitly_metre.volume == pytest.approx(inspected.volume)
+    assert explicitly_metre.surface_area == pytest.approx(inspected.surface_area)
+    assert explicitly_metre.is_watertight is True
+
+
 def test_explicit_step_unit_reinterprets_file_coordinates(tmp_path: Path) -> None:
     step_path = tmp_path / "one_by_two_by_three_inches.step"
     shape = BRepPrimAPI_MakeBox(25.4, 50.8, 76.2).Shape()

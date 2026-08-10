@@ -20,6 +20,7 @@ from cadmetrics._mesh_io import (
 class OcpBindings:
     Bnd_Box: Any
     BRep_Builder: Any
+    BRepBuilderAPI_Transform: Any
     BRep_Tool: Any
     BRepAlgoAPI_Cut: Any
     BRepAlgoAPI_Fuse: Any
@@ -39,6 +40,8 @@ class OcpBindings:
     TopLoc_Location: Any
     TopoDS: Any
     TopoDS_Compound: Any
+    gp_Pnt: Any
+    gp_Trsf: Any
 
 
 @cache
@@ -46,6 +49,7 @@ def load_ocp_bindings() -> OcpBindings:
     try:
         from OCP.Bnd import Bnd_Box
         from OCP.BRep import BRep_Builder, BRep_Tool
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
         from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
         from OCP.BRepBndLib import BRepBndLib
         from OCP.BRepCheck import BRepCheck_Analyzer
@@ -59,6 +63,7 @@ def load_ocp_bindings() -> OcpBindings:
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS, TopoDS_Compound
+        from OCP.gp import gp_Pnt, gp_Trsf
     except ImportError as exc:
         raise RuntimeError(
             "STEP support requires the optional dependency: cadmetrics[step]."
@@ -67,6 +72,7 @@ def load_ocp_bindings() -> OcpBindings:
     return OcpBindings(
         Bnd_Box=Bnd_Box,
         BRep_Builder=BRep_Builder,
+        BRepBuilderAPI_Transform=BRepBuilderAPI_Transform,
         BRep_Tool=BRep_Tool,
         BRepAlgoAPI_Cut=BRepAlgoAPI_Cut,
         BRepAlgoAPI_Fuse=BRepAlgoAPI_Fuse,
@@ -86,6 +92,8 @@ def load_ocp_bindings() -> OcpBindings:
         TopLoc_Location=TopLoc_Location,
         TopoDS=TopoDS,
         TopoDS_Compound=TopoDS_Compound,
+        gp_Pnt=gp_Pnt,
+        gp_Trsf=gp_Trsf,
     )
 
 
