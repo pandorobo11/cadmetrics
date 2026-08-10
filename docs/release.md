@@ -24,6 +24,13 @@ multi-file inputs. It rejects inconsistent STL shell winding instead of reportin
 volume, protects input CAD files from CSV export overwrites in the CLI and GUI, and avoids leaking
 XCAF documents while reading component names.
 
+v0.13.0 hardens GUI background-operation teardown to prevent native crashes and keeps controller
+state changes on the GUI thread. It validates attitude, sweep, and model-loading options before
+file I/O; splits STEP finalization into explicit processing stages; replaces the materialized
+results widget with a scalable table model; and makes one typed result schema drive CSV, GUI, and
+documentation fields. GUI packaging and interaction checks now exercise behavior instead of
+matching implementation source text.
+
 Before tagging a release:
 
 1. Update `project.version` in `pyproject.toml`.
