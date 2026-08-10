@@ -14,7 +14,7 @@ from cadmetrics._mesh_io import (
 from cadmetrics._ocp import (
     OcpBindings,
     _build_step_component_shape,
-    _detect_step_length_unit,
+    _extract_ocp_non_solid_faces,
     _extract_ocp_solids,
     _ocp_bounding_box_diagonal,
     _ocp_bounds,
@@ -27,6 +27,9 @@ from cadmetrics._ocp import (
     _resolve_step_component_selection,
     _scaled_output_bounds,
     _step_component_names_from_xcaf,
+    _step_length_unit_name,
+    _step_unit_name_to_length_unit,
+    _step_unit_name_to_millimetres,
     _tessellate_ocp_shape_with_marked_faces,
     _tessellated_ocp_shapes_surface_area,
     load_ocp_bindings,
@@ -40,10 +43,21 @@ class PreparedStepInput:
     path: Path
     original_shape: Any
     solids: tuple[Any, ...]
+    additional_shapes: tuple[Any, ...]
     component_names: tuple[str, ...]
     resolved_input_unit: str
+    kernel_unit: str
     warnings: tuple[str, ...]
     is_assembly: bool
+
+
+@dataclass(frozen=True)
+class ReadStepFile:
+    reader: Any
+    declared_unit_name: str | None
+    resolved_input_unit: str
+    kernel_unit: str
+    warnings: tuple[str, ...]
 
 
 def _load_step(
@@ -95,7 +109,6 @@ def _load_step_assembly(
     prepared = _prepare_step_assembly_input(
         paths,
         input_unit=input_unit,
-        step_components=step_components,
         ocp=ocp,
     )
     return _finalize_step_model(
@@ -119,9 +132,8 @@ def _prepare_step_input(
     input_unit: str,
     ocp: OcpBindings,
 ) -> PreparedStepInput:
-    reader = _read_step_file(path, ocp=ocp)
-    original_shape = reader.OneShape()
-    warnings: list[str] = []
+    read_result = _read_step_file(path, input_unit=input_unit, ocp=ocp)
+    original_shape = read_result.reader.OneShape()
     solids = tuple(
         _extract_ocp_solids(
             original_shape,
@@ -131,24 +143,15 @@ def _prepare_step_input(
         )
     )
     component_names = _component_names(path, solids)
-    resolved_input_unit = input_unit
-    if input_unit.strip().lower() == "auto":
-        detected_input_unit = _detect_step_length_unit(
-            reader,
-            TColStd_SequenceOfAsciiString=ocp.TColStd_SequenceOfAsciiString,
-        )
-        if detected_input_unit is None:
-            resolved_input_unit = "m"
-            warnings.append("Could not detect STEP length unit; assuming m.")
-        else:
-            resolved_input_unit = detected_input_unit
     return PreparedStepInput(
         path=path,
         original_shape=original_shape,
         solids=solids,
+        additional_shapes=(),
         component_names=component_names,
-        resolved_input_unit=resolved_input_unit,
-        warnings=tuple(warnings),
+        resolved_input_unit=read_result.resolved_input_unit,
+        kernel_unit=read_result.kernel_unit,
+        warnings=read_result.warnings,
         is_assembly=False,
     )
 
@@ -157,18 +160,26 @@ def _prepare_step_assembly_input(
     paths: tuple[Path, ...],
     *,
     input_unit: str,
-    step_components: tuple[int, ...] | None,
     ocp: OcpBindings,
 ) -> PreparedStepInput:
     warnings: list[str] = []
-    detected_units: list[str] = []
+    declared_units: list[str] = []
+    resolved_units: list[str] = []
+    kernel_units: list[str] = []
     component_names: list[str] = []
     solids_by_component: list[Any] = []
     non_solid_shapes: list[Any] = []
 
     for path in paths:
-        reader = _read_step_file(path, ocp=ocp)
-        original_shape = reader.OneShape()
+        read_result = _read_step_file(
+            path,
+            input_unit=input_unit,
+            missing_unit_warning=(
+                f"Could not detect STEP length unit for {path.name}; assuming m."
+            ),
+            ocp=ocp,
+        )
+        original_shape = read_result.reader.OneShape()
         solids = tuple(
             _extract_ocp_solids(
                 original_shape,
@@ -177,21 +188,33 @@ def _prepare_step_assembly_input(
                 TopoDS=ocp.TopoDS,
             )
         )
-        if input_unit.strip().lower() == "auto":
-            detected = _detect_step_length_unit(
-                reader,
-                TColStd_SequenceOfAsciiString=ocp.TColStd_SequenceOfAsciiString,
+        warnings.extend(read_result.warnings)
+        declared_units.append(
+            (
+                _step_unit_name_to_length_unit(read_result.declared_unit_name)
+                if read_result.declared_unit_name is not None
+                else None
             )
-            if detected is None:
-                detected = "m"
-                warnings.append(f"Could not detect STEP length unit for {path.name}; assuming m.")
-            detected_units.append(detected)
+            or read_result.declared_unit_name
+            or read_result.resolved_input_unit
+        )
+        resolved_units.append(read_result.resolved_input_unit)
+        kernel_units.append(read_result.kernel_unit)
 
         for name, solid in zip(_component_names(path, solids), solids, strict=True):
             component_names.append(f"{path.name}: {name}")
             solids_by_component.append(solid)
 
-        if not solids and step_components is None:
+        if solids:
+            non_solid_shapes.extend(
+                _extract_ocp_non_solid_faces(
+                    original_shape,
+                    solids,
+                    TopAbs_FACE=ocp.TopAbs_FACE,
+                    TopExp_Explorer=ocp.TopExp_Explorer,
+                )
+            )
+        else:
             non_solid_shapes.append(original_shape)
 
     builder = ocp.BRep_Builder()
@@ -208,37 +231,109 @@ def _prepare_step_assembly_input(
         warnings.append("STEP assembly did not contain solid components.")
 
     if input_unit.strip().lower() == "auto":
-        unique_units = set(detected_units)
+        unique_units = set(declared_units)
         if len(unique_units) > 1:
             raise ValueError(
                 "Cannot assemble STEP files with different detected units: "
                 f"{', '.join(sorted(unique_units))}. "
                 "Use files with a common unit or specify --unit explicitly."
             )
-        resolved_input_unit = detected_units[0] if detected_units else "m"
+        resolved_input_unit = resolved_units[0] if resolved_units else "m"
     else:
-        resolved_input_unit = input_unit
+        resolved_input_unit = normalize_unit(input_unit)
+
+    unique_kernel_units = set(kernel_units)
+    if len(unique_kernel_units) > 1:
+        raise ValueError("Cannot assemble STEP files with different kernel coordinate units.")
+    kernel_unit = kernel_units[0] if kernel_units else resolved_input_unit
 
     return PreparedStepInput(
         path=_assembly_path(paths),
         original_shape=original_shape,
         solids=tuple(solids_by_component),
+        additional_shapes=tuple(non_solid_shapes) if solids_by_component else (),
         component_names=tuple(component_names),
         resolved_input_unit=resolved_input_unit,
+        kernel_unit=kernel_unit,
         warnings=tuple(warnings),
         is_assembly=True,
     )
 
 
-def _read_step_file(path: Path, *, ocp: OcpBindings) -> Any:
+def _read_step_file(
+    path: Path,
+    *,
+    input_unit: str,
+    ocp: OcpBindings,
+    missing_unit_warning: str = "Could not detect STEP length unit; assuming m.",
+) -> ReadStepFile:
     reader = ocp.STEPControl_Reader()
     status = reader.ReadFile(str(path))
     if status != ocp.IFSelect_RetDone:
         raise ValueError(f"Could not read STEP file: {path}")
+
+    declared_unit_name = _step_length_unit_name(
+        reader,
+        TColStd_SequenceOfAsciiString=ocp.TColStd_SequenceOfAsciiString,
+    )
+    declared_input_unit = (
+        None
+        if declared_unit_name is None
+        else _step_unit_name_to_length_unit(declared_unit_name)
+    )
+    declared_unit_mm = (
+        None
+        if declared_unit_name is None
+        else _step_unit_name_to_millimetres(declared_unit_name)
+    )
+    warnings: list[str] = []
+    if input_unit.strip().lower() == "auto":
+        if declared_unit_name is None:
+            resolved_input_unit = "m"
+            kernel_unit = "m"
+            system_length_unit = length_scale(kernel_unit, "mm")
+            warnings.append(missing_unit_warning)
+        elif declared_input_unit is None:
+            resolved_input_unit = "mm"
+            kernel_unit = "mm"
+            system_length_unit = 1.0
+            warnings.append(
+                f"STEP length unit '{declared_unit_name}' in {path.name} is not available "
+                "as an input unit; OpenCascade converted it to mm."
+            )
+        else:
+            resolved_input_unit = declared_input_unit
+            kernel_unit = declared_input_unit
+            system_length_unit = length_scale(declared_input_unit, "mm")
+    else:
+        resolved_input_unit = normalize_unit(input_unit)
+        kernel_unit = resolved_input_unit
+        if declared_unit_name is not None and declared_unit_mm is None:
+            raise ValueError(
+                f"Cannot reinterpret STEP length unit '{declared_unit_name}' in "
+                f"{path.name} as {resolved_input_unit}; its conversion factor is unsupported."
+            )
+        system_length_unit = (
+            declared_unit_mm
+            if declared_unit_mm is not None
+            else length_scale(resolved_input_unit, "mm")
+        )
+
+    # STEPControl normally converts imported coordinates to its default millimetre
+    # system unit. When the declaration has a known scale, use that scale before
+    # transfer so an explicit input unit can reinterpret the raw STEP coordinates.
+    # Unsupported auto-detected units stay in the normalised millimetre kernel unit.
+    reader.SetSystemLengthUnit(system_length_unit)
     transferred = reader.TransferRoots()
     if transferred == 0:
         raise ValueError(f"STEP file did not contain transferable roots: {path}")
-    return reader
+    return ReadStepFile(
+        reader=reader,
+        declared_unit_name=declared_unit_name,
+        resolved_input_unit=resolved_input_unit,
+        kernel_unit=kernel_unit,
+        warnings=tuple(warnings),
+    )
 
 
 def _component_names(path: Path, solids: tuple[Any, ...]) -> tuple[str, ...]:
@@ -280,6 +375,17 @@ def _finalize_step_model(
         TopoDS=ocp.TopoDS,
         TopoDS_Compound=ocp.TopoDS_Compound,
     )
+    if prepared.additional_shapes:
+        if len(selected_components) == solid_count:
+            builder = ocp.BRep_Builder()
+            combined_shape = ocp.TopoDS_Compound()
+            builder.MakeCompound(combined_shape)
+            builder.Add(combined_shape, shape)
+            for additional_shape in prepared.additional_shapes:
+                builder.Add(combined_shape, additional_shape)
+            shape = combined_shape
+        else:
+            warnings.append("Non-solid STEP inputs were excluded by solid component selection.")
     if unioned is None:
         subject = "STEP assembly solids" if prepared.is_assembly else "STEP solids"
         warnings.append(
@@ -302,7 +408,7 @@ def _finalize_step_model(
         TopExp_Explorer=ocp.TopExp_Explorer,
     )
 
-    scale = length_scale(prepared.resolved_input_unit, output_unit)
+    scale = length_scale(prepared.kernel_unit, output_unit)
     native_bounds = None if empty_result else _ocp_bounds(
         shape,
         Bnd_Box=ocp.Bnd_Box,
@@ -482,17 +588,17 @@ def _finalize_step_model(
             warnings.append("Could not find an Xmax base face; base_area set to 0.")
 
     scaled_volume = (
-        abs(volume) * volume_scale(prepared.resolved_input_unit, output_unit)
+        abs(volume) * volume_scale(prepared.kernel_unit, output_unit)
         if volume is not None
         else None
     )
     scaled_surface_area = (
-        surface_area * area_scale(prepared.resolved_input_unit, output_unit)
+        surface_area * area_scale(prepared.kernel_unit, output_unit)
         if surface_area is not None
         else None
     )
     scaled_newly_exposed_surface_area = (
-        newly_exposed_surface_area * area_scale(prepared.resolved_input_unit, output_unit)
+        newly_exposed_surface_area * area_scale(prepared.kernel_unit, output_unit)
         if newly_exposed_surface_area is not None
         else None
     )

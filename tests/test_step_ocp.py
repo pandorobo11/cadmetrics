@@ -5,9 +5,11 @@ import pytest
 pytest.importorskip("OCP")
 
 from OCP.BRep import BRep_Builder
+from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakePolygon
 from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeSphere
 from OCP.gp import gp_Pnt
 from OCP.IFSelect import IFSelect_RetDone
+from OCP.Interface import Interface_Static
 from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
 from OCP.TopAbs import TopAbs_FACE
 from OCP.TopExp import TopExp_Explorer
@@ -37,6 +39,122 @@ def test_generated_step_box_measurements(tmp_path: Path) -> None:
     assert projected.projected_area == pytest.approx(6.0)
     assert projected.input_unit == "mm"
     assert projected.mesh_deflection == measured.mesh_deflection
+
+
+@pytest.mark.parametrize(
+    ("writer_unit", "expected_input_unit"),
+    [("M", "m"), ("CM", "cm"), ("INCH", "in"), ("FT", "ft")],
+)
+def test_declared_step_units_are_converted_once(
+    tmp_path: Path,
+    writer_unit: str,
+    expected_input_unit: str,
+) -> None:
+    step_path = tmp_path / f"box_{expected_input_unit}.step"
+    shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()
+    _write_step_with_unit(step_path, shape, writer_unit)
+
+    inspected = inspect_model(step_path, output_unit="m")
+    projected = project(step_path, output_unit="m")
+
+    assert inspected.input_unit == expected_input_unit
+    assert inspected.bounds == pytest.approx((0.0, 1.0, 0.0, 2.0, 0.0, 3.0))
+    assert inspected.volume == pytest.approx(6.0)
+    assert inspected.surface_area == pytest.approx(22.0)
+    assert inspected.base_area == pytest.approx(6.0)
+    assert inspected.vertices.min(axis=0) == pytest.approx((0.0, 0.0, 0.0))
+    assert inspected.vertices.max(axis=0) == pytest.approx((1.0, 2.0, 3.0))
+    assert inspected.mesh_deflection == pytest.approx((1.0**2 + 2.0**2 + 3.0**2) ** 0.5 * 1.0e-4)
+    assert projected.projected_area == pytest.approx(6.0)
+
+
+def test_explicit_step_unit_reinterprets_file_coordinates(tmp_path: Path) -> None:
+    step_path = tmp_path / "one_by_two_by_three_inches.step"
+    shape = BRepPrimAPI_MakeBox(25.4, 50.8, 76.2).Shape()
+    _write_step_with_unit(step_path, shape, "INCH")
+
+    detected = measure(step_path, output_unit="m")
+    overridden = measure(step_path, input_unit="m", output_unit="m")
+
+    assert detected.input_unit == "in"
+    assert detected.volume == pytest.approx(6.0 * 0.0254**3)
+    assert overridden.input_unit == "m"
+    assert overridden.volume == pytest.approx(6.0)
+    assert overridden.surface_area == pytest.approx(22.0)
+    assert overridden.base_area == pytest.approx(6.0)
+    assert overridden.x_max == pytest.approx(1.0)
+    assert overridden.y_max == pytest.approx(2.0)
+    assert overridden.z_max == pytest.approx(3.0)
+
+
+def test_extended_step_unit_can_be_reinterpreted_explicitly(tmp_path: Path) -> None:
+    step_path = tmp_path / "micrometre_box.step"
+    shape = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    _write_step_with_unit(step_path, shape, "UM")
+
+    detected = measure(step_path, output_unit="m")
+    overridden = measure(step_path, input_unit="mm", output_unit="m")
+
+    assert detected.input_unit == "mm"
+    assert detected.volume == pytest.approx(1.0e-9)
+    assert detected.x_max == pytest.approx(0.001)
+    assert "converted it to mm" in "; ".join(detected.warnings)
+    assert overridden.input_unit == "mm"
+    assert overridden.volume == pytest.approx(1.0)
+    assert overridden.x_max == pytest.approx(1.0)
+
+
+def test_non_mm_step_assembly_uses_one_coordinate_unit(tmp_path: Path) -> None:
+    step_a = tmp_path / "inch_box_a.step"
+    step_b = tmp_path / "inch_box_b.step"
+    box_a = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    box_b = BRepPrimAPI_MakeBox(gp_Pnt(500.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
+    _write_step_with_unit(step_a, box_a, "INCH")
+    _write_step_with_unit(step_b, box_b, "INCH")
+
+    inspected = inspect_model([step_a, step_b], output_unit="m")
+    projected = project([step_a, step_b], output_unit="m")
+
+    assert inspected.input_unit == "in"
+    assert inspected.bounds == pytest.approx((0.0, 1.5, 0.0, 1.0, 0.0, 1.0))
+    assert inspected.volume == pytest.approx(1.5)
+    assert inspected.surface_area == pytest.approx(8.0)
+    assert inspected.base_area == pytest.approx(1.0)
+    assert inspected.vertices.max(axis=0) == pytest.approx((1.5, 1.0, 1.0))
+    assert projected.projected_area == pytest.approx(1.0)
+
+
+def test_explicit_unit_reinterprets_mixed_declarations_in_step_assembly(
+    tmp_path: Path,
+) -> None:
+    millimetre_path = tmp_path / "numeric_mm.step"
+    inch_path = tmp_path / "numeric_inch.step"
+    _write_step_with_unit(
+        millimetre_path,
+        BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape(),
+        "MM",
+    )
+    _write_step_with_unit(
+        inch_path,
+        BRepPrimAPI_MakeBox(gp_Pnt(50.8, 0.0, 0.0), 25.4, 25.4, 25.4).Shape(),
+        "INCH",
+    )
+
+    with pytest.raises(ValueError, match="different detected units"):
+        measure([millimetre_path, inch_path])
+
+    overridden = measure(
+        [millimetre_path, inch_path],
+        input_unit="m",
+        output_unit="m",
+    )
+
+    assert overridden.input_unit == "m"
+    assert overridden.volume == pytest.approx(2.0)
+    assert overridden.surface_area == pytest.approx(12.0)
+    assert overridden.base_area == pytest.approx(1.0)
+    assert overridden.x_min == pytest.approx(0.0)
+    assert overridden.x_max == pytest.approx(3.0)
 
 
 def test_auto_mesh_deflection_uses_actual_sub_unit_diagonal(tmp_path: Path) -> None:
@@ -436,6 +554,79 @@ def test_step_assembly_files_accept_global_component_selection(tmp_path: Path) -
     )
 
 
+def test_step_assembly_preserves_surface_only_file_alongside_solid(tmp_path: Path) -> None:
+    solid_path = tmp_path / "solid.step"
+    surface_path = tmp_path / "surface.step"
+    _write_step_compound(
+        solid_path,
+        [BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()],
+    )
+
+    polygon = BRepBuilderAPI_MakePolygon()
+    polygon.Add(gp_Pnt(2000.0, 2000.0, 0.0))
+    polygon.Add(gp_Pnt(2000.0, 3000.0, 0.0))
+    polygon.Add(gp_Pnt(2000.0, 3000.0, 1000.0))
+    polygon.Add(gp_Pnt(2000.0, 2000.0, 1000.0))
+    polygon.Close()
+    surface = BRepBuilderAPI_MakeFace(polygon.Wire()).Face()
+    _write_step_compound(surface_path, [surface])
+
+    measured = measure([solid_path, surface_path])
+    projected = project([solid_path, surface_path])
+
+    assert measured.volume is None
+    assert measured.surface_area == pytest.approx(7.0)
+    assert measured.is_watertight is False
+    assert measured.x_max == pytest.approx(2.0)
+    assert measured.y_max == pytest.approx(3.0)
+    assert "non-solid faces" in "; ".join(measured.warnings)
+    assert projected.surface_area == pytest.approx(7.0)
+    assert projected.projected_area == pytest.approx(2.0)
+    assert projected.is_watertight is False
+
+
+def test_step_assembly_preserves_loose_face_from_file_that_also_has_solid(
+    tmp_path: Path,
+) -> None:
+    hybrid_path = tmp_path / "hybrid.step"
+    other_solid_path = tmp_path / "other_solid.step"
+    solid = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    polygon = BRepBuilderAPI_MakePolygon()
+    polygon.Add(gp_Pnt(2000.0, 2000.0, 0.0))
+    polygon.Add(gp_Pnt(2000.0, 3000.0, 0.0))
+    polygon.Add(gp_Pnt(2000.0, 3000.0, 1000.0))
+    polygon.Add(gp_Pnt(2000.0, 2000.0, 1000.0))
+    polygon.Close()
+    loose_face = BRepBuilderAPI_MakeFace(polygon.Wire()).Face()
+    _write_step_compound(hybrid_path, [solid, loose_face])
+    _write_step_compound(
+        other_solid_path,
+        [
+            BRepPrimAPI_MakeBox(
+                gp_Pnt(4000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
+            ).Shape()
+        ],
+    )
+
+    measured = measure([hybrid_path, other_solid_path])
+    projected = project([hybrid_path, other_solid_path])
+
+    assert measured.volume is None
+    assert measured.surface_area == pytest.approx(13.0)
+    assert measured.is_watertight is False
+    assert (
+        measured.x_min,
+        measured.x_max,
+        measured.y_min,
+        measured.y_max,
+        measured.z_min,
+        measured.z_max,
+    ) == pytest.approx((0.0, 5.0, 0.0, 3.0, 0.0, 1.0))
+    assert "non-solid faces" in "; ".join(measured.warnings)
+    assert projected.surface_area == pytest.approx(13.0)
+    assert projected.projected_area == pytest.approx(2.0)
+
+
 def test_step_base_area_uses_axis_mapped_xmax(tmp_path: Path) -> None:
     step_path = tmp_path / "asymmetric_ends.step"
     small_end = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
@@ -580,6 +771,19 @@ def _write_step_compound(path: Path, shapes) -> None:
     writer = STEPControl_Writer()
     writer.Transfer(compound, STEPControl_AsIs)
     assert writer.Write(str(path)) == IFSelect_RetDone
+
+
+def _write_step_with_unit(path: Path, shape, writer_unit: str) -> None:
+    # Construct once so OpenCascade registers the Interface_Static parameters.
+    STEPControl_Writer()
+    previous_unit = Interface_Static.CVal_s("write.step.unit")
+    assert Interface_Static.SetCVal_s("write.step.unit", writer_unit)
+    try:
+        writer = STEPControl_Writer()
+        writer.Transfer(shape, STEPControl_AsIs)
+        assert writer.Write(str(path)) == IFSelect_RetDone
+    finally:
+        assert Interface_Static.SetCVal_s("write.step.unit", previous_unit)
 
 
 def _write_open_step_box(path: Path) -> None:

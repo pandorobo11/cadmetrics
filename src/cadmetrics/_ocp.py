@@ -331,6 +331,25 @@ def _extract_ocp_solids(
     return solids
 
 
+def _extract_ocp_non_solid_faces(
+    shape: Any,
+    solids: Sequence[Any],
+    *,
+    TopAbs_FACE: Any,
+    TopExp_Explorer: Any,
+) -> list[Any]:
+    solid_faces = [
+        face
+        for solid in solids
+        for face in _explore_ocp_subshapes(solid, TopAbs_FACE, TopExp_Explorer)
+    ]
+    return [
+        face
+        for face in _explore_ocp_subshapes(shape, TopAbs_FACE, TopExp_Explorer)
+        if not _contains_same_ocp_shape(solid_faces, face)
+    ]
+
+
 def _resolve_step_component_selection(
     step_components: tuple[int, ...] | None,
     component_count: int,
@@ -753,6 +772,18 @@ def _detect_step_length_unit(
     *,
     TColStd_SequenceOfAsciiString: Any,
 ) -> str | None:
+    unit_name = _step_length_unit_name(
+        reader,
+        TColStd_SequenceOfAsciiString=TColStd_SequenceOfAsciiString,
+    )
+    return None if unit_name is None else _step_unit_name_to_length_unit(unit_name)
+
+
+def _step_length_unit_name(
+    reader: Any,
+    *,
+    TColStd_SequenceOfAsciiString: Any,
+) -> str | None:
     lengths = TColStd_SequenceOfAsciiString()
     angles = TColStd_SequenceOfAsciiString()
     solid_angles = TColStd_SequenceOfAsciiString()
@@ -768,7 +799,7 @@ def _detect_step_length_unit(
     if not units:
         return None
 
-    return _step_unit_name_to_length_unit(units[0])
+    return units[0]
 
 
 def _step_unit_name_to_length_unit(unit_name: str) -> str | None:
@@ -788,5 +819,42 @@ def _step_unit_name_to_length_unit(unit_name: str) -> str | None:
         "foot": "ft",
         "feet": "ft",
         "ft": "ft",
+    }
+    return mapping.get(normalized)
+
+
+def _step_unit_name_to_millimetres(unit_name: str) -> float | None:
+    normalized = unit_name.replace("_", " ").replace("-", " ").strip().lower()
+    mapping = {
+        "metre": 1000.0,
+        "meter": 1000.0,
+        "m": 1000.0,
+        "decimetre": 100.0,
+        "decimeter": 100.0,
+        "dm": 100.0,
+        "millimetre": 1.0,
+        "millimeter": 1.0,
+        "mm": 1.0,
+        "centimetre": 10.0,
+        "centimeter": 10.0,
+        "cm": 10.0,
+        "micrometre": 0.001,
+        "micrometer": 0.001,
+        "micron": 0.001,
+        "um": 0.001,
+        "nanometre": 1.0e-6,
+        "nanometer": 1.0e-6,
+        "nm": 1.0e-6,
+        "kilometre": 1.0e6,
+        "kilometer": 1.0e6,
+        "km": 1.0e6,
+        "inch": 25.4,
+        "in": 25.4,
+        "foot": 304.8,
+        "feet": 304.8,
+        "ft": 304.8,
+        "mil": 0.0254,
+        "microinch": 2.54e-5,
+        "mile": 1_609_344.0,
     }
     return mapping.get(normalized)
