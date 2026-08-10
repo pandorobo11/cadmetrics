@@ -277,6 +277,34 @@ def test_step_shape_with_loose_face_is_not_watertight(tmp_path: Path) -> None:
     assert "non-solid faces" in "; ".join(measured.warnings)
 
 
+def test_step_shape_with_multiple_solids_preserves_loose_face(tmp_path: Path) -> None:
+    step_path = tmp_path / "multiple_solids_with_loose_face.step"
+    first = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
+    second = BRepPrimAPI_MakeBox(
+        gp_Pnt(3000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
+    ).Shape()
+    polygon = BRepBuilderAPI_MakePolygon()
+    polygon.Add(gp_Pnt(5000.0, 2000.0, 0.0))
+    polygon.Add(gp_Pnt(5000.0, 3000.0, 0.0))
+    polygon.Add(gp_Pnt(5000.0, 3000.0, 1000.0))
+    polygon.Add(gp_Pnt(5000.0, 2000.0, 1000.0))
+    polygon.Close()
+    loose_face = BRepBuilderAPI_MakeFace(polygon.Wire()).Face()
+    _write_step_compound(step_path, [first, second, loose_face])
+
+    measured = measure(step_path)
+    projected = project(step_path)
+
+    assert measured.volume is None
+    assert measured.surface_area == pytest.approx(13.0)
+    assert measured.is_watertight is False
+    assert measured.x_max == pytest.approx(5.0)
+    assert measured.y_max == pytest.approx(3.0)
+    assert "non-solid faces" in "; ".join(measured.warnings)
+    assert projected.surface_area == pytest.approx(13.0)
+    assert projected.projected_area == pytest.approx(2.0)
+
+
 def test_step_metrics_mesh_cli_option(tmp_path: Path) -> None:
     step_path = tmp_path / "box.step"
     shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()

@@ -133,21 +133,38 @@ def _prepare_step_input(
     ocp: OcpBindings,
 ) -> PreparedStepInput:
     read_result = _read_step_file(path, input_unit=input_unit, ocp=ocp)
-    original_shape = read_result.reader.OneShape()
+    source_shape = read_result.reader.OneShape()
     solids = tuple(
         _extract_ocp_solids(
-            original_shape,
+            source_shape,
             TopAbs_SOLID=ocp.TopAbs_SOLID,
             TopExp_Explorer=ocp.TopExp_Explorer,
             TopoDS=ocp.TopoDS,
         )
     )
+    additional_shapes: tuple[Any, ...] = ()
+    original_shape = source_shape
+    if solids:
+        additional_shapes = tuple(
+            _extract_ocp_non_solid_faces(
+                source_shape,
+                solids,
+                TopAbs_FACE=ocp.TopAbs_FACE,
+                TopExp_Explorer=ocp.TopExp_Explorer,
+            )
+        )
+        builder = ocp.BRep_Builder()
+        solids_shape = ocp.TopoDS_Compound()
+        builder.MakeCompound(solids_shape)
+        for solid in solids:
+            builder.Add(solids_shape, solid)
+        original_shape = solids_shape
     component_names = _component_names(path, solids)
     return PreparedStepInput(
         path=path,
         original_shape=original_shape,
         solids=solids,
-        additional_shapes=(),
+        additional_shapes=additional_shapes,
         component_names=component_names,
         resolved_input_unit=read_result.resolved_input_unit,
         kernel_unit=read_result.kernel_unit,
