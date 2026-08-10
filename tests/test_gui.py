@@ -215,7 +215,7 @@ def test_gui_documentation_action_opens_cached_local_site(
     documentation_action.trigger()
 
     assert site_build_calls == [window._documentation_resources]
-    assert [url.toLocalFile() for url in opened_urls] == [str(index), str(index)]
+    assert [Path(url.toLocalFile()) for url in opened_urls] == [index, index]
     assert window.errors == []
     window._documentation_resources.close()
 
