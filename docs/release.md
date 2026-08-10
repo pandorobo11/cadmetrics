@@ -19,6 +19,11 @@ user-controlled text in Rich error output. It also separates mesh, STEP, and OCP
 internals, expands mypy coverage to every production module, and upgrades the packaged-GUI smoke
 check from an import check to offscreen main-window construction.
 
+v0.12.2 corrects STEP unit handling and preserves loose or surface-only geometry in single- and
+multi-file inputs. It rejects inconsistent STL shell winding instead of reporting unreliable
+volume, protects input CAD files from CSV export overwrites in the CLI and GUI, and avoids leaking
+XCAF documents while reading component names.
+
 Before tagging a release:
 
 1. Update `project.version` in `pyproject.toml`.

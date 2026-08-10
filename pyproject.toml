@@ -1,6 +1,6 @@
 [project]
 name = "cadmetrics"
-version = "0.12.1"
+version = "0.12.2"
 description = "CLI and Python API for CAD volume, surface area, and projected area metrics."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
