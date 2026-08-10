@@ -150,7 +150,13 @@ if QtWidgets is not None:
 
         @QtCore.Slot(list)
         def _on_results_ready(self, rows: list[MeasurementRow]) -> None:
-            self.results.set_rows(rows)
+            protected_paths: tuple[Path, ...] = ()
+            if self._request is not None:
+                request_files = self._request.file
+                protected_paths = (
+                    request_files if isinstance(request_files, tuple) else (request_files,)
+                )
+            self.results.set_rows(rows, protected_paths=protected_paths)
             self.results.select_last_row()
             self.progress_bar.setRange(0, max(len(rows), 1))
             self.progress_bar.setValue(len(rows))

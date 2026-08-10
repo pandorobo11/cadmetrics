@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import sys
 from pathlib import Path
-from typing import Callable, TypeVar, TypedDict, cast
+from typing import Callable, Sequence, TypeVar, TypedDict, cast
 
 import typer
 from rich.console import Console
@@ -23,6 +23,7 @@ from cadmetrics.api import measure as measure_api
 from cadmetrics.api import project as project_api
 from cadmetrics.api import sweep as sweep_api
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP
+from cadmetrics.csv_io import CSV_FIELDS, validate_csv_output_path, write_rows_csv
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.sweep import parse_sweep_values
 from cadmetrics.types import MeasurementRow
@@ -50,49 +51,6 @@ class SweepAttitude(TypedDict):
     alpha: str
     beta: str
     direction: str | None
-
-CSV_FIELDS = [
-    "file",
-    "step_components",
-    "step_component_names",
-    "input_unit",
-    "output_unit",
-    "roll_deg",
-    "pitch_deg",
-    "alpha_deg",
-    "beta_deg",
-    "direction_x",
-    "direction_y",
-    "direction_z",
-    "x_min",
-    "x_max",
-    "y_min",
-    "y_max",
-    "z_min",
-    "z_max",
-    "surface_area",
-    "newly_exposed_surface_area",
-    "base_area",
-    "volume",
-    "projected_area",
-    "centroid_u",
-    "centroid_v",
-    "centroid_x",
-    "centroid_y",
-    "centroid_z",
-    "is_watertight",
-    "mesh_deflection",
-    "angular_deflection",
-    "base_tolerance",
-    "step_component_mode",
-    "method",
-    "load_elapsed_sec",
-    "elapsed_sec",
-    "cadmetrics_version",
-    "cadmetrics_hash",
-    "warnings",
-]
-
 
 @app.command()
 def measure(
@@ -145,6 +103,7 @@ def measure(
 ) -> None:
     """Calculate volume and surface area."""
 
+    _validate_csv_output(out, file)
     row = _run_or_exit(
         lambda: measure_api(
             file,
@@ -162,7 +121,7 @@ def measure(
     if out is None:
         _emit_measurement_table(row, title=_format_input_files(file))
     else:
-        _emit_rows([row], out)
+        _emit_rows([row], out, protected_paths=file)
 
 
 @app.command()
@@ -238,6 +197,7 @@ def project(
 ) -> None:
     """Calculate projected area for one attitude or vector direction."""
 
+    _validate_csv_output(out, file)
     request = _resolve_project_attitude(
         attitude=attitude,
         alpha=alpha,
@@ -269,7 +229,7 @@ def project(
     if out is None:
         _emit_measurement_table(row, title=_format_input_files(file))
     else:
-        _emit_rows([row], out)
+        _emit_rows([row], out, protected_paths=file)
 
 
 @app.command()
@@ -354,6 +314,7 @@ def sweep(
 ) -> None:
     """Calculate projected area for attitude sweeps or one vector direction."""
 
+    _validate_csv_output(out, file)
     request = _resolve_sweep_attitude(
         attitude=attitude,
         alpha=alpha,
@@ -429,7 +390,7 @@ def sweep(
                 ),
             )
         )
-    _emit_rows(rows, out)
+    _emit_rows(rows, out, protected_paths=file)
     if summary:
         _emit_sweep_summary(rows)
 
@@ -546,7 +507,12 @@ def inspect(
     console.print(table)
 
 
-def _emit_rows(rows: list[MeasurementRow], out: Path | None) -> None:
+def _emit_rows(
+    rows: list[MeasurementRow],
+    out: Path | None,
+    *,
+    protected_paths: Sequence[Path] = (),
+) -> None:
     if out is None:
         writer = csv.DictWriter(sys.stdout, fieldnames=CSV_FIELDS)
         writer.writeheader()
@@ -554,12 +520,13 @@ def _emit_rows(rows: list[MeasurementRow], out: Path | None) -> None:
             writer.writerow(row.to_csv_row())
         return
 
-    with out.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(row.to_csv_row())
+    write_rows_csv(out, rows, protected_paths=protected_paths)
     console.print(f"Wrote {len(rows)} row(s) to {out}")
+
+
+def _validate_csv_output(out: Path | None, input_paths: list[Path]) -> None:
+    if out is not None:
+        _run_or_exit(lambda: validate_csv_output_path(out, protected_paths=input_paths))
 
 
 def _format_input_files(files: list[Path]) -> str:

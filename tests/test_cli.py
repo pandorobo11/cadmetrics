@@ -50,6 +50,23 @@ def test_measure_cli_out_still_writes_csv(runner: CliRunner, tmp_path: Path) -> 
     assert row["method"] == "stl-mesh"
 
 
+@pytest.mark.parametrize("command", ["measure", "project", "sweep"])
+def test_cli_out_rejects_input_path_without_modifying_cad(
+    runner: CliRunner,
+    tmp_path: Path,
+    command: str,
+) -> None:
+    source = tmp_path / "unit_cube.stl"
+    original = (DATA_DIR / "unit_cube.stl").read_bytes()
+    source.write_bytes(original)
+
+    result = runner.invoke(app, [command, str(source), "--out", str(source)])
+
+    assert result.exit_code == 1
+    assert "must not overwrite an input CAD file" in result.output
+    assert source.read_bytes() == original
+
+
 def test_measure_cli_accepts_multiple_files_as_assembly(
     runner: CliRunner,
     tmp_path: Path,

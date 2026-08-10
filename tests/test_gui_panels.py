@@ -287,6 +287,19 @@ def test_results_panel_displays_selects_and_exports_rows(qtbot, tmp_path: Path) 
     assert output.read_text(encoding="utf-8").startswith("file,step_components")
 
 
+def test_results_panel_rejects_input_path_as_csv_output(qtbot, tmp_path: Path) -> None:
+    source = tmp_path / "model.step"
+    source.write_bytes(b"STEP source data")
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    panel.set_rows([_row()], protected_paths=[source])
+
+    with pytest.raises(ValueError, match="must not overwrite an input CAD file"):
+        panel.save_csv(source)
+
+    assert source.read_bytes() == b"STEP source data"
+
+
 def test_results_panel_restores_table_density(qtbot) -> None:
     panel = ResultsPanel()
     qtbot.addWidget(panel)
@@ -380,6 +393,27 @@ def test_main_window_invalidates_results_when_request_changes(qtbot, monkeypatch
     assert window.results.save_button.isEnabled() is False
     assert window.viewer.result_calls[-1][0] is None
     assert window.progress_bar.value() == 0
+
+
+def test_main_window_protects_request_files_from_csv_export(
+    qtbot,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from cadmetrics.gui.jobs import CalculationRequest
+
+    source = tmp_path / "model.step"
+    source.write_bytes(b"STEP source data")
+    monkeypatch.setattr(pyside_app, "ModelViewer", _FakeViewer)
+    window = pyside_app.MainWindow()
+    qtbot.addWidget(window)
+    window._request = CalculationRequest(file=source)
+
+    window._on_results_ready([_row()])
+
+    with pytest.raises(ValueError, match="must not overwrite an input CAD file"):
+        window.results.save_csv(source)
+    assert source.read_bytes() == b"STEP source data"
 
 
 def _model(path: Path, *, component_names: tuple[str, ...]) -> ModelData:

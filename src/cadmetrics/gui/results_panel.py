@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterable
 
 from PySide6 import QtCore, QtWidgets
 
-from cadmetrics.cli import CSV_FIELDS
+from cadmetrics.csv_io import CSV_FIELDS
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.gui_formatters import format_cell
 from cadmetrics.types import MeasurementRow
@@ -61,6 +62,7 @@ class ResultsPanel(QtWidgets.QWidget):
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self._rows: list[MeasurementRow] = []
+        self._protected_paths: tuple[Path, ...] = ()
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -136,8 +138,15 @@ class ResultsPanel(QtWidgets.QWidget):
     def rows(self) -> list[MeasurementRow]:
         return list(self._rows)
 
-    def set_rows(self, rows: list[MeasurementRow]) -> None:
+    def set_rows(
+        self,
+        rows: list[MeasurementRow],
+        *,
+        protected_paths: Iterable[str | Path] | None = None,
+    ) -> None:
         self._rows = list(rows)
+        if protected_paths is not None:
+            self._protected_paths = tuple(Path(path) for path in protected_paths)
         self.table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
             values = row.to_csv_row()
@@ -180,7 +189,7 @@ class ResultsPanel(QtWidgets.QWidget):
     def save_csv(self, path: str | Path) -> None:
         if not self._rows:
             raise ValueError("No calculation results to save.")
-        write_rows_csv(path, self._rows)
+        write_rows_csv(path, self._rows, protected_paths=self._protected_paths)
 
     def _choose_csv_path(self) -> None:
         if not self._rows:
