@@ -4,13 +4,23 @@ import numpy as np
 import pytest
 
 pytest.importorskip("shapely")
-pytest.importorskip("trimesh")
 
 from cadmetrics.api import inspect_model, measure, project, sweep, sweep_model
-from cadmetrics._mesh_io import _mesh_xmax_base_area
+from cadmetrics._mesh_io import _mesh_volume_and_surface_area, _mesh_xmax_base_area
 
 
+trimesh = pytest.importorskip("trimesh")
 DATA_DIR = Path(__file__).parent / "data"
+
+
+def _box_mesh(*, reverse: bool = False, flipped_face: int | None = None):
+    mesh = trimesh.creation.box(extents=(1.0, 1.0, 1.0))
+    faces = np.asarray(mesh.faces, dtype=np.int64).copy()
+    if reverse:
+        faces = faces[:, ::-1]
+    if flipped_face is not None:
+        faces[flipped_face] = faces[flipped_face, ::-1]
+    return trimesh.Trimesh(vertices=mesh.vertices.copy(), faces=faces, process=False)
 
 
 def test_cube_measurements() -> None:
@@ -79,6 +89,93 @@ def test_non_watertight_stl_leaves_volume_unset() -> None:
     assert row.surface_area == pytest.approx(5.0)
     assert row.is_watertight is False
     assert "volume is unavailable" in "; ".join(row.warnings)
+
+
+def test_watertight_stl_with_one_reversed_face_leaves_volume_unset(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "inconsistent_winding.stl"
+    _box_mesh(flipped_face=0).export(path)
+
+    row = measure(path)
+
+    assert row.volume is None
+    assert row.surface_area == pytest.approx(6.0)
+    assert row.is_watertight is True
+    assert "face winding is inconsistent" in "; ".join(row.warnings)
+
+
+def test_consistently_reversed_stl_uses_absolute_shell_volume(tmp_path: Path) -> None:
+    path = tmp_path / "reversed.stl"
+    _box_mesh(reverse=True).export(path)
+
+    row = measure(path)
+
+    assert row.volume == pytest.approx(1.0)
+    assert row.surface_area == pytest.approx(6.0)
+    assert row.is_watertight is True
+    assert "winding" not in "; ".join(row.warnings)
+
+
+@pytest.mark.parametrize("reverse_all", [False, True])
+def test_stl_with_nested_cavity_uses_shell_nesting(
+    tmp_path: Path,
+    reverse_all: bool,
+) -> None:
+    outer = trimesh.creation.box(extents=(2.0, 2.0, 2.0))
+    inner = trimesh.creation.box(extents=(1.0, 1.0, 1.0))
+    inner.faces = inner.faces[:, ::-1]
+    combined = trimesh.util.concatenate((outer, inner))
+    if reverse_all:
+        combined.faces = combined.faces[:, ::-1]
+    path = tmp_path / f"nested_cavity_{reverse_all}.stl"
+    combined.export(path)
+
+    row = measure(path)
+
+    assert row.volume == pytest.approx(7.0)
+    assert row.surface_area == pytest.approx(30.0)
+    assert row.is_watertight is True
+
+
+def test_stl_with_opposing_closed_shells_leaves_volume_unset(tmp_path: Path) -> None:
+    outward = _box_mesh()
+    inward = _box_mesh(reverse=True)
+    inward.apply_translation((2.0, 0.0, 0.0))
+    combined = trimesh.util.concatenate((outward, inward))
+    path = tmp_path / "opposing_shells.stl"
+    combined.export(path)
+
+    row = measure(path)
+
+    assert row.volume is None
+    assert row.surface_area == pytest.approx(12.0)
+    assert row.is_watertight is True
+    assert "opposing face orientations" in "; ".join(row.warnings)
+
+    volume, surface_area, is_watertight = _mesh_volume_and_surface_area(
+        np.asarray(combined.vertices, dtype=float),
+        np.asarray(combined.faces, dtype=np.int64),
+    )
+    assert volume is None
+    assert surface_area == pytest.approx(12.0)
+    assert is_watertight is True
+
+
+def test_stl_assembly_accepts_individually_valid_reversed_shell(tmp_path: Path) -> None:
+    outward_path = tmp_path / "outward.stl"
+    inward_path = tmp_path / "inward.stl"
+    _box_mesh().export(outward_path)
+    inward = _box_mesh(reverse=True)
+    inward.apply_translation((2.0, 0.0, 0.0))
+    inward.export(inward_path)
+
+    row = measure([outward_path, inward_path])
+
+    assert row.volume == pytest.approx(2.0)
+    assert row.surface_area == pytest.approx(12.0)
+    assert row.is_watertight is True
+    assert "opposing face orientations" not in "; ".join(row.warnings)
 
 
 def test_elapsed_fields_separate_model_loading_from_row_calculation() -> None:

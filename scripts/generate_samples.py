@@ -315,13 +315,41 @@ def frame_with_hole_mesh() -> trimesh.Trimesh:
             quad([(x, y, z_bottom) for x, y in reversed(cell)])
 
             if (x_index - 1, y_index) not in occupied:
-                quad([(x0, y0, z_bottom), (x0, y1, z_bottom), (x0, y1, z_top), (x0, y0, z_top)])
+                quad(
+                    [
+                        (x0, y0, z_top),
+                        (x0, y1, z_top),
+                        (x0, y1, z_bottom),
+                        (x0, y0, z_bottom),
+                    ]
+                )
             if (x_index + 1, y_index) not in occupied:
-                quad([(x1, y1, z_bottom), (x1, y0, z_bottom), (x1, y0, z_top), (x1, y1, z_top)])
+                quad(
+                    [
+                        (x1, y1, z_top),
+                        (x1, y0, z_top),
+                        (x1, y0, z_bottom),
+                        (x1, y1, z_bottom),
+                    ]
+                )
             if (x_index, y_index - 1) not in occupied:
-                quad([(x1, y0, z_bottom), (x0, y0, z_bottom), (x0, y0, z_top), (x1, y0, z_top)])
+                quad(
+                    [
+                        (x1, y0, z_top),
+                        (x0, y0, z_top),
+                        (x0, y0, z_bottom),
+                        (x1, y0, z_bottom),
+                    ]
+                )
             if (x_index, y_index + 1) not in occupied:
-                quad([(x0, y1, z_bottom), (x1, y1, z_bottom), (x1, y1, z_top), (x0, y1, z_top)])
+                quad(
+                    [
+                        (x0, y1, z_top),
+                        (x1, y1, z_top),
+                        (x1, y1, z_bottom),
+                        (x0, y1, z_bottom),
+                    ]
+                )
 
     mesh = trimesh.Trimesh(vertices=np.asarray(vertices), faces=np.asarray(faces), process=False)
     mesh.merge_vertices()
