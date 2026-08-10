@@ -514,15 +514,12 @@ def _step_component_names_from_xcaf(path: Path, *, expected_count: int) -> tuple
         from OCP.TDocStd import TDocStd_Document
         from OCP.TopAbs import TopAbs_SOLID
         from OCP.TopExp import TopExp_Explorer
-        from OCP.XCAFApp import XCAFApp_Application
         from OCP.XCAFDoc import XCAFDoc_DocumentTool
     except ImportError:
         return ()
 
     try:
-        app = XCAFApp_Application.GetApplication_s()
         doc = TDocStd_Document(TCollection_ExtendedString("MDTV-XCAF"))
-        app.NewDocument(TCollection_ExtendedString("MDTV-XCAF"), doc)
         reader = STEPCAFControl_Reader()
         reader.SetNameMode(True)
         if reader.ReadFile(str(path)) != IFSelect_RetDone:
