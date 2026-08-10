@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from threading import Event
+from threading import Event, get_ident
 
 import numpy as np
 import pytest
@@ -85,6 +85,44 @@ def test_controller_rejects_overlapping_operation() -> None:
     assert messages == ["Another model operation is already running."]
 
 
+@pytest.mark.parametrize(
+    ("calculation_request", "message"),
+    [
+        (
+            CalculationRequest(
+                file=Path("model.step"),
+                attitude_mode="vector",
+                vector_x=0.0,
+                vector_y=0.0,
+                vector_z=0.0,
+            ),
+            "greater than zero",
+        ),
+        (
+            CalculationRequest(file=Path("model.step"), base_tolerance=0.0),
+            "base_tolerance must be greater than zero",
+        ),
+        (
+            CalculationRequest(file=Path("model.step"), axis_map="x,x,z"),
+            "axis_map must use each source axis exactly once",
+        ),
+    ],
+)
+def test_controller_reports_invalid_request_without_starting_worker(
+    calculation_request: CalculationRequest,
+    message: str,
+) -> None:
+    controller = CalculationController()
+    failures = []
+    controller.failed.connect(failures.append)
+
+    controller.calculate(calculation_request)
+
+    assert failures and message in failures[0]
+    assert controller.state is OperationState.IDLE
+    assert controller._operation is None
+
+
 def test_controller_cancel_and_shutdown_wait_for_worker(qtbot, monkeypatch) -> None:
     started = Event()
     release = Event()
@@ -115,6 +153,59 @@ def test_controller_cancel_and_shutdown_wait_for_worker(qtbot, monkeypatch) -> N
 
     assert cancelled == [True]
     assert controller.state is OperationState.IDLE
+
+
+def test_controller_state_transitions_stay_on_controller_thread(qtbot, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "cadmetrics.gui.calculation_controller.load_model_for_request", lambda request: _model()
+    )
+    monkeypatch.setattr(
+        "cadmetrics.gui.calculation_controller.run_calculation",
+        lambda request, *, model, progress_callback, cancel_callback: [_row()],
+    )
+    controller = CalculationController()
+    controller_thread_id = get_ident()
+    transition_thread_ids = []
+    original_set_state = controller._set_state
+
+    def record_set_state(state: OperationState) -> None:
+        transition_thread_ids.append(get_ident())
+        original_set_state(state)
+
+    monkeypatch.setattr(controller, "_set_state", record_set_state)
+
+    controller.calculate(CalculationRequest(file=Path("model.step")))
+    qtbot.waitUntil(lambda: controller.state is OperationState.IDLE)
+
+    assert len(transition_thread_ids) == 3
+    assert set(transition_thread_ids) == {controller_thread_id}
+
+
+def test_controller_repeated_operations_finish_native_teardown(qtbot, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "cadmetrics.gui.calculation_controller.load_model_for_request", lambda request: _model()
+    )
+    controller = CalculationController()
+    request = CalculationRequest(file=Path("model.step"))
+
+    for _ in range(100):
+        destroyed = {"worker": False, "thread": False}
+        controller.load_only(request)
+        operation = controller._operation
+        assert operation is not None
+        operation.worker.destroyed.connect(
+            lambda *_args, flags=destroyed: flags.__setitem__("worker", True)
+        )
+        operation.operation_thread.destroyed.connect(
+            lambda *_args, flags=destroyed: flags.__setitem__("thread", True)
+        )
+
+        qtbot.waitUntil(lambda: controller.state is OperationState.IDLE)
+
+        assert destroyed == {"worker": True, "thread": True}
+        assert controller._operation is None
+        assert controller._worker is None
+        assert controller._thread is None
 
 
 def _model() -> ModelData:

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from cadmetrics.gui.gui_formatters import (
     component_display_groups,
     format_file_selection,
@@ -79,3 +81,45 @@ def test_overlay_formatter_preserves_result_summary() -> None:
     assert "Projected area  1 m²" in text
     assert "Volume  1 m³" in text
     assert "surface_area" not in text
+
+
+def test_control_panel_errors_reach_main_window_handler(qtbot, monkeypatch) -> None:
+    QtCore = pytest.importorskip("PySide6.QtCore")
+    QtWidgets = pytest.importorskip("PySide6.QtWidgets")
+    import cadmetrics.gui.pyside_app as pyside_app
+
+    class FakeViewer(QtWidgets.QWidget):
+        error = QtCore.Signal(str)
+        message = QtCore.Signal(str)
+        base_face_available = QtCore.Signal(bool)
+        newly_exposed_surface_available = QtCore.Signal(bool)
+
+        def set_options(self, options) -> None:
+            pass
+
+        def set_request(self, request) -> None:
+            pass
+
+        def set_model(self, model) -> None:
+            pass
+
+        def set_result(self, row, request, *, align_camera=False) -> None:
+            pass
+
+        def choose_and_save_image(self) -> None:
+            pass
+
+    errors = []
+    monkeypatch.setattr(pyside_app, "ModelViewer", FakeViewer)
+    monkeypatch.setattr(
+        pyside_app.MainWindow,
+        "_show_error",
+        lambda self, message: errors.append(message),
+    )
+    window = pyside_app.MainWindow()
+    qtbot.addWidget(window)
+
+    window.controls.run_button.click()
+
+    assert len(errors) == 1
+    assert "file" in errors[0].lower()

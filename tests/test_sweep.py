@@ -1,10 +1,17 @@
 import pytest
 
-from cadmetrics.sweep import MAX_SWEEP_COMBINATIONS, iter_orientations, parse_sweep_values
+from cadmetrics.sweep import MAX_SWEEP_COMBINATIONS, SweepRange, iter_orientations, parse_sweep_values
 
 
 def test_parse_single_value() -> None:
     assert parse_sweep_values("3") == [3.0]
+
+
+def test_single_point_sweep_range_ignores_step() -> None:
+    sweep_range = SweepRange(3.0, 3.0, 0.0)
+
+    assert sweep_range.spec == "3.0"
+    assert sweep_range.count == 1
 
 
 def test_parse_inclusive_positive_range() -> None:

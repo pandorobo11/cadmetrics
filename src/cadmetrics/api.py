@@ -4,28 +4,34 @@ from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 from time import perf_counter
-from typing import Callable, Literal
+from typing import Callable
 
+from cadmetrics.attitude import (
+    ATTITUDE_MODES as ATTITUDE_MODES,
+    AttitudeMode,
+    ResolvedProjectAttitude,
+    ResolvedSweepAttitude,
+    SweepValue,
+    resolve_project_attitude,
+    resolve_sweep_attitude,
+)
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP, transform_model_axes
-from cadmetrics.io import DEFAULT_BASE_TOLERANCE, load_model
+from cadmetrics.io import _load_model_with_options
+from cadmetrics.load_options import (
+    DEFAULT_BASE_TOLERANCE,
+    ModelLoadOptions,
+    StepComponentMode,
+)
 from cadmetrics.orientation import (
-    Orientation,
     alpha_beta_from_direction,
     normalize_vector,
-    parse_vector,
     projection_direction_for_orientation,
     roll_pitch_from_direction,
 )
 from cadmetrics.projection import ProjectionMetrics, projected_metrics
 from cadmetrics.projection import projection_basis
-from cadmetrics.sweep import iter_orientations, orientation_count, parse_sweep_values
+from cadmetrics.sweep import iter_orientations, orientation_count
 from cadmetrics.types import FloatArray, MeasurementRow, ModelData
-
-
-AttitudeMode = Literal["alpha-beta", "roll-pitch", "vector"]
-StepComponentMode = Literal["filter", "subtract"]
-SweepValue = str | int | float
-ATTITUDE_MODES: tuple[AttitudeMode, ...] = ("alpha-beta", "roll-pitch", "vector")
 
 
 def inspect_model(
@@ -42,21 +48,28 @@ def inspect_model(
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
     require_mesh: bool = True,
 ) -> ModelData:
-    start = perf_counter()
-    model = load_model(
-        path,
+    options = ModelLoadOptions.resolve(
         input_unit=input_unit,
         output_unit=output_unit,
         mesh_deflection=mesh_deflection,
         angular_deflection=angular_deflection,
+        axis_map=axis_map,
         step_metric_source=step_metric_source,
         step_components=step_components,
         step_component_mode=step_component_mode,
-        base_axis_map=axis_map,
         base_tolerance=base_tolerance,
         require_mesh=require_mesh,
     )
-    transformed = transform_model_axes(model, axis_map)
+    return _inspect_model_with_options(path, options)
+
+
+def _inspect_model_with_options(
+    path: str | Path | Sequence[str | Path],
+    options: ModelLoadOptions,
+) -> ModelData:
+    start = perf_counter()
+    model = _load_model_with_options(path, options)
+    transformed = transform_model_axes(model, options.axis_map)
     return replace(transformed, load_elapsed_sec=perf_counter() - start)
 
 
@@ -73,8 +86,7 @@ def measure(
     step_component_mode: StepComponentMode = "filter",
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> MeasurementRow:
-    model = inspect_model(
-        path,
+    options = ModelLoadOptions.resolve(
         input_unit=input_unit,
         output_unit=output_unit,
         mesh_deflection=mesh_deflection,
@@ -84,8 +96,10 @@ def measure(
         step_components=step_components,
         step_component_mode=step_component_mode,
         base_tolerance=base_tolerance,
-        require_mesh=_step_metric_source_requires_mesh(step_metric_source),
+        require_mesh=False,
     )
+    options = options.with_require_mesh(options.metric_source_requires_mesh)
+    model = _inspect_model_with_options(path, options)
     return measure_model(model)
 
 
@@ -149,8 +163,15 @@ def project(
     step_component_mode: StepComponentMode = "filter",
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> MeasurementRow:
-    model = inspect_model(
-        path,
+    resolved_attitude = resolve_project_attitude(
+        attitude=attitude,
+        roll_deg=roll_deg,
+        pitch_deg=pitch_deg,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
+        direction=direction,
+    )
+    options = ModelLoadOptions.resolve(
         input_unit=input_unit,
         output_unit=output_unit,
         mesh_deflection=mesh_deflection,
@@ -161,15 +182,8 @@ def project(
         step_component_mode=step_component_mode,
         base_tolerance=base_tolerance,
     )
-    return project_model(
-        model,
-        attitude=attitude,
-        roll_deg=roll_deg,
-        pitch_deg=pitch_deg,
-        alpha_deg=alpha_deg,
-        beta_deg=beta_deg,
-        direction=direction,
-    )
+    model = _inspect_model_with_options(path, options)
+    return _project_model_with_attitude(model, resolved_attitude)
 
 
 def project_model(
@@ -183,16 +197,26 @@ def project_model(
     direction: str | None = None,
     elapsed_sec: float | None = None,
 ) -> MeasurementRow:
-    start = perf_counter()
-    mode = _normalize_attitude(attitude)
-    orientation, vector = _resolve_project_orientation(
-        mode=mode,
+    resolved_attitude = resolve_project_attitude(
+        attitude=attitude,
         roll_deg=roll_deg,
         pitch_deg=pitch_deg,
         alpha_deg=alpha_deg,
         beta_deg=beta_deg,
         direction=direction,
     )
+    return _project_model_with_attitude(model, resolved_attitude, elapsed_sec=elapsed_sec)
+
+
+def _project_model_with_attitude(
+    model: ModelData,
+    resolved_attitude: ResolvedProjectAttitude,
+    *,
+    elapsed_sec: float | None = None,
+) -> MeasurementRow:
+    start = perf_counter()
+    orientation = resolved_attitude.orientation
+    vector = resolved_attitude.direction
     if vector is not None:
         projection_direction = vector
     else:
@@ -325,8 +349,15 @@ def sweep(
     step_component_mode: StepComponentMode = "filter",
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
 ) -> list[MeasurementRow]:
-    model = inspect_model(
-        path,
+    resolved_attitude = resolve_sweep_attitude(
+        attitude=attitude,
+        roll_deg=roll_deg,
+        pitch_deg=pitch_deg,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
+        direction=direction,
+    )
+    options = ModelLoadOptions.resolve(
         input_unit=input_unit,
         output_unit=output_unit,
         mesh_deflection=mesh_deflection,
@@ -337,14 +368,10 @@ def sweep(
         step_component_mode=step_component_mode,
         base_tolerance=base_tolerance,
     )
-    return sweep_model(
+    model = _inspect_model_with_options(path, options)
+    return _sweep_model_with_attitude(
         model,
-        attitude=attitude,
-        roll_deg=roll_deg,
-        pitch_deg=pitch_deg,
-        alpha_deg=alpha_deg,
-        beta_deg=beta_deg,
-        direction=direction,
+        resolved_attitude,
         progress_callback=progress_callback,
     )
 
@@ -361,40 +388,55 @@ def sweep_model(
     progress_callback: Callable[[int, int, MeasurementRow], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
 ) -> list[MeasurementRow]:
-    mode = _normalize_attitude(attitude)
-    if mode == "vector":
+    resolved_attitude = resolve_sweep_attitude(
+        attitude=attitude,
+        roll_deg=roll_deg,
+        pitch_deg=pitch_deg,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
+        direction=direction,
+    )
+    return _sweep_model_with_attitude(
+        model,
+        resolved_attitude,
+        progress_callback=progress_callback,
+        cancel_callback=cancel_callback,
+    )
+
+
+def _sweep_model_with_attitude(
+    model: ModelData,
+    resolved_attitude: ResolvedSweepAttitude,
+    *,
+    progress_callback: Callable[[int, int, MeasurementRow], None] | None = None,
+    cancel_callback: Callable[[], None] | None = None,
+) -> list[MeasurementRow]:
+    if resolved_attitude.mode == "vector":
         if cancel_callback is not None:
             cancel_callback()
-        _require_direction(direction, mode)
-        assert direction is not None
-        _reject_nondefault_sweep(roll_deg, "roll_deg", mode)
-        _reject_nondefault_sweep(pitch_deg, "pitch_deg", mode)
-        _reject_nondefault_sweep(alpha_deg, "alpha_deg", mode)
-        _reject_nondefault_sweep(beta_deg, "beta_deg", mode)
-        row = project_model(model, attitude=mode, direction=direction)
+        assert resolved_attitude.direction is not None
+        projected_attitude = resolve_project_attitude(
+            attitude="vector",
+            direction=resolved_attitude.direction,
+        )
+        row = _project_model_with_attitude(model, projected_attitude)
         if cancel_callback is not None:
             cancel_callback()
         if progress_callback is not None:
             progress_callback(1, 1, row)
         return [row]
 
-    if direction is not None:
-        raise ValueError(f"direction cannot be used with attitude {mode!r}")
-    roll: SweepValue
-    alpha: SweepValue
-    beta: SweepValue
-    if mode == "roll-pitch":
-        _reject_nondefault_sweep(alpha_deg, "alpha_deg", mode)
-        _reject_nondefault_sweep(beta_deg, "beta_deg", mode)
-        roll, alpha, beta = roll_deg, pitch_deg, 0.0
-    else:
-        _reject_nondefault_sweep(roll_deg, "roll_deg", mode)
-        _reject_nondefault_sweep(pitch_deg, "pitch_deg", mode)
-        roll, alpha, beta = 0.0, alpha_deg, beta_deg
-
     rows: list[MeasurementRow] = []
-    total = orientation_count(roll=roll, alpha=alpha, beta=beta)
-    orientations = iter_orientations(roll=roll, alpha=alpha, beta=beta)
+    total = orientation_count(
+        roll=resolved_attitude.roll,
+        alpha=resolved_attitude.alpha,
+        beta=resolved_attitude.beta,
+    )
+    orientations = iter_orientations(
+        roll=resolved_attitude.roll,
+        alpha=resolved_attitude.alpha,
+        beta=resolved_attitude.beta,
+    )
     for index, orientation in enumerate(orientations, start=1):
         if cancel_callback is not None:
             cancel_callback()
@@ -423,58 +465,6 @@ def sweep_model(
     return rows
 
 
-def _normalize_attitude(value: AttitudeMode) -> AttitudeMode:
-    mode = value.strip().lower().replace("_", "-")
-    if mode not in ATTITUDE_MODES:
-        raise ValueError(f"attitude must be one of: {', '.join(ATTITUDE_MODES)}")
-    return mode
-
-
-def _resolve_project_orientation(
-    *,
-    mode: AttitudeMode,
-    roll_deg: float,
-    pitch_deg: float,
-    alpha_deg: float,
-    beta_deg: float,
-    direction: str | None,
-) -> tuple[Orientation | None, FloatArray | None]:
-    if mode == "vector":
-        _require_direction(direction, mode)
-        assert direction is not None
-        _reject_nonzero(roll_deg, "roll_deg", mode)
-        _reject_nonzero(pitch_deg, "pitch_deg", mode)
-        _reject_nonzero(alpha_deg, "alpha_deg", mode)
-        _reject_nonzero(beta_deg, "beta_deg", mode)
-        return None, parse_vector(direction)
-
-    if direction is not None:
-        raise ValueError(f"direction cannot be used with attitude {mode!r}")
-    if mode == "roll-pitch":
-        _reject_nonzero(alpha_deg, "alpha_deg", mode)
-        _reject_nonzero(beta_deg, "beta_deg", mode)
-        return Orientation(roll_deg=roll_deg, alpha_deg=pitch_deg), None
-
-    _reject_nonzero(roll_deg, "roll_deg", mode)
-    _reject_nonzero(pitch_deg, "pitch_deg", mode)
-    return Orientation(alpha_deg=alpha_deg, beta_deg=beta_deg), None
-
-
-def _require_direction(direction: str | None, mode: AttitudeMode) -> None:
-    if direction is None:
-        raise ValueError(f"direction is required with attitude {mode!r}")
-
-
-def _reject_nonzero(value: float, name: str, mode: AttitudeMode) -> None:
-    if value != 0.0:
-        raise ValueError(f"{name} cannot be used with attitude {mode!r}")
-
-
-def _reject_nondefault_sweep(value: SweepValue, name: str, mode: AttitudeMode) -> None:
-    if parse_sweep_values(value) != [0.0]:
-        raise ValueError(f"{name} cannot be used with attitude {mode!r}")
-
-
 def _selected_component_names(model: ModelData) -> tuple[str, ...]:
     return tuple(
         model.component_names[index - 1]
@@ -494,8 +484,3 @@ def _method_name(model: ModelData, *, projected: bool) -> str:
         return f"{base}+mesh-projection" if projected else base
     base = "stl-mesh-assembly" if model.is_assembly else "stl-mesh"
     return f"{base}-projection" if projected else base
-
-
-def _step_metric_source_requires_mesh(value: str) -> bool:
-    text = value.strip().lower().replace("_", "-")
-    return text in {"mesh", "tessellated", "stl"}

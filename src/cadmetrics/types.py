@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
+from cadmetrics.result_schema import CsvValue, serialize_result_row
 from cadmetrics.version import cadmetrics_hash, cadmetrics_version
 
 
@@ -130,48 +131,8 @@ class MeasurementRow:
     cadmetrics_hash: str = field(default_factory=cadmetrics_hash)
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
-    def to_csv_row(self) -> dict[str, str | float | bool | None]:
-        return {
-            "file": self.file,
-            "step_components": ",".join(str(index) for index in self.step_components),
-            "step_component_names": "; ".join(self.step_component_names),
-            "input_unit": self.input_unit,
-            "output_unit": self.output_unit,
-            "roll_deg": self.roll_deg,
-            "pitch_deg": self.pitch_deg,
-            "alpha_deg": self.alpha_deg,
-            "beta_deg": self.beta_deg,
-            "direction_x": self.direction_x,
-            "direction_y": self.direction_y,
-            "direction_z": self.direction_z,
-            "x_min": self.x_min,
-            "x_max": self.x_max,
-            "y_min": self.y_min,
-            "y_max": self.y_max,
-            "z_min": self.z_min,
-            "z_max": self.z_max,
-            "surface_area": self.surface_area,
-            "newly_exposed_surface_area": self.newly_exposed_surface_area,
-            "base_area": self.base_area,
-            "volume": self.volume,
-            "projected_area": self.projected_area,
-            "centroid_u": self.centroid_u,
-            "centroid_v": self.centroid_v,
-            "centroid_x": self.centroid_x,
-            "centroid_y": self.centroid_y,
-            "centroid_z": self.centroid_z,
-            "is_watertight": self.is_watertight,
-            "mesh_deflection": self.mesh_deflection,
-            "angular_deflection": self.angular_deflection,
-            "base_tolerance": self.base_tolerance,
-            "step_component_mode": self.step_component_mode,
-            "method": self.method,
-            "load_elapsed_sec": self.load_elapsed_sec,
-            "elapsed_sec": self.elapsed_sec,
-            "cadmetrics_version": self.cadmetrics_version,
-            "cadmetrics_hash": self.cadmetrics_hash,
-            "warnings": "; ".join(self.warnings),
-        }
+    def to_csv_row(self) -> dict[str, CsvValue]:
+        return serialize_result_row(self)
 
 
 def _axis_min(vertices: FloatArray, axis: int) -> float | None:

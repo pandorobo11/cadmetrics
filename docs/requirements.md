@@ -128,7 +128,6 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 - `file`
 - `step_components`
 - `step_component_names`
-- `step_component_mode`
 - `input_unit`
 - `output_unit`
 - `roll_deg`
@@ -158,6 +157,7 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 - `mesh_deflection`
 - `angular_deflection`
 - `base_tolerance`
+- `step_component_mode`
 - `method`
 - `load_elapsed_sec`
 - `elapsed_sec`

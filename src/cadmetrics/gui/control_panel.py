@@ -14,7 +14,7 @@ from cadmetrics.gui.gui_types import OperationState, ViewerOptions
 from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath
 from cadmetrics.gui.styles import disclosure_arrow_image_urls
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
-from cadmetrics.sweep import parse_sweep_values
+from cadmetrics.sweep import SweepRange
 from cadmetrics.types import ModelData
 
 UNIT_OPTIONS = ["auto", "m", "mm", "cm", "in", "ft"]
@@ -589,8 +589,7 @@ class ControlPanel(QtWidgets.QWidget):
             try:
                 count = 1
                 for fields in groups:
-                    spec = self._sweep_spec(*(field.value() for field in fields))
-                    count *= len(parse_sweep_values(spec))
+                    count *= SweepRange(*(field.value() for field in fields)).count
             except ValueError:
                 self.case_count.setText("Check sweep values")
                 self.case_count.setProperty("invalid", True)
@@ -604,7 +603,7 @@ class ControlPanel(QtWidgets.QWidget):
 
     @staticmethod
     def _sweep_spec(start: float, end: float, step: float) -> str:
-        return f"{start}" if start == end else f"{start}:{end}:{step}"
+        return SweepRange(start, end, step).spec
 
     def _connect_advanced_dirty_signals(self) -> None:
         for combo in (

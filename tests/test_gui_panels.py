@@ -15,12 +15,14 @@ from cadmetrics.gui.control_panel import ControlPanel
 from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.results_panel import ResultsPanel
 from cadmetrics.gui.results_panel import DEFAULT_COLUMN_WIDTH
-from cadmetrics.gui.results_panel import DISPLAY_FIELDS, RESULT_HEADER_LABELS
+from cadmetrics.gui.results_panel import DISPLAY_FIELDS
+from cadmetrics.gui.results_model import ResultsTableModel
 from cadmetrics.gui.styles import (
     application_stylesheet,
     disclosure_arrow_image_urls,
     spinbox_arrow_image_urls,
 )
+from cadmetrics.result_schema import GUI_RESULT_FIELD_SPECS
 from cadmetrics.types import MeasurementRow, ModelData
 
 
@@ -330,10 +332,15 @@ def test_results_panel_keeps_all_field_names_left_aligned_and_discoverable(qtbot
     qtbot.addWidget(panel)
     panel.set_rows([_row()])
     header = panel.table.horizontalHeader()
+    model = panel.table.model()
 
-    assert panel.table.columnCount() == len(CSV_FIELDS)
+    assert isinstance(panel.table, QtWidgets.QTableView)
+    assert not isinstance(panel.table, QtWidgets.QTableWidget)
+    assert isinstance(model, ResultsTableModel)
+    assert model.columnCount() == len(CSV_FIELDS)
     assert panel.table.textElideMode() == QtCore.Qt.TextElideMode.ElideRight
     assert header.sectionResizeMode(0) == QtWidgets.QHeaderView.ResizeMode.Interactive
+    assert DISPLAY_FIELDS == [spec.key for spec in GUI_RESULT_FIELD_SPECS]
     assert DISPLAY_FIELDS[:6] == [
         "file",
         "alpha_deg",
@@ -342,11 +349,23 @@ def test_results_panel_keeps_all_field_names_left_aligned_and_discoverable(qtbot
         "pitch_deg",
         "projected_area",
     ]
-    for column_index, column in enumerate(DISPLAY_FIELDS):
-        item = panel.table.horizontalHeaderItem(column_index)
-        assert item.text() == RESULT_HEADER_LABELS.get(column, column.replace("_", " ").title())
-        assert item.toolTip() == f"CSV field: {column}"
-        assert item.textAlignment() & QtCore.Qt.AlignmentFlag.AlignLeft
+    for column_index, spec in enumerate(GUI_RESULT_FIELD_SPECS):
+        assert model.headerData(
+            column_index,
+            QtCore.Qt.Orientation.Horizontal,
+            QtCore.Qt.ItemDataRole.DisplayRole,
+        ) == spec.gui_label
+        assert model.headerData(
+            column_index,
+            QtCore.Qt.Orientation.Horizontal,
+            QtCore.Qt.ItemDataRole.ToolTipRole,
+        ) == spec.gui_tooltip
+        alignment = model.headerData(
+            column_index,
+            QtCore.Qt.Orientation.Horizontal,
+            QtCore.Qt.ItemDataRole.TextAlignmentRole,
+        )
+        assert alignment & QtCore.Qt.AlignmentFlag.AlignLeft
 
 
 def test_results_panel_cells_are_left_aligned_with_full_text_tooltips(qtbot) -> None:
@@ -355,14 +374,33 @@ def test_results_panel_cells_are_left_aligned_with_full_text_tooltips(qtbot) -> 
     row = _row()
     panel.set_rows([row])
     file_column = DISPLAY_FIELDS.index("file")
-    file_item = panel.table.item(0, file_column)
+    model = panel.table.model()
+    file_index = model.index(0, file_column)
+    text = model.data(file_index, QtCore.Qt.ItemDataRole.DisplayRole)
+    tooltip = model.data(file_index, QtCore.Qt.ItemDataRole.ToolTipRole)
+    alignment = model.data(file_index, QtCore.Qt.ItemDataRole.TextAlignmentRole)
 
-    assert file_item.textAlignment() & QtCore.Qt.AlignmentFlag.AlignLeft
-    assert file_item.toolTip() == file_item.text()
+    assert alignment & QtCore.Qt.AlignmentFlag.AlignLeft
+    assert tooltip == text == row.file
     assert all(
         panel.table.columnWidth(column_index) == DEFAULT_COLUMN_WIDTH
         for column_index in range(len(CSV_FIELDS))
     )
+
+
+def test_results_panel_models_ten_thousand_rows_without_cell_items(qtbot) -> None:
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    row = _row()
+
+    panel.set_rows([row] * 10_000)
+
+    model = panel.table.model()
+    assert isinstance(model, ResultsTableModel)
+    assert model.rowCount() == 10_000
+    assert model.columnCount() == len(CSV_FIELDS)
+    assert model.data(model.index(9_999, DISPLAY_FIELDS.index("file"))) == row.file
+    assert panel.result_count.text() == "Rows: 10000"
 
 
 def test_main_window_only_composes_gui_components(qtbot, monkeypatch) -> None:

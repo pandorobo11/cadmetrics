@@ -18,6 +18,12 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from cadmetrics.attitude import (
+    AttitudeInputError,
+    normalize_attitude,
+    resolve_project_attitude,
+    resolve_sweep_attitude,
+)
 from cadmetrics.api import AttitudeMode, StepComponentMode, inspect_model
 from cadmetrics.api import measure as measure_api
 from cadmetrics.api import project as project_api
@@ -25,13 +31,12 @@ from cadmetrics.api import sweep as sweep_api
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP
 from cadmetrics.csv_io import CSV_FIELDS, validate_csv_output_path, write_rows_csv
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
-from cadmetrics.sweep import parse_sweep_values
+from cadmetrics.load_options import normalize_step_metric_source
 from cadmetrics.types import MeasurementRow
 
 app = typer.Typer(no_args_is_help=True, help="Calculate CAD volume, surface, and projected area.")
 console = Console()
 err_console = Console(stderr=True)
-ATTITUDE_MODES = ("alpha-beta", "roll-pitch", "vector")
 T = TypeVar("T")
 
 
@@ -75,7 +80,6 @@ def measure(
     base_tolerance: float = typer.Option(
         DEFAULT_BASE_TOLERANCE,
         "--base-tolerance",
-        min=0.0,
         help="Relative tolerance for identifying Xmax base faces: max(bbox diagonal * value, 1e-12).",
     ),
     axis_map: str = typer.Option(
@@ -169,7 +173,6 @@ def project(
     base_tolerance: float = typer.Option(
         DEFAULT_BASE_TOLERANCE,
         "--base-tolerance",
-        min=0.0,
         help="Relative tolerance for identifying Xmax base faces: max(bbox diagonal * value, 1e-12).",
     ),
     axis_map: str = typer.Option(
@@ -285,7 +288,6 @@ def sweep(
     base_tolerance: float = typer.Option(
         DEFAULT_BASE_TOLERANCE,
         "--base-tolerance",
-        min=0.0,
         help="Relative tolerance for identifying Xmax base faces: max(bbox diagonal * value, 1e-12).",
     ),
     axis_map: str = typer.Option(
@@ -418,7 +420,6 @@ def inspect(
     base_tolerance: float = typer.Option(
         DEFAULT_BASE_TOLERANCE,
         "--base-tolerance",
-        min=0.0,
         help="Relative tolerance for identifying Xmax base faces: max(bbox diagonal * value, 1e-12).",
     ),
     axis_map: str = typer.Option(
@@ -457,8 +458,7 @@ def inspect(
             step_metric_source=step_metrics,
             step_components=_component_selection(step_component),
             step_component_mode=cast(StepComponentMode, component_mode),
-            require_mesh=step_metrics.strip().lower().replace("_", "-")
-            in {"mesh", "tessellated", "stl"},
+            require_mesh=normalize_step_metric_source(step_metrics) == "mesh",
         )
     )
     table = Table(title=_format_input_files(file))
@@ -635,16 +635,25 @@ def _resolve_project_attitude(
     direction: str | None,
 ) -> ProjectAttitude:
     mode = _normalize_attitude_mode(attitude, pitch=pitch, direction=direction)
-    if mode == "vector":
-        if direction is None:
-            raise typer.BadParameter("--direction is required when --attitude vector is used")
-        _reject_nonzero(alpha, "--alpha", mode)
-        _reject_nonzero(beta, "--beta", mode)
-        _reject_nonzero(roll, "--roll", mode)
-        if pitch is not None:
-            _reject_nonzero(pitch, "--pitch", mode)
+    if mode == "alpha-beta" and pitch is not None:
+        raise typer.BadParameter("--pitch can only be used with --attitude roll-pitch")
+    try:
+        resolved = resolve_project_attitude(
+            attitude=mode,
+            alpha_deg=alpha,
+            beta_deg=beta,
+            roll_deg=roll,
+            pitch_deg=0.0 if pitch is None else pitch,
+            direction=direction,
+        )
+    except AttitudeInputError as exc:
+        raise _attitude_bad_parameter(exc) from exc
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    if resolved.mode == "vector":
         return {
-            "mode": mode,
+            "mode": resolved.mode,
             "roll": 0.0,
             "pitch": 0.0,
             "alpha": 0.0,
@@ -652,13 +661,9 @@ def _resolve_project_attitude(
             "direction": direction,
         }
 
-    if direction is not None:
-        raise typer.BadParameter("--direction can only be used with --attitude vector")
-    if mode == "roll-pitch":
-        _reject_nonzero(alpha, "--alpha", mode)
-        _reject_nonzero(beta, "--beta", mode)
+    if resolved.mode == "roll-pitch":
         return {
-            "mode": mode,
+            "mode": resolved.mode,
             "roll": roll,
             "pitch": 0.0 if pitch is None else pitch,
             "alpha": 0.0,
@@ -666,11 +671,8 @@ def _resolve_project_attitude(
             "direction": None,
         }
 
-    if pitch is not None:
-        raise typer.BadParameter("--pitch can only be used with --attitude roll-pitch")
-    _reject_nonzero(roll, "--roll", mode)
     return {
-        "mode": mode,
+        "mode": resolved.mode,
         "roll": 0.0,
         "pitch": 0.0,
         "alpha": alpha,
@@ -689,16 +691,25 @@ def _resolve_sweep_attitude(
     direction: str | None,
 ) -> SweepAttitude:
     mode = _normalize_attitude_mode(attitude, pitch=pitch, direction=direction)
-    if mode == "vector":
-        if direction is None:
-            raise typer.BadParameter("--direction is required when --attitude vector is used")
-        _reject_nondefault_spec(alpha, "--alpha", mode)
-        _reject_nondefault_spec(beta, "--beta", mode)
-        _reject_nondefault_spec(roll, "--roll", mode)
-        if pitch is not None:
-            _reject_nondefault_spec(pitch, "--pitch", mode)
+    if mode == "alpha-beta" and pitch is not None:
+        raise typer.BadParameter("--pitch can only be used with --attitude roll-pitch")
+    try:
+        resolved = resolve_sweep_attitude(
+            attitude=mode,
+            alpha_deg=alpha,
+            beta_deg=beta,
+            roll_deg=roll,
+            pitch_deg="0" if pitch is None else pitch,
+            direction=direction,
+        )
+    except AttitudeInputError as exc:
+        raise _attitude_bad_parameter(exc) from exc
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    if resolved.mode == "vector":
         return {
-            "mode": mode,
+            "mode": resolved.mode,
             "roll": "0",
             "pitch": "0",
             "alpha": "0",
@@ -706,13 +717,9 @@ def _resolve_sweep_attitude(
             "direction": direction,
         }
 
-    if direction is not None:
-        raise typer.BadParameter("--direction can only be used with --attitude vector")
-    if mode == "roll-pitch":
-        _reject_nondefault_spec(alpha, "--alpha", mode)
-        _reject_nondefault_spec(beta, "--beta", mode)
+    if resolved.mode == "roll-pitch":
         return {
-            "mode": mode,
+            "mode": resolved.mode,
             "roll": roll,
             "pitch": "0" if pitch is None else pitch,
             "alpha": "0",
@@ -720,11 +727,8 @@ def _resolve_sweep_attitude(
             "direction": None,
         }
 
-    if pitch is not None:
-        raise typer.BadParameter("--pitch can only be used with --attitude roll-pitch")
-    _reject_nondefault_spec(roll, "--roll", mode)
     return {
-        "mode": mode,
+        "mode": resolved.mode,
         "roll": "0",
         "pitch": "0",
         "alpha": alpha,
@@ -745,22 +749,21 @@ def _normalize_attitude_mode(
         if pitch is not None:
             return "roll-pitch"
         return "alpha-beta"
-    mode = attitude.strip().lower().replace("_", "-")
-    if mode not in ATTITUDE_MODES:
-        raise typer.BadParameter(
-            f"--attitude must be one of: {', '.join(ATTITUDE_MODES)}"
+    try:
+        return normalize_attitude(attitude)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc).replace("attitude", "--attitude", 1)) from exc
+
+
+def _attitude_bad_parameter(exc: AttitudeInputError) -> typer.BadParameter:
+    option = f"--{exc.option.removesuffix('_deg').replace('_', '-')}"
+    if exc.required:
+        return typer.BadParameter(
+            f"{option} is required when --attitude {exc.mode} is used"
         )
-    return cast(AttitudeMode, mode)
-
-
-def _reject_nonzero(value: float, option: str, mode: str) -> None:
-    if value != 0.0:
-        raise typer.BadParameter(f"{option} cannot be used with --attitude {mode}")
-
-
-def _reject_nondefault_spec(value: str, option: str, mode: str) -> None:
-    if parse_sweep_values(value) != [0.0]:
-        raise typer.BadParameter(f"{option} cannot be used with --attitude {mode}")
+    if exc.option == "direction":
+        return typer.BadParameter("--direction can only be used with --attitude vector")
+    return typer.BadParameter(f"{option} cannot be used with --attitude {exc.mode}")
 
 
 def _run_with_progress(progress: Progress, action: Callable[[], T]) -> T:

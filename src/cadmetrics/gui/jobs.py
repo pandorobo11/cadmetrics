@@ -4,9 +4,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
 
-from cadmetrics.api import StepComponentMode, project, project_model, sweep, sweep_model
+from cadmetrics.api import _inspect_model_with_options, project_model, sweep_model
+from cadmetrics.attitude import ResolvedSweepAttitude, resolve_sweep_attitude
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP
-from cadmetrics.io import DEFAULT_BASE_TOLERANCE
+from cadmetrics.load_options import (
+    DEFAULT_BASE_TOLERANCE,
+    ModelLoadOptions,
+    StepComponentMode,
+)
+from cadmetrics.sweep import SweepRange
 from cadmetrics.types import MeasurementRow, ModelData
 
 AttitudeInputMode = Literal["alpha_beta", "roll_pitch", "vector"]
@@ -44,6 +50,37 @@ class CalculationRequest:
     vector_y: float = 0.0
     vector_z: float = 0.0
 
+    def load_options(self) -> ModelLoadOptions:
+        return ModelLoadOptions.resolve(
+            input_unit=self.input_unit,
+            output_unit=self.output_unit,
+            mesh_deflection=self.mesh_deflection,
+            angular_deflection=self.angular_deflection,
+            base_tolerance=self.base_tolerance,
+            axis_map=self.axis_map,
+            step_metric_source=self.step_metric_source,
+            step_components=self.step_components,
+            step_component_mode=self.step_component_mode,
+        )
+
+    def resolved_attitude(self) -> ResolvedSweepAttitude:
+        if self.attitude_mode == "vector":
+            return resolve_sweep_attitude(
+                attitude="vector",
+                direction=f"{self.vector_x},{self.vector_y},{self.vector_z}",
+            )
+        if self.attitude_mode == "roll_pitch":
+            return resolve_sweep_attitude(
+                attitude="roll-pitch",
+                roll_deg=SweepRange(self.roll_start, self.roll_end, self.roll_step).spec,
+                pitch_deg=SweepRange(self.pitch_start, self.pitch_end, self.pitch_step).spec,
+            )
+        return resolve_sweep_attitude(
+            attitude="alpha-beta",
+            alpha_deg=SweepRange(self.alpha_start, self.alpha_end, self.alpha_step).spec,
+            beta_deg=SweepRange(self.beta_start, self.beta_end, self.beta_step).spec,
+        )
+
 
 def run_calculation(
     request: CalculationRequest,
@@ -52,88 +89,41 @@ def run_calculation(
     progress_callback: ProgressCallback | None = None,
     cancel_callback: Callable[[], None] | None = None,
 ) -> list[MeasurementRow]:
-    if request.attitude_mode == "alpha_beta":
-        if model is not None:
-            return sweep_model(
-                model,
-                attitude="alpha-beta",
-                alpha_deg=_range_spec(request.alpha_start, request.alpha_end, request.alpha_step),
-                beta_deg=_range_spec(request.beta_start, request.beta_end, request.beta_step),
-                progress_callback=_orientation_progress(progress_callback, "alpha_beta"),
-                cancel_callback=cancel_callback,
+    attitude = request.resolved_attitude()
+    if model is None:
+        model = _inspect_model_with_options(request.file, request.load_options())
+    if attitude.mode == "vector":
+        if cancel_callback is not None:
+            cancel_callback()
+        assert attitude.direction is not None
+        row = project_model(model, attitude="vector", direction=attitude.direction)
+        if cancel_callback is not None:
+            cancel_callback()
+        if progress_callback is not None:
+            progress_callback(
+                1,
+                1,
+                f"vector=({request.vector_x:g}, {request.vector_y:g}, {request.vector_z:g})",
             )
-        return sweep(
-            request.file,
-            attitude="alpha-beta",
-            alpha_deg=_range_spec(request.alpha_start, request.alpha_end, request.alpha_step),
-            beta_deg=_range_spec(request.beta_start, request.beta_end, request.beta_step),
-            progress_callback=_orientation_progress(progress_callback, "alpha_beta"),
-            input_unit=request.input_unit,
-            output_unit=request.output_unit,
-            mesh_deflection=request.mesh_deflection,
-            angular_deflection=request.angular_deflection,
-            base_tolerance=request.base_tolerance,
-            axis_map=request.axis_map,
-            step_metric_source=request.step_metric_source,
-            step_components=request.step_components,
-            step_component_mode=request.step_component_mode,
-        )
-    if request.attitude_mode == "roll_pitch":
-        if model is not None:
-            return sweep_model(
-                model,
-                attitude="roll-pitch",
-                roll_deg=_range_spec(request.roll_start, request.roll_end, request.roll_step),
-                pitch_deg=_range_spec(request.pitch_start, request.pitch_end, request.pitch_step),
-                progress_callback=_orientation_progress(progress_callback, "roll_pitch"),
-                cancel_callback=cancel_callback,
-            )
-        return sweep(
-            request.file,
-            attitude="roll-pitch",
-            roll_deg=_range_spec(request.roll_start, request.roll_end, request.roll_step),
-            pitch_deg=_range_spec(request.pitch_start, request.pitch_end, request.pitch_step),
-            progress_callback=_orientation_progress(progress_callback, "roll_pitch"),
-            input_unit=request.input_unit,
-            output_unit=request.output_unit,
-            mesh_deflection=request.mesh_deflection,
-            angular_deflection=request.angular_deflection,
-            base_tolerance=request.base_tolerance,
-            axis_map=request.axis_map,
-            step_metric_source=request.step_metric_source,
-            step_components=request.step_components,
-            step_component_mode=request.step_component_mode,
-        )
+        return [row]
 
-    direction = f"{request.vector_x},{request.vector_y},{request.vector_z}"
-    if model is not None:
-        if cancel_callback is not None:
-            cancel_callback()
-        row = project_model(model, attitude="vector", direction=direction)
-        if cancel_callback is not None:
-            cancel_callback()
-    else:
-        row = project(
-            request.file,
-            attitude="vector",
-            direction=direction,
-            input_unit=request.input_unit,
-            output_unit=request.output_unit,
-            mesh_deflection=request.mesh_deflection,
-            angular_deflection=request.angular_deflection,
-            base_tolerance=request.base_tolerance,
-            axis_map=request.axis_map,
-            step_metric_source=request.step_metric_source,
-            step_components=request.step_components,
-            step_component_mode=request.step_component_mode,
+    if attitude.mode == "roll-pitch":
+        return sweep_model(
+            model,
+            attitude="roll-pitch",
+            roll_deg=attitude.roll,
+            pitch_deg=attitude.alpha,
+            progress_callback=_orientation_progress(progress_callback, "roll_pitch"),
+            cancel_callback=cancel_callback,
         )
-    if progress_callback is not None:
-        progress_callback(
-            1,
-            1,
-            f"vector=({request.vector_x:g}, {request.vector_y:g}, {request.vector_z:g})",
-        )
-    return [row]
+    return sweep_model(
+        model,
+        attitude="alpha-beta",
+        alpha_deg=attitude.alpha,
+        beta_deg=attitude.beta,
+        progress_callback=_orientation_progress(progress_callback, "alpha_beta"),
+        cancel_callback=cancel_callback,
+    )
 
 
 def _orientation_progress(
@@ -151,11 +141,3 @@ def _orientation_progress(
         progress_callback(index, total, text)
 
     return on_progress
-
-
-def _range_spec(start: float, end: float, step: float) -> str:
-    if step == 0.0:
-        raise ValueError("Sweep step must not be zero")
-    if start == end:
-        return f"{start}"
-    return f"{start}:{end}:{step}"

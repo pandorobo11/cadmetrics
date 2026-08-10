@@ -29,12 +29,13 @@ class _OperationWorker(QtCore.QObject):
         *,
         model: ModelData | None,
         calculate: bool,
+        cancel_event: Event | None = None,
     ) -> None:
         super().__init__()
         self._request = request
         self._model = model
         self._calculate = calculate
-        self._cancel = Event()
+        self._cancel = cancel_event or Event()
 
     @QtCore.Slot()
     def run(self) -> None:
@@ -76,6 +77,75 @@ class _OperationWorker(QtCore.QObject):
         self.progress.emit(index, total, description)
 
 
+class _OperationContext(QtCore.QObject):
+    """Own one worker operation until both native QObjects are deleted."""
+
+    teardown_complete = QtCore.Signal()
+
+    def __init__(
+        self,
+        request: CalculationRequest,
+        *,
+        model: ModelData | None,
+        calculate: bool,
+        parent: QtCore.QObject,
+    ) -> None:
+        super().__init__(parent)
+        self.cancel_event = Event()
+        self.operation_thread = QtCore.QThread(self)
+        self.worker = _OperationWorker(
+            request,
+            model=model,
+            calculate=calculate,
+            cancel_event=self.cancel_event,
+        )
+        self.worker.moveToThread(self.operation_thread)
+        self._thread_finished = False
+        self._worker_destroyed = False
+        self._thread_deletion_requested = False
+
+        self.operation_thread.finished.connect(self.worker.deleteLater)
+        self.operation_thread.finished.connect(
+            self._on_thread_finished,
+            QtCore.Qt.ConnectionType.QueuedConnection,
+        )
+        self.worker.destroyed.connect(
+            self._on_worker_destroyed,
+            QtCore.Qt.ConnectionType.QueuedConnection,
+        )
+        self.operation_thread.destroyed.connect(
+            self._on_thread_destroyed,
+            QtCore.Qt.ConnectionType.QueuedConnection,
+        )
+
+    def cancel(self) -> None:
+        self.cancel_event.set()
+
+    @QtCore.Slot()
+    def _on_thread_finished(self) -> None:
+        self._thread_finished = True
+        self._delete_thread_when_safe()
+
+    @QtCore.Slot()
+    def _on_worker_destroyed(self) -> None:
+        self._worker_destroyed = True
+        self._delete_thread_when_safe()
+
+    def _delete_thread_when_safe(self) -> None:
+        if (
+            not self._thread_finished
+            or not self._worker_destroyed
+            or self._thread_deletion_requested
+        ):
+            return
+        self._thread_deletion_requested = True
+        self.operation_thread.deleteLater()
+
+    @QtCore.Slot()
+    def _on_thread_destroyed(self) -> None:
+        self.teardown_complete.emit()
+
+
 class CalculationController(QtCore.QObject):
     model_loaded = QtCore.Signal(object)
     results_ready = QtCore.Signal(list)
@@ -89,6 +159,7 @@ class CalculationController(QtCore.QObject):
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)
         self._state = OperationState.IDLE
+        self._operation: _OperationContext | None = None
         self._thread: QtCore.QThread | None = None
         self._worker: _OperationWorker | None = None
         self._model: ModelData | None = None
@@ -111,53 +182,70 @@ class CalculationController(QtCore.QObject):
         self._start(request, calculate=True)
 
     def cancel(self) -> None:
-        if self._worker is None or self._state is not OperationState.CALCULATING:
+        if self._operation is None or self._state is not OperationState.CALCULATING:
             return
         self._set_state(OperationState.CANCELLING)
-        self._worker.cancel()
+        self._operation.cancel()
 
     def shutdown(self) -> None:
-        if self._thread is None:
+        if self._operation is None:
             self.shutdown_ready.emit()
             return
         self._shutdown_requested = True
         if self._state is OperationState.CALCULATING:
             self.cancel()
-        elif self._worker is not None:
+        else:
             self._set_state(OperationState.CANCELLING)
-            self._worker.cancel()
+            self._operation.cancel()
 
     def _start(self, request: CalculationRequest, *, calculate: bool) -> None:
         if self._thread is not None:
             self.message.emit("Another model operation is already running.")
             return
-        key = model_load_key(request)
+        try:
+            if calculate:
+                request.resolved_attitude()
+            key = model_load_key(request)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+            return
         cached_model = self._model if self._model_key == key else None
         self._pending_key = key
         self._set_state(
             OperationState.CALCULATING if cached_model is not None and calculate else OperationState.LOADING
         )
-        self._thread = QtCore.QThread(self)
-        self._worker = _OperationWorker(request, model=cached_model, calculate=calculate)
-        self._worker.moveToThread(self._thread)
-        self._thread.started.connect(self._worker.run)
-        self._worker.model_loaded.connect(self._on_model_loaded)
-        self._worker.calculating.connect(lambda: self._set_state(OperationState.CALCULATING))
-        self._worker.results_ready.connect(self.results_ready)
-        self._worker.progress.connect(self.progress)
-        self._worker.failed.connect(self.failed)
-        self._worker.cancelled.connect(self.cancelled)
+        operation = _OperationContext(
+            request,
+            model=cached_model,
+            calculate=calculate,
+            parent=self,
+        )
+        self._operation = operation
+        self._thread = operation.operation_thread
+        self._worker = operation.worker
+        operation.operation_thread.started.connect(operation.worker.run)
+        operation.worker.model_loaded.connect(self._on_model_loaded)
+        operation.worker.calculating.connect(
+            self._on_calculating,
+            QtCore.Qt.ConnectionType.QueuedConnection,
+        )
+        operation.worker.results_ready.connect(self.results_ready)
+        operation.worker.progress.connect(self.progress)
+        operation.worker.failed.connect(self.failed)
+        operation.worker.cancelled.connect(self.cancelled)
         for terminal in (
-            self._worker.results_ready,
-            self._worker.load_finished,
-            self._worker.failed,
-            self._worker.cancelled,
+            operation.worker.results_ready,
+            operation.worker.load_finished,
+            operation.worker.failed,
+            operation.worker.cancelled,
         ):
-            terminal.connect(self._thread.quit)
-        self._thread.finished.connect(self._worker.deleteLater)
-        self._thread.finished.connect(self._thread.deleteLater)
-        self._thread.finished.connect(self._on_thread_finished)
-        self._thread.start()
+            terminal.connect(operation.operation_thread.quit)
+        operation.teardown_complete.connect(self._on_operation_torn_down)
+        operation.operation_thread.start()
+
+    @QtCore.Slot()
+    def _on_calculating(self) -> None:
+        self._set_state(OperationState.CALCULATING)
 
     @QtCore.Slot(object)
     def _on_model_loaded(self, model: ModelData) -> None:
@@ -166,10 +254,15 @@ class CalculationController(QtCore.QObject):
         self.model_loaded.emit(model)
 
     @QtCore.Slot()
-    def _on_thread_finished(self) -> None:
+    def _on_operation_torn_down(self) -> None:
+        operation = self._operation
+        if operation is None:
+            return
+        self._operation = None
         self._thread = None
         self._worker = None
         self._pending_key = None
+        operation.deleteLater()
         self._set_state(OperationState.IDLE)
         if self._shutdown_requested:
             self._shutdown_requested = False

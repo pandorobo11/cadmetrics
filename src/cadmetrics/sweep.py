@@ -1,12 +1,33 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from itertools import product
 from math import floor, isfinite
 
 from cadmetrics.orientation import Orientation
 
 MAX_SWEEP_COMBINATIONS = 10_000
+
+
+@dataclass(frozen=True)
+class SweepRange:
+    start: float
+    end: float
+    step: float
+
+    @property
+    def spec(self) -> str:
+        if self.start == self.end:
+            specification = f"{self.start}"
+        else:
+            specification = f"{self.start}:{self.end}:{self.step}"
+        parse_sweep_values(specification)
+        return specification
+
+    @property
+    def count(self) -> int:
+        return len(parse_sweep_values(self.spec))
 
 
 def parse_sweep_values(spec: str | int | float) -> list[float]:

@@ -5,54 +5,14 @@ from typing import Iterable
 
 from PySide6 import QtCore, QtWidgets
 
-from cadmetrics.csv_io import CSV_FIELDS
 from cadmetrics.gui.export import write_rows_csv
-from cadmetrics.gui.gui_formatters import format_cell
+from cadmetrics.gui.results_model import DISPLAY_FIELDS
+from cadmetrics.gui.results_model import PRIMARY_DISPLAY_FIELDS as PRIMARY_DISPLAY_FIELDS
+from cadmetrics.gui.results_model import RESULT_HEADER_LABELS as RESULT_HEADER_LABELS
+from cadmetrics.gui.results_model import ResultsTableModel
 from cadmetrics.types import MeasurementRow
 
 DEFAULT_COLUMN_WIDTH = 130
-PRIMARY_DISPLAY_FIELDS = [
-    "file",
-    "alpha_deg",
-    "beta_deg",
-    "roll_deg",
-    "pitch_deg",
-    "projected_area",
-    "centroid_u",
-    "centroid_v",
-    "centroid_x",
-    "centroid_y",
-    "centroid_z",
-    "volume",
-    "surface_area",
-    "base_area",
-]
-DISPLAY_FIELDS = PRIMARY_DISPLAY_FIELDS + [
-    field for field in CSV_FIELDS if field not in PRIMARY_DISPLAY_FIELDS
-]
-RESULT_HEADER_LABELS = {
-    "file": "File",
-    "alpha_deg": "Alpha (°)",
-    "beta_deg": "Beta (°)",
-    "roll_deg": "Roll (°)",
-    "pitch_deg": "Pitch (°)",
-    "projected_area": "Projected area",
-    "centroid_u": "Centroid U",
-    "centroid_v": "Centroid V",
-    "centroid_x": "Centroid X",
-    "centroid_y": "Centroid Y",
-    "centroid_z": "Centroid Z",
-    "volume": "Volume",
-    "surface_area": "Surface area",
-    "base_area": "Base area",
-    "step_components": "Components",
-    "step_component_names": "Component names",
-    "input_unit": "Input unit",
-    "output_unit": "Output unit",
-    "is_watertight": "Watertight",
-    "load_elapsed_sec": "Load elapsed (s)",
-    "elapsed_sec": "Elapsed (s)",
-}
 
 
 class ResultsPanel(QtWidgets.QWidget):
@@ -96,13 +56,9 @@ class ResultsPanel(QtWidgets.QWidget):
         empty_layout.addStretch(1)
         self.stack.addWidget(self.empty_state)
 
-        self.table = QtWidgets.QTableWidget(0, len(DISPLAY_FIELDS))
-        self.table.setHorizontalHeaderLabels(
-            [
-                RESULT_HEADER_LABELS.get(field, field.replace("_", " ").title())
-                for field in DISPLAY_FIELDS
-            ]
-        )
+        self.table = QtWidgets.QTableView()
+        self._table_model = ResultsTableModel(self.table)
+        self.table.setModel(self._table_model)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
         header.setDefaultSectionSize(DEFAULT_COLUMN_WIDTH)
@@ -112,14 +68,7 @@ class ResultsPanel(QtWidgets.QWidget):
             QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
         )
         self.table.setTextElideMode(QtCore.Qt.TextElideMode.ElideRight)
-        for column_index, column in enumerate(DISPLAY_FIELDS):
-            header_item = self.table.horizontalHeaderItem(column_index)
-            if header_item is None:
-                raise RuntimeError(f"Could not create table header for {column}")
-            header_item.setTextAlignment(
-                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
-            )
-            header_item.setToolTip(f"CSV field: {column}")
+        for column_index in range(len(DISPLAY_FIELDS)):
             self.table.setColumnWidth(
                 column_index,
                 DEFAULT_COLUMN_WIDTH,
@@ -129,7 +78,7 @@ class ResultsPanel(QtWidgets.QWidget):
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(24)
-        self.table.itemSelectionChanged.connect(self._emit_selected_row)
+        self.table.selectionModel().currentRowChanged.connect(self._emit_selected_row)
         self.stack.addWidget(self.table)
         layout.addWidget(self.stack)
         self.set_busy(False)
@@ -147,21 +96,7 @@ class ResultsPanel(QtWidgets.QWidget):
         self._rows = list(rows)
         if protected_paths is not None:
             self._protected_paths = tuple(Path(path) for path in protected_paths)
-        self.table.setRowCount(len(rows))
-        for row_index, row in enumerate(rows):
-            values = row.to_csv_row()
-            for column_index, column in enumerate(DISPLAY_FIELDS):
-                text = format_cell(values[column])
-                item = QtWidgets.QTableWidgetItem(text)
-                item.setTextAlignment(
-                    QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
-                )
-                item.setToolTip(text)
-                self.table.setItem(
-                    row_index,
-                    column_index,
-                    item,
-                )
+        self._table_model.set_rows(self._rows)
         self.result_count.setText(f"Rows: {len(rows)}")
         self.save_button.setEnabled(bool(rows))
         self.save_button.setToolTip(
@@ -205,7 +140,11 @@ class ResultsPanel(QtWidgets.QWidget):
         except Exception as exc:
             self.error.emit(str(exc))
 
-    def _emit_selected_row(self) -> None:
-        row = self.table.currentRow()
+    def _emit_selected_row(
+        self,
+        current: QtCore.QModelIndex,
+        _previous: QtCore.QModelIndex,
+    ) -> None:
+        row = current.row()
         if 0 <= row < len(self._rows):
             self.selected_row_changed.emit(self._rows[row])

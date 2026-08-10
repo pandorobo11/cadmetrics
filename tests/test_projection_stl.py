@@ -351,6 +351,41 @@ def test_project_rejects_unknown_attitude() -> None:
         project(DATA_DIR / "unit_cube.stl", attitude="yaw-pitch")
 
 
+@pytest.mark.parametrize(
+    ("action", "kwargs", "argument"),
+    [
+        (project, {"attitude": "roll-pitch", "alpha_deg": 10}, "alpha_deg"),
+        (project, {"alpha_deg": float("nan")}, "alpha_deg must be finite"),
+        (
+            project,
+            {"attitude": "roll-pitch", "pitch_deg": float("inf")},
+            "pitch_deg must be finite",
+        ),
+        (sweep, {"attitude": "vector", "direction": None}, "direction is required"),
+        (sweep, {"attitude": "vector", "direction": "0,0,0"}, "greater than zero"),
+        (sweep, {"alpha_deg": "bad"}, "could not convert"),
+        (
+            sweep,
+            {"alpha_deg": "0:100:1", "beta_deg": "0:100:1"},
+            "maximum is 10,000",
+        ),
+    ],
+)
+def test_public_api_validates_attitude_before_loading(
+    monkeypatch: pytest.MonkeyPatch,
+    action,
+    kwargs: dict[str, object],
+    argument: str,
+) -> None:
+    def unexpected_load(*_args, **_kwargs):
+        raise AssertionError("model loading must not run for an invalid attitude")
+
+    monkeypatch.setattr("cadmetrics.api._inspect_model_with_options", unexpected_load)
+
+    with pytest.raises(ValueError, match=argument):
+        action(Path("not-loaded.step"), **kwargs)
+
+
 def test_base_area_default_tolerance_allows_small_xmax_face_variation() -> None:
     vertices = np.array(
         [

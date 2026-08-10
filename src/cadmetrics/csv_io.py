@@ -6,49 +6,10 @@ import tempfile
 from pathlib import Path
 from typing import Iterable
 
+from cadmetrics.result_schema import RESULT_FIELD_SPECS
 from cadmetrics.types import MeasurementRow
 
-CSV_FIELDS = [
-    "file",
-    "step_components",
-    "step_component_names",
-    "input_unit",
-    "output_unit",
-    "roll_deg",
-    "pitch_deg",
-    "alpha_deg",
-    "beta_deg",
-    "direction_x",
-    "direction_y",
-    "direction_z",
-    "x_min",
-    "x_max",
-    "y_min",
-    "y_max",
-    "z_min",
-    "z_max",
-    "surface_area",
-    "newly_exposed_surface_area",
-    "base_area",
-    "volume",
-    "projected_area",
-    "centroid_u",
-    "centroid_v",
-    "centroid_x",
-    "centroid_y",
-    "centroid_z",
-    "is_watertight",
-    "mesh_deflection",
-    "angular_deflection",
-    "base_tolerance",
-    "step_component_mode",
-    "method",
-    "load_elapsed_sec",
-    "elapsed_sec",
-    "cadmetrics_version",
-    "cadmetrics_hash",
-    "warnings",
-]
+CSV_FIELDS = [spec.key for spec in RESULT_FIELD_SPECS]
 
 
 def validate_csv_output_path(

@@ -102,6 +102,7 @@ if QtWidgets is not None:
             self.controls.cancel_requested.connect(self.controller.cancel)
             self.controls.viewer_options_changed.connect(self.viewer.set_options)
             self.controls.request_changed.connect(self._preview_request)
+            self.controls.error.connect(self._show_error)
             self.controls.save_image_button.clicked.connect(self.viewer.choose_and_save_image)
             self.viewer.base_face_available.connect(self._set_base_face_available)
             self.viewer.newly_exposed_surface_available.connect(

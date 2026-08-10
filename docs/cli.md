@@ -235,15 +235,25 @@ All calculation commands use the same CSV schema:
 | `pitch_deg` | equivalent pitch angle |
 | `alpha_deg` | equivalent angle of attack |
 | `beta_deg` | equivalent sideslip angle |
-| `direction_x`, `direction_y`, `direction_z` | normalized projection direction |
-| `x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max` | model coordinate bounds in `output_unit` |
+| `direction_x` | normalized projection-direction X component |
+| `direction_y` | normalized projection-direction Y component |
+| `direction_z` | normalized projection-direction Z component |
+| `x_min` | minimum model X coordinate in `output_unit` |
+| `x_max` | maximum model X coordinate in `output_unit` |
+| `y_min` | minimum model Y coordinate in `output_unit` |
+| `y_max` | maximum model Y coordinate in `output_unit` |
+| `z_min` | minimum model Z coordinate in `output_unit` |
+| `z_max` | maximum model Z coordinate in `output_unit` |
 | `surface_area` | surface area in `output_unit^2` |
 | `newly_exposed_surface_area` | surface area newly exposed and excluded in subtraction mode |
 | `base_area` | exterior face area at cadmetrics-coordinate `Xmax` in `output_unit^2`; `0` with a warning when no face is found |
 | `volume` | volume in `output_unit^3`; empty for non-watertight STL and open, invalid, or surface-only STEP shapes |
 | `projected_area` | orthographic projected outline area in `output_unit^2` |
-| `centroid_u`, `centroid_v` | projected 2D centroid in the projection plane |
-| `centroid_x`, `centroid_y`, `centroid_z` | corresponding 3D marker position |
+| `centroid_u` | projected 2D centroid U coordinate in the projection plane |
+| `centroid_v` | projected 2D centroid V coordinate in the projection plane |
+| `centroid_x` | corresponding 3D centroid-marker X coordinate |
+| `centroid_y` | corresponding 3D centroid-marker Y coordinate |
+| `centroid_z` | corresponding 3D centroid-marker Z coordinate |
 | `is_watertight` | mesh or STEP topology watertightness when known |
 | `mesh_deflection` | effective STEP tessellation deflection, if applicable |
 | `angular_deflection` | effective STEP angular deflection, if applicable |

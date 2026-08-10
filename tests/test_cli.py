@@ -268,6 +268,33 @@ def test_sweep_cli_accepts_equivalent_zero_specs_in_vector_mode(
     assert result.exit_code == 0, result.output
 
 
+@pytest.mark.parametrize(
+    ("command", "arguments", "message"),
+    [
+        ("project", ["--alpha", "nan"], "alpha_deg must be finite"),
+        ("sweep", ["--alpha", "bad"], "could not convert"),
+        (
+            "sweep",
+            ["--attitude", "vector", "--direction", "0,0,0"],
+            "greater than zero",
+        ),
+    ],
+)
+def test_cli_reports_preflight_attitude_validation_errors(
+    runner: CliRunner,
+    command: str,
+    arguments: list[str],
+    message: str,
+) -> None:
+    result = runner.invoke(
+        app,
+        [command, str(DATA_DIR / "unit_cube.stl"), *arguments],
+    )
+
+    assert result.exit_code != 0
+    assert message in result.output
+
+
 def test_cli_error_preserves_optional_extra_markup(
     runner: CliRunner,
     monkeypatch: pytest.MonkeyPatch,
