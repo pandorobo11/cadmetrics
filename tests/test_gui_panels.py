@@ -433,6 +433,70 @@ def test_main_window_invalidates_results_when_request_changes(qtbot, monkeypatch
     assert window.progress_bar.value() == 0
 
 
+@pytest.mark.parametrize(
+    "change", ["input_unit", "output_unit", "existing_file", "missing_file", "empty_file"]
+)
+def test_main_window_invalidates_results_after_setup_edit(
+    qtbot, monkeypatch, tmp_path: Path, change: str
+) -> None:
+    source = tmp_path / "model.stl"
+    source.touch()
+    other = tmp_path / "other.stl"
+    other.touch()
+    monkeypatch.setattr(pyside_app, "ModelViewer", _FakeViewer)
+    window = pyside_app.MainWindow()
+    qtbot.addWidget(window)
+    window.controls.set_file_paths((source,))
+    window._request = window.controls.request()
+    window._on_results_ready([_row()])
+
+    if change == "input_unit":
+        window.controls.input_unit.setCurrentText("mm")
+    elif change == "output_unit":
+        window.controls.output_unit.setCurrentText("mm")
+    elif change == "existing_file":
+        window.controls.file_edit.setText(str(other))
+    elif change == "missing_file":
+        window.controls.file_edit.setText(str(tmp_path / "missing.stl"))
+    else:
+        window.controls.file_edit.clear()
+
+    assert window.results.rows == []
+    assert window.results.save_button.isEnabled() is False
+    assert window.viewer.result_calls[-1][0] is None
+    assert window.progress_bar.value() == 0
+    with pytest.raises(ValueError, match="No calculation results to save"):
+        window.results.save_csv(tmp_path / "stale.csv")
+
+
+def test_main_window_setup_edits_are_applied_by_next_sweep(
+    qtbot, monkeypatch, tmp_path: Path
+) -> None:
+    paths = (tmp_path / "body.stl", tmp_path / "wing.stl")
+    for path in paths:
+        path.touch()
+    monkeypatch.setattr(pyside_app, "ModelViewer", _FakeViewer)
+    window = pyside_app.MainWindow()
+    qtbot.addWidget(window)
+    loads = []
+    calculations = []
+    monkeypatch.setattr(window.controller, "load_only", loads.append)
+    monkeypatch.setattr(window.controller, "calculate", calculations.append)
+
+    window.controls.set_file_paths(paths)
+    window.controls.input_unit.setCurrentText("mm")
+    window.controls.output_unit.setCurrentText("cm")
+
+    assert loads == calculations == []
+    window.controls.run_button.click()
+
+    assert loads == []
+    assert len(calculations) == 1
+    assert calculations[0].file == paths
+    assert calculations[0].input_unit == "mm"
+    assert calculations[0].output_unit == "cm"
+
+
 def test_main_window_protects_request_files_from_csv_export(
     qtbot,
     monkeypatch,
