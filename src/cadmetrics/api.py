@@ -105,7 +105,15 @@ def measure(
 
 def measure_model(model: ModelData, *, elapsed_sec: float | None = None) -> MeasurementRow:
     start = perf_counter()
-    row = MeasurementRow(
+    row = _model_row(model, projected=False)
+    return replace(
+        row,
+        elapsed_sec=elapsed_sec if elapsed_sec is not None else perf_counter() - start,
+    )
+
+
+def _model_row(model: ModelData, *, projected: bool) -> MeasurementRow:
+    return MeasurementRow(
         file=str(model.path),
         input_unit=model.input_unit,
         output_unit=model.output_unit,
@@ -131,16 +139,12 @@ def measure_model(model: ModelData, *, elapsed_sec: float | None = None) -> Meas
         angular_deflection=model.angular_deflection,
         base_tolerance=model.base_tolerance,
         step_component_mode=model.step_component_mode,
-        method=_method_name(model, projected=False),
+        method=_method_name(model, projected=projected),
         load_elapsed_sec=model.load_elapsed_sec,
         elapsed_sec=0.0,
         cadmetrics_version=model.cadmetrics_version,
         cadmetrics_hash=model.cadmetrics_hash,
         warnings=model.warnings,
-    )
-    return replace(
-        row,
-        elapsed_sec=elapsed_sec if elapsed_sec is not None else perf_counter() - start,
     )
 
 
@@ -230,16 +234,8 @@ def _project_model_with_attitude(
     row = _projected_row(
         model,
         projection_direction=projection_direction,
-        volume=model.volume,
-        surface_area=model.surface_area,
         projection_metrics=metrics,
-        is_watertight=model.is_watertight,
-        mesh_deflection=model.mesh_deflection,
-        angular_deflection=model.angular_deflection,
-        base_tolerance=model.base_tolerance,
-        method=_method_name(model, projected=True),
         elapsed_sec=elapsed_sec if elapsed_sec is not None else 0.0,
-        warnings=model.warnings,
     )
     if elapsed_sec is not None:
         return row
@@ -250,16 +246,8 @@ def _projected_row(
     model: ModelData,
     *,
     projection_direction: FloatArray,
-    volume: float | None,
-    surface_area: float | None,
     projection_metrics: ProjectionMetrics,
-    is_watertight: bool | None,
-    mesh_deflection: float | None,
-    angular_deflection: float | None,
-    base_tolerance: float | None,
-    method: str,
     elapsed_sec: float,
-    warnings: tuple[str, ...],
 ) -> MeasurementRow:
     projection_direction = normalize_vector(projection_direction)
     alpha_deg, beta_deg = alpha_beta_from_direction(projection_direction)
@@ -270,20 +258,13 @@ def _projected_row(
         centroid_u=projection_metrics.centroid_u,
         centroid_v=projection_metrics.centroid_v,
     )
-    return MeasurementRow(
-        file=str(model.path),
-        input_unit=model.input_unit,
-        output_unit=model.output_unit,
+    return replace(
+        _model_row(model, projected=True),
         roll_deg=roll_deg,
         alpha_deg=alpha_deg,
         beta_deg=beta_deg,
         pitch_deg=pitch_deg,
-        volume=volume,
-        surface_area=surface_area,
-        newly_exposed_surface_area=model.newly_exposed_surface_area,
-        base_area=model.base_area,
         projected_area=projection_metrics.area,
-        is_watertight=is_watertight,
         direction_x=float(projection_direction[0]),
         direction_y=float(projection_direction[1]),
         direction_z=float(projection_direction[2]),
@@ -292,24 +273,7 @@ def _projected_row(
         centroid_x=centroid_x,
         centroid_y=centroid_y,
         centroid_z=centroid_z,
-        x_min=model.x_min,
-        x_max=model.x_max,
-        y_min=model.y_min,
-        y_max=model.y_max,
-        z_min=model.z_min,
-        z_max=model.z_max,
-        step_components=model.selected_components,
-        step_component_names=_selected_component_names(model),
-        mesh_deflection=mesh_deflection,
-        angular_deflection=angular_deflection,
-        base_tolerance=base_tolerance,
-        step_component_mode=model.step_component_mode,
-        method=method,
-        load_elapsed_sec=model.load_elapsed_sec,
         elapsed_sec=elapsed_sec,
-        cadmetrics_version=model.cadmetrics_version,
-        cadmetrics_hash=model.cadmetrics_hash,
-        warnings=warnings,
     )
 
 
@@ -445,16 +409,8 @@ def _sweep_model_with_attitude(
         row = _projected_row(
             model,
             projection_direction=projection_direction,
-            volume=model.volume,
-            surface_area=model.surface_area,
             projection_metrics=projected_metrics(model, orientation=orientation),
-            is_watertight=model.is_watertight,
-            mesh_deflection=model.mesh_deflection,
-            angular_deflection=model.angular_deflection,
-            base_tolerance=model.base_tolerance,
-            method=_method_name(model, projected=True),
             elapsed_sec=0.0,
-            warnings=model.warnings,
         )
         row = replace(row, elapsed_sec=perf_counter() - row_start)
         if cancel_callback is not None:
