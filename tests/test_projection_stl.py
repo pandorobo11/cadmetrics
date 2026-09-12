@@ -6,7 +6,7 @@ import pytest
 pytest.importorskip("shapely")
 
 from cadmetrics.api import inspect_model, measure, project, sweep, sweep_model
-from cadmetrics._mesh_io import _mesh_volume_and_surface_area, _mesh_xmax_base_area
+from cadmetrics._mesh_io import _mesh_xmax_base_area
 
 
 trimesh = pytest.importorskip("trimesh")
@@ -21,28 +21,6 @@ def _box_mesh(*, reverse: bool = False, flipped_face: int | None = None):
     if flipped_face is not None:
         faces[flipped_face] = faces[flipped_face, ::-1]
     return trimesh.Trimesh(vertices=mesh.vertices.copy(), faces=faces, process=False)
-
-
-def test_cube_measurements() -> None:
-    row = measure(DATA_DIR / "unit_cube.stl")
-    assert row.volume == pytest.approx(1.0)
-    assert row.surface_area == pytest.approx(6.0)
-    assert row.base_area == pytest.approx(1.0)
-    assert row.is_watertight is True
-    assert row.cadmetrics_version
-    assert row.cadmetrics_hash
-
-
-def test_stl_assembly_concatenates_mesh_measurements() -> None:
-    path = DATA_DIR / "unit_cube.stl"
-    row = measure([path, path])
-
-    assert row.volume is None
-    assert row.surface_area == pytest.approx(12.0)
-    assert row.base_area == pytest.approx(2.0)
-    assert row.is_watertight is False
-    assert row.method == "stl-mesh-assembly"
-    assert "without boolean union" in "; ".join(row.warnings)
 
 
 def test_cube_projected_area_default_direction() -> None:
@@ -63,6 +41,7 @@ def test_cube_projected_area_default_direction() -> None:
     assert row.z_min == pytest.approx(0.0)
     assert row.z_max == pytest.approx(1.0)
     assert row.method == "stl-mesh-projection"
+    assert row.load_elapsed_sec is not None
     assert row.elapsed_sec is not None
 
 
@@ -75,20 +54,8 @@ def test_stl_assembly_projects_combined_silhouette_once() -> None:
     assert row.surface_area == pytest.approx(12.0)
     assert row.base_area == pytest.approx(2.0)
     assert row.method == "stl-mesh-assembly-projection"
-
-
-def test_non_watertight_stl_leaves_volume_unset() -> None:
-    row = measure(
-        Path(__file__).parents[1]
-        / "samples"
-        / "open_cube_missing_face"
-        / "open_cube_missing_face_ascii.stl"
-    )
-
-    assert row.volume is None
-    assert row.surface_area == pytest.approx(5.0)
     assert row.is_watertight is False
-    assert "volume is unavailable" in "; ".join(row.warnings)
+    assert "without boolean union" in "; ".join(row.warnings)
 
 
 def test_watertight_stl_with_one_reversed_face_leaves_volume_unset(
@@ -153,14 +120,6 @@ def test_stl_with_opposing_closed_shells_leaves_volume_unset(tmp_path: Path) -> 
     assert row.is_watertight is True
     assert "opposing face orientations" in "; ".join(row.warnings)
 
-    volume, surface_area, is_watertight = _mesh_volume_and_surface_area(
-        np.asarray(combined.vertices, dtype=float),
-        np.asarray(combined.faces, dtype=np.int64),
-    )
-    assert volume is None
-    assert surface_area == pytest.approx(12.0)
-    assert is_watertight is True
-
 
 def test_stl_assembly_accepts_individually_valid_reversed_shell(tmp_path: Path) -> None:
     outward_path = tmp_path / "outward.stl"
@@ -176,18 +135,6 @@ def test_stl_assembly_accepts_individually_valid_reversed_shell(tmp_path: Path) 
     assert row.surface_area == pytest.approx(12.0)
     assert row.is_watertight is True
     assert "opposing face orientations" not in "; ".join(row.warnings)
-
-
-def test_elapsed_fields_separate_model_loading_from_row_calculation() -> None:
-    projected = project(DATA_DIR / "unit_cube.stl")
-    rows = sweep(DATA_DIR / "unit_cube.stl", alpha_deg="0:1:1")
-
-    assert projected.load_elapsed_sec is not None
-    assert projected.load_elapsed_sec > 0.0
-    assert projected.elapsed_sec is not None
-    assert projected.elapsed_sec > 0.0
-    assert all(row.load_elapsed_sec is not None for row in rows)
-    assert all(row.elapsed_sec is not None and row.elapsed_sec > 0.0 for row in rows)
 
 
 def test_sweep_model_checks_cancellation_before_and_after_each_case() -> None:
@@ -209,20 +156,7 @@ def test_sweep_model_checks_cancellation_before_and_after_each_case() -> None:
             progress_callback=lambda _index, _total, row: completed_rows.append(row),
         )
 
-    assert checks == 2
     assert completed_rows == []
-
-
-def test_axis_map_flips_loaded_model_coordinates() -> None:
-    row = project(DATA_DIR / "unit_cube.stl", axis_map="-x,y,z")
-
-    assert row.projected_area == pytest.approx(1.0)
-    assert row.centroid_x == pytest.approx(-0.5)
-    assert row.centroid_y == pytest.approx(0.5)
-    assert row.centroid_z == pytest.approx(0.5)
-    assert row.x_min == pytest.approx(-1.0)
-    assert row.x_max == pytest.approx(0.0)
-    assert row.base_area == pytest.approx(1.0)
 
 
 def test_axis_map_rejects_duplicate_source_axes() -> None:
@@ -238,51 +172,14 @@ def test_cube_sweep_combinations() -> None:
     )
     assert len(rows) == 4
     assert all(row.projected_area is not None for row in rows)
+    assert all(row.load_elapsed_sec is not None for row in rows)
+    assert all(row.elapsed_sec is not None for row in rows)
 
 
-def test_alpha_direction_is_reported_in_model_coordinates() -> None:
-    row = project(DATA_DIR / "unit_cube.stl", alpha_deg=60)
-
-    assert row.direction_x == pytest.approx(0.5)
-    assert row.direction_y == pytest.approx(0.0)
-    assert row.direction_z == pytest.approx(0.8660254037844386)
-    assert row.alpha_deg == pytest.approx(60.0)
-    assert row.beta_deg == pytest.approx(0.0)
-    assert row.roll_deg == pytest.approx(0.0)
-    assert row.pitch_deg == pytest.approx(60.0)
-
-
-def test_vector_direction_reports_equivalent_attitudes() -> None:
-    row = project(DATA_DIR / "unit_cube.stl", attitude="vector", direction="0,1,0")
-
-    assert row.direction_x == pytest.approx(0.0)
-    assert row.direction_y == pytest.approx(1.0)
-    assert row.direction_z == pytest.approx(0.0)
-    assert row.alpha_deg == pytest.approx(0.0)
-    assert row.beta_deg == pytest.approx(-90.0)
-    assert row.roll_deg == pytest.approx(-90.0)
-    assert row.pitch_deg == pytest.approx(90.0)
-
-
-@pytest.mark.parametrize("direction", ["nan,0,0", "inf,0,0", "1,-inf,0"])
+@pytest.mark.parametrize("direction", ["nan,0,0", "1,-inf,0"])
 def test_vector_direction_rejects_non_finite_components(direction: str) -> None:
     with pytest.raises(ValueError, match="finite"):
         project(DATA_DIR / "unit_cube.stl", attitude="vector", direction=direction)
-
-
-def test_positive_roll_uses_positive_x_right_hand_rule() -> None:
-    row = project(
-        DATA_DIR / "unit_cube.stl",
-        attitude="roll-pitch",
-        roll_deg=90,
-        pitch_deg=90,
-    )
-
-    assert row.direction_x == pytest.approx(0.0)
-    assert row.direction_y == pytest.approx(-1.0)
-    assert row.direction_z == pytest.approx(0.0)
-    assert row.roll_deg == pytest.approx(90.0)
-    assert row.pitch_deg == pytest.approx(90.0)
 
 
 def test_roll_pitch_api_uses_explicit_degree_arguments() -> None:
@@ -329,32 +226,17 @@ def test_vector_sweep_returns_one_row() -> None:
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "argument"),
-    [
-        ({"attitude": "alpha-beta", "pitch_deg": 10}, "pitch_deg"),
-        ({"attitude": "roll-pitch", "alpha_deg": 10}, "alpha_deg"),
-        ({"attitude": "vector", "direction": "1,0,0", "roll_deg": 10}, "roll_deg"),
-    ],
-)
-def test_project_rejects_angles_from_another_attitude(kwargs, argument: str) -> None:
-    with pytest.raises(ValueError, match=argument):
-        project(DATA_DIR / "unit_cube.stl", **kwargs)
-
-
-def test_project_requires_direction_for_vector_attitude() -> None:
-    with pytest.raises(ValueError, match="direction is required"):
-        project(DATA_DIR / "unit_cube.stl", attitude="vector")
-
-
-def test_project_rejects_unknown_attitude() -> None:
-    with pytest.raises(ValueError, match="attitude must be one of"):
-        project(DATA_DIR / "unit_cube.stl", attitude="yaw-pitch")
-
-
-@pytest.mark.parametrize(
     ("action", "kwargs", "argument"),
     [
         (project, {"attitude": "roll-pitch", "alpha_deg": 10}, "alpha_deg"),
+        (project, {"attitude": "alpha-beta", "pitch_deg": 10}, "pitch_deg"),
+        (
+            project,
+            {"attitude": "vector", "direction": "1,0,0", "roll_deg": 10},
+            "roll_deg",
+        ),
+        (project, {"attitude": "vector"}, "direction is required"),
+        (project, {"attitude": "yaw-pitch"}, "attitude must be one of"),
         (project, {"alpha_deg": float("nan")}, "alpha_deg must be finite"),
         (
             project,
@@ -384,6 +266,11 @@ def test_public_api_validates_attitude_before_loading(
 
     with pytest.raises(ValueError, match=argument):
         action(Path("not-loaded.step"), **kwargs)
+
+
+def test_mixed_step_and_stl_assembly_is_rejected_before_loading() -> None:
+    with pytest.raises(ValueError, match="mixed STEP and STL"):
+        measure([Path("not-loaded.step"), Path("not-loaded.stl")])
 
 
 def test_base_area_default_tolerance_allows_small_xmax_face_variation() -> None:

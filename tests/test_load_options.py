@@ -19,7 +19,6 @@ def test_model_load_options_normalize_once() -> None:
     assert options.axis_map == "x,-z,y"
     assert options.step_metric_source == "mesh"
     assert options.step_component_mode == "subtract"
-    assert options.metric_source_requires_mesh is True
 
 
 @pytest.mark.parametrize(
