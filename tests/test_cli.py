@@ -4,6 +4,7 @@ import csv
 from pathlib import Path
 
 import pytest
+from rich.text import Text
 
 from typer.testing import CliRunner
 
@@ -311,7 +312,7 @@ def test_cli_rejects_mixed_attitude_inputs(runner: CliRunner) -> None:
     )
 
     assert result.exit_code != 0
-    assert "--alpha cannot be used" in result.output
+    assert "--alpha cannot be used" in Text.from_ansi(result.output).plain
 
 
 def test_cli_rejects_roll_in_alpha_beta_mode(runner: CliRunner) -> None:
@@ -330,4 +331,4 @@ def test_cli_rejects_roll_in_alpha_beta_mode(runner: CliRunner) -> None:
     )
 
     assert result.exit_code != 0
-    assert "--roll cannot be used" in result.output
+    assert "--roll cannot be used" in Text.from_ansi(result.output).plain
