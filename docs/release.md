@@ -55,6 +55,12 @@ GUI dependencies. The GUI smoke check constructs and displays the packaged main 
 offscreen Qt backend and a lightweight viewer substitute, so packaging and widget-composition
 failures are detected without depending on a working GPU or VTK rendering context.
 
+The CI package job uploads the built distributions as a run-scoped artifact. A separate clean
+install job downloads that exact artifact, installs the wheel with both `step` and `gui` extras in
+a fresh Python environment outside the checkout, and exercises the installed CLI, STEP support,
+packaged documentation, and GUI. This keeps package validation tied to the artifact that was
+actually built instead of rebuilding it in a later job.
+
 During `uv build`, `hatch_build.py` embeds the current git hash into the package as
 `cadmetrics._build.GIT_HASH`. This lets installed wheels report `cadmetrics_hash` even though
 the wheel does not contain a `.git` directory. If a wheel is built outside a git checkout,

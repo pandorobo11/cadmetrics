@@ -42,19 +42,27 @@ def test_ocp_bounds_and_diagonal_include_box_gap() -> None:
         return box
 
     assert _ocp_bounds(
-        shape, Bnd_Box=box_with_gap, BRepBndLib=ocp.BRepBndLib,
+        shape,
+        Bnd_Box=box_with_gap,
+        BRepBndLib=ocp.BRepBndLib,
     ) == pytest.approx((-0.125, -0.125, -0.125, 1.125, 2.125, 3.125))
     assert _ocp_bounding_box_diagonal(
-        shape, Bnd_Box=box_with_gap, BRepBndLib=ocp.BRepBndLib,
+        shape,
+        Bnd_Box=box_with_gap,
+        BRepBndLib=ocp.BRepBndLib,
     ) == pytest.approx((1.25**2 + 2.25**2 + 3.25**2) ** 0.5)
 
 
 def test_step_preserves_declared_component_name(tmp_path: Path) -> None:
     path = tmp_path / "named_box.step"
     _write_step_with_unit(path, BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape(), "MM")
-    path.write_text(re.sub(
-        r"Open CASCADE STEP translator [^']+", "Named body", path.read_text(),
-    ))
+    path.write_text(
+        re.sub(
+            r"Open CASCADE STEP translator [^']+",
+            "Named body",
+            path.read_text(),
+        )
+    )
 
     inspected = inspect_model(path, require_mesh=False)
 
@@ -266,9 +274,7 @@ def test_open_step_shape_leaves_volume_unset(tmp_path: Path, metric_source: str)
 def test_step_shape_with_multiple_solids_preserves_loose_face(tmp_path: Path) -> None:
     step_path = tmp_path / "multiple_solids_with_loose_face.step"
     first = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
-    second = BRepPrimAPI_MakeBox(
-        gp_Pnt(3000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
-    ).Shape()
+    second = BRepPrimAPI_MakeBox(gp_Pnt(3000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
     polygon = BRepBuilderAPI_MakePolygon()
     polygon.Add(gp_Pnt(5000.0, 2000.0, 0.0))
     polygon.Add(gp_Pnt(5000.0, 3000.0, 0.0))
@@ -319,9 +325,7 @@ def test_step_subtract_mode_removes_disabled_overlap_and_excludes_cut_face(
 ) -> None:
     step_path = tmp_path / "subtracting_boxes.step"
     enabled = BRepPrimAPI_MakeBox(2000.0, 1000.0, 1000.0).Shape()
-    disabled = BRepPrimAPI_MakeBox(
-        gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
-    ).Shape()
+    disabled = BRepPrimAPI_MakeBox(gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
     _write_step_compound(step_path, [enabled, disabled])
 
     subtracted = measure(
@@ -347,10 +351,13 @@ def test_step_subtract_mode_removes_disabled_overlap_and_excludes_cut_face(
         marked_faces = inspected.faces[list(inspected.newly_exposed_face_indices)]
         triangles = inspected.vertices[marked_faces]
         assert triangles[:, :, 0] == pytest.approx(1.0)
-        marked_area = np.linalg.norm(
-            np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]),
-            axis=1,
-        ).sum() / 2.0
+        marked_area = (
+            np.linalg.norm(
+                np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]),
+                axis=1,
+            ).sum()
+            / 2.0
+        )
         assert marked_area == pytest.approx(1.0)
 
         reversed_axis = measure(
@@ -365,9 +372,7 @@ def test_step_subtract_mode_removes_disabled_overlap_and_excludes_cut_face(
 def test_step_subtract_mode_excludes_internal_cavity_surface(tmp_path: Path) -> None:
     step_path = tmp_path / "internal_cavity.step"
     enabled = BRepPrimAPI_MakeBox(3000.0, 3000.0, 3000.0).Shape()
-    disabled = BRepPrimAPI_MakeBox(
-        gp_Pnt(1000.0, 1000.0, 1000.0), 1000.0, 1000.0, 1000.0
-    ).Shape()
+    disabled = BRepPrimAPI_MakeBox(gp_Pnt(1000.0, 1000.0, 1000.0), 1000.0, 1000.0, 1000.0).Shape()
     _write_step_compound(step_path, [enabled, disabled])
 
     measured = measure(
@@ -410,9 +415,7 @@ def test_step_subtract_mode_returns_zero_for_empty_result(tmp_path: Path) -> Non
 def test_step_subtract_mode_with_all_components_selected_is_a_noop(tmp_path: Path) -> None:
     step_path = tmp_path / "all_selected.step"
     enabled = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
-    other = BRepPrimAPI_MakeBox(
-        gp_Pnt(500.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
-    ).Shape()
+    other = BRepPrimAPI_MakeBox(gp_Pnt(500.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
     _write_step_compound(step_path, [enabled, other])
 
     measured = measure(step_path, step_component_mode="subtract")
@@ -429,9 +432,7 @@ def test_step_subtract_mode_preserves_nonoverlapping_enabled_shape(
 ) -> None:
     step_path = tmp_path / f"nonoverlapping_subtraction_{disabled_x:g}.step"
     enabled = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
-    disabled = BRepPrimAPI_MakeBox(
-        gp_Pnt(disabled_x, 0.0, 0.0), 1000.0, 1000.0, 1000.0
-    ).Shape()
+    disabled = BRepPrimAPI_MakeBox(gp_Pnt(disabled_x, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
     _write_step_compound(step_path, [enabled, disabled])
 
     measured = measure(
@@ -449,9 +450,7 @@ def test_step_subtract_mode_cli_options_and_inspect_component_list(tmp_path: Pat
     step_path = tmp_path / "cli_subtract.step"
     output = tmp_path / "subtracted.csv"
     enabled = BRepPrimAPI_MakeBox(2000.0, 1000.0, 1000.0).Shape()
-    disabled = BRepPrimAPI_MakeBox(
-        gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
-    ).Shape()
+    disabled = BRepPrimAPI_MakeBox(gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
     _write_step_compound(step_path, [enabled, disabled])
 
     measured = CliRunner().invoke(
@@ -607,11 +606,7 @@ def test_step_assembly_preserves_loose_face_from_file_that_also_has_solid(
     _write_step_compound(hybrid_path, [solid, loose_face])
     _write_step_compound(
         other_solid_path,
-        [
-            BRepPrimAPI_MakeBox(
-                gp_Pnt(4000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
-            ).Shape()
-        ],
+        [BRepPrimAPI_MakeBox(gp_Pnt(4000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()],
     )
 
     measured = measure([hybrid_path, other_solid_path])
@@ -678,9 +673,7 @@ def test_step_subtract_base_area_mesh_fallback_excludes_newly_exposed_faces(
 ) -> None:
     step_path = tmp_path / "subtract_base_fallback.step"
     enabled = BRepPrimAPI_MakeBox(2000.0, 1000.0, 1000.0).Shape()
-    disabled = BRepPrimAPI_MakeBox(
-        gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
-    ).Shape()
+    disabled = BRepPrimAPI_MakeBox(gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
     _write_step_compound(step_path, [enabled, disabled])
     monkeypatch.setattr(
         "cadmetrics._step_io._ocp_xmax_base_area",
@@ -703,9 +696,7 @@ def test_step_subtract_base_area_is_unset_when_face_classification_fails(
 ) -> None:
     step_path = tmp_path / "subtract_unclassified_faces.step"
     enabled = BRepPrimAPI_MakeBox(2000.0, 1000.0, 1000.0).Shape()
-    disabled = BRepPrimAPI_MakeBox(
-        gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
-    ).Shape()
+    disabled = BRepPrimAPI_MakeBox(gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
     _write_step_compound(step_path, [enabled, disabled])
     monkeypatch.setattr(
         "cadmetrics._ocp._classify_cut_result_faces",

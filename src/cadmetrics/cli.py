@@ -57,6 +57,7 @@ class SweepAttitude(TypedDict):
     beta: str
     direction: str | None
 
+
 @app.command()
 def measure(
     file: list[Path] = typer.Argument(..., exists=True, readable=True, help="STL or STEP file(s)."),
@@ -141,8 +142,12 @@ def project(
         "--alpha",
         help="Alpha angle in degrees for --attitude alpha-beta.",
     ),
-    beta: float = typer.Option(0.0, "--beta", help="Beta angle in degrees for --attitude alpha-beta."),
-    roll: float = typer.Option(0.0, "--roll", help="Roll angle in degrees for --attitude roll-pitch."),
+    beta: float = typer.Option(
+        0.0, "--beta", help="Beta angle in degrees for --attitude alpha-beta."
+    ),
+    roll: float = typer.Option(
+        0.0, "--roll", help="Roll angle in degrees for --attitude roll-pitch."
+    ),
     pitch: float | None = typer.Option(
         None,
         "--pitch",
@@ -495,8 +500,7 @@ def inspect(
         table.add_row(
             "component_list",
             "\n".join(
-                f"{index}: {name}"
-                for index, name in enumerate(model.component_names, start=1)
+                f"{index}: {name}" for index, name in enumerate(model.component_names, start=1)
             ),
         )
     table.add_row("cadmetrics_version", model.cadmetrics_version)
@@ -758,9 +762,7 @@ def _normalize_attitude_mode(
 def _attitude_bad_parameter(exc: AttitudeInputError) -> typer.BadParameter:
     option = f"--{exc.option.removesuffix('_deg').replace('_', '-')}"
     if exc.required:
-        return typer.BadParameter(
-            f"{option} is required when --attitude {exc.mode} is used"
-        )
+        return typer.BadParameter(f"{option} is required when --attitude {exc.mode} is used")
     if exc.option == "direction":
         return typer.BadParameter("--direction can only be used with --attitude vector")
     return typer.BadParameter(f"{option} cannot be used with --attitude {exc.mode}")

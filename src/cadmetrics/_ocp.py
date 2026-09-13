@@ -58,6 +58,7 @@ def load_ocp_bindings() -> OcpBindings:
         from OCP.GProp import GProp_GProps
         from OCP.IFSelect import IFSelect_RetDone
         from OCP.STEPControl import STEPControl_Reader
+
         try:
             from OCP.TColStd import TColStd_SequenceOfAsciiString
         except ImportError:
@@ -115,7 +116,9 @@ def _ocp_bounding_box_diagonal(
 ) -> float:
     try:
         xmin, ymin, zmin, xmax, ymax, zmax = _ocp_bounds(
-            shape, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib,
+            shape,
+            Bnd_Box=Bnd_Box,
+            BRepBndLib=BRepBndLib,
         )
     except Exception:
         return 1.0
@@ -550,6 +553,7 @@ def _step_component_names_from_xcaf(path: Path, *, expected_count: int) -> tuple
         from OCP.TCollection import TCollection_ExtendedString
         from OCP.TDataStd import TDataStd_Name
         from OCP.TDF import TDF_Label
+
         try:
             from OCP.TDF import TDF_LabelSequence
         except ImportError:
@@ -662,9 +666,7 @@ def _ocp_shape_metric(
     shape: Any, props_type: Any, gprop_type: Any, method_name: str
 ) -> float | None:
     props = props_type()
-    method = getattr(gprop_type, f"{method_name}_s", None) or getattr(
-        gprop_type, method_name, None
-    )
+    method = getattr(gprop_type, f"{method_name}_s", None) or getattr(gprop_type, method_name, None)
     if method is None:
         return None
     try:
@@ -817,8 +819,7 @@ def _step_length_unit_name(
         return None
 
     units = [
-        lengths.Value(index).ToCString().strip().lower()
-        for index in range(1, lengths.Length() + 1)
+        lengths.Value(index).ToCString().strip().lower() for index in range(1, lengths.Length() + 1)
     ]
     if not units:
         return None

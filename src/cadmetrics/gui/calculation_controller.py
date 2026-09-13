@@ -212,7 +212,9 @@ class CalculationController(QtCore.QObject):
         cached_model = self._model if self._model_key == key else None
         self._pending_key = key
         self._set_state(
-            OperationState.CALCULATING if cached_model is not None and calculate else OperationState.LOADING
+            OperationState.CALCULATING
+            if cached_model is not None and calculate
+            else OperationState.LOADING
         )
         operation = _OperationContext(
             request,

@@ -1,6 +1,11 @@
 import pytest
 
-from cadmetrics.sweep import MAX_SWEEP_COMBINATIONS, SweepRange, iter_orientations, parse_sweep_values
+from cadmetrics.sweep import (
+    MAX_SWEEP_COMBINATIONS,
+    SweepRange,
+    iter_orientations,
+    parse_sweep_values,
+)
 
 
 def test_single_point_sweep_range_ignores_step() -> None:

@@ -21,9 +21,7 @@ def validate_csv_output_path(
     for protected_path in protected_paths:
         source_path = Path(protected_path)
         if _paths_refer_to_same_file(output_path, source_path):
-            raise ValueError(
-                f"CSV output path must not overwrite an input CAD file: {output_path}"
-            )
+            raise ValueError(f"CSV output path must not overwrite an input CAD file: {output_path}")
     return output_path
 
 
