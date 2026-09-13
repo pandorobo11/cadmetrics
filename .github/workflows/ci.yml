@@ -63,6 +63,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes libegl1
 
       - name: Build package
+        id: build
         run: uv build
 
       - name: Smoke install base wheel
@@ -80,6 +81,8 @@ jobs:
           /tmp/cadmetrics-smoke-step/bin/cadmetrics inspect samples/unit_cube/unit_cube.step
 
       - name: Smoke install gui extra
+        # Validate GUI packaging even if an earlier smoke check failed.
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
