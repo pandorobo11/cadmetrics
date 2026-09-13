@@ -136,7 +136,7 @@ if QtWidgets is not None:
             self.controller.load_only(request)
 
         @QtCore.Slot(object)
-        def _preview_request(self, request: CalculationRequest) -> None:
+        def _preview_request(self, request: CalculationRequest | None) -> None:
             if request != self._request:
                 self._request = request
                 self._invalidate_results()
