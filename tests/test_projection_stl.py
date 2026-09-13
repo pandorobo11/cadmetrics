@@ -58,6 +58,129 @@ def test_stl_assembly_projects_combined_silhouette_once() -> None:
     assert "without boolean union" in "; ".join(row.warnings)
 
 
+@pytest.mark.parametrize("radius_mm", [0.001, 0.0001])
+def test_small_sphere_projection_scales_with_output_unit(
+    tmp_path: Path,
+    radius_mm: float,
+) -> None:
+    path = tmp_path / "small_sphere.stl"
+    trimesh.creation.icosphere(subdivisions=3, radius=radius_mm).export(path)
+
+    metres = project(path, input_unit="mm", output_unit="m")
+    millimetres = project(path, input_unit="mm", output_unit="mm")
+
+    assert millimetres.projected_area is not None
+    assert millimetres.projected_area > 0.0
+    assert metres.projected_area == pytest.approx(
+        millimetres.projected_area * 1.0e-6, rel=1.0e-12, abs=0.0
+    )
+
+
+@pytest.mark.parametrize("side_mm", [4.0e-5, 4.0e-7])
+def test_small_triangle_projection_keeps_positive_area_and_centroid(
+    tmp_path: Path, side_mm: float
+) -> None:
+    path = tmp_path / "small_triangle.stl"
+    mesh = trimesh.Trimesh(
+        vertices=[[0.0, 0.0, 0.0], [0.0, side_mm, 0.0], [0.0, 0.0, side_mm]],
+        faces=[[0, 1, 2]],
+        process=False,
+    )
+    mesh.export(path)
+
+    row = project(path, input_unit="mm", output_unit="m")
+
+    side_m = side_mm * 1.0e-3
+    # Binary STL stores float32 coordinates; retain that format's precision.
+    assert row.projected_area == pytest.approx(0.5 * side_m**2, rel=1.0e-7, abs=0.0)
+    assert row.centroid_u == pytest.approx(side_m / 3.0, rel=1.0e-7, abs=0.0)
+    assert row.centroid_v == pytest.approx(side_m / 3.0, rel=1.0e-7, abs=0.0)
+
+
+@pytest.mark.parametrize(
+    ("angles", "direction", "normal_axis"),
+    [
+        ({"alpha_deg": 90}, "0,0,1", 0),
+        ({"alpha_deg": -90}, "0,0,-1", 0),
+        ({"alpha_deg": 270}, "0,0,-1", 0),
+        ({"alpha_deg": 180}, "-1,0,0", 2),
+        ({"alpha_deg": 360}, "1,0,0", 2),
+        ({"beta_deg": 90}, "0,-1,0", 0),
+        ({"beta_deg": -90}, "0,1,0", 0),
+        ({"attitude": "roll-pitch", "roll_deg": 90, "pitch_deg": 90}, "0,-1,0", 0),
+        ({"attitude": "roll-pitch", "roll_deg": 180, "pitch_deg": 90}, "0,0,-1", 0),
+        ({"attitude": "roll-pitch", "roll_deg": 270, "pitch_deg": 90}, "0,1,0", 0),
+    ],
+)
+def test_edge_on_triangle_projection_has_zero_area_and_no_centroid(
+    tmp_path: Path, angles, direction: str, normal_axis: int
+) -> None:
+    path = tmp_path / "edge_on_triangle.stl"
+    in_plane_axes = [axis for axis in range(3) if axis != normal_axis]
+    mesh = trimesh.Trimesh(
+        vertices=[np.zeros(3), *np.eye(3)[in_plane_axes]],
+        faces=[[0, 1, 2]],
+        process=False,
+    )
+    mesh.export(path)
+
+    angled = project(path, **angles)
+    vector = project(path, attitude="vector", direction=direction)
+
+    for row in (angled, vector):
+        assert row.projected_area == 0.0
+        assert row.centroid_u is None
+        assert row.centroid_v is None
+        assert row.centroid_x is None
+        assert row.centroid_y is None
+        assert row.centroid_z is None
+    assert (angled.direction_x, angled.direction_y, angled.direction_z) == (
+        vector.direction_x,
+        vector.direction_y,
+        vector.direction_z,
+    )
+
+
+@pytest.mark.parametrize("alpha", [30.0, np.nextafter(90.0, 0.0), np.nextafter(90.0, 180.0)])
+def test_positive_projection_near_edge_on_is_not_snapped_to_zero(
+    tmp_path: Path, alpha: float
+) -> None:
+    path = tmp_path / "triangle.stl"
+    trimesh.Trimesh(
+        vertices=[[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        faces=[[0, 1, 2]],
+        process=False,
+    ).export(path)
+
+    row = project(path, alpha_deg=alpha)
+
+    cosine = np.cos(np.deg2rad(alpha))
+    assert row.projected_area == pytest.approx(abs(cosine) / 2.0, rel=1.0e-12, abs=0.0)
+    # The helper axis changes near Z; both cases have analytical 2D centroids.
+    if alpha == 30.0:
+        expected_centroid = (1.0 / 3.0, cosine / 3.0)
+    else:
+        expected_centroid = (-cosine / 3.0, 1.0 / 3.0)
+    assert (row.centroid_u, row.centroid_v) == pytest.approx(
+        expected_centroid, rel=1.0e-12, abs=0.0
+    )
+
+
+def test_tiny_positive_vector_component_keeps_projected_area(tmp_path: Path) -> None:
+    path = tmp_path / "triangle.stl"
+    trimesh.Trimesh(
+        vertices=[[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        faces=[[0, 1, 2]],
+        process=False,
+    ).export(path)
+
+    row = project(path, attitude="vector", direction="1e-16,0,1")
+
+    assert row.projected_area == pytest.approx(5.0e-17, rel=1.0e-12, abs=0.0)
+    assert row.centroid_u == pytest.approx(-1.0e-16 / 3.0, rel=1.0e-12, abs=0.0)
+    assert row.centroid_v == pytest.approx(1.0 / 3.0)
+
+
 def test_watertight_stl_with_one_reversed_face_leaves_volume_unset(
     tmp_path: Path,
 ) -> None:

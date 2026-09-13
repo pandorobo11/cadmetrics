@@ -18,35 +18,45 @@ class Orientation:
 def rotation_matrix(orientation: Orientation) -> FloatArray:
     """Return matrix for roll -> alpha -> beta, using row-vector application with R.T."""
 
-    roll = radians(orientation.roll_deg)
-    alpha = radians(orientation.alpha_deg)
-    beta = radians(orientation.beta_deg)
+    sin_roll, cos_roll = _sin_cos_degrees(orientation.roll_deg)
+    sin_alpha, cos_alpha = _sin_cos_degrees(orientation.alpha_deg)
+    sin_beta, cos_beta = _sin_cos_degrees(orientation.beta_deg)
 
     rx = np.array(
         [
             [1.0, 0.0, 0.0],
-            [0.0, cos(roll), sin(roll)],
-            [0.0, -sin(roll), cos(roll)],
+            [0.0, cos_roll, sin_roll],
+            [0.0, -sin_roll, cos_roll],
         ],
         dtype=float,
     )
     ry = np.array(
         [
-            [cos(alpha), 0.0, sin(alpha)],
+            [cos_alpha, 0.0, sin_alpha],
             [0.0, 1.0, 0.0],
-            [-sin(alpha), 0.0, cos(alpha)],
+            [-sin_alpha, 0.0, cos_alpha],
         ],
         dtype=float,
     )
     rz = np.array(
         [
-            [cos(beta), -sin(beta), 0.0],
-            [sin(beta), cos(beta), 0.0],
+            [cos_beta, -sin_beta, 0.0],
+            [sin_beta, cos_beta, 0.0],
             [0.0, 0.0, 1.0],
         ],
         dtype=float,
     )
     return rz @ ry @ rx
+
+
+def _sin_cos_degrees(angle_deg: float) -> tuple[float, float]:
+    # Only exact quarter turns bypass trig roundoff; nearby angles keep their
+    # small components, which can represent genuinely positive projected areas.
+    if angle_deg % 90.0 == 0.0:
+        quadrant = int((angle_deg % 360.0) / 90.0)
+        return ((0.0, 1.0), (1.0, 0.0), (0.0, -1.0), (-1.0, 0.0))[quadrant]
+    angle = radians(angle_deg)
+    return sin(angle), cos(angle)
 
 
 def projection_direction_for_orientation(orientation: Orientation) -> FloatArray:

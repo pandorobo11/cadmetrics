@@ -113,6 +113,14 @@ file name. With `--unit auto`, all detected STEP units must match; otherwise, sp
 Projected area is the orthographic 2D outline area for the selected projection direction.
 Overlapping projected regions are counted once.
 
+Positive projected polygons are retained without an absolute area cutoff, including areas
+below `1e-15` in the output area unit. Degenerate projections report zero area and no centroid.
+Angles that are exact multiples of 90 degrees use exact sine/cosine values, so axis-aligned
+edge-on projections agree with equivalent explicit direction vectors. Nearby angles and small
+nonzero vector components are not snapped to an axis; their positive projected areas are kept.
+This does not remove floating-point precision limits or change STL import's vertex merging,
+which can collapse very small features before projection.
+
 Projection performance can be measured reproducibly from a checkout with:
 
 ```bash

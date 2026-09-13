@@ -65,7 +65,11 @@ def projected_metrics(
     polygons = []
     for face in model.faces:
         coords = projected[face]
-        if _triangle_area(coords) <= 1.0e-15:
+        # A constant u or v coordinate is exactly degenerate, at any scale.
+        # Leave other cases to Polygon; do not round small positive areas away.
+        if coords[0, 0] == coords[1, 0] == coords[2, 0] or (
+            coords[0, 1] == coords[1, 1] == coords[2, 1]
+        ):
             continue
         polygon = Polygon(coords)
         if polygon.is_valid and polygon.area > 0.0:
@@ -94,9 +98,3 @@ def projection_basis(direction: FloatArray) -> tuple[FloatArray, FloatArray]:
     basis_v = np.cross(normal, basis_u)
     basis_v = normalize_vector(basis_v)
     return basis_u, basis_v
-
-
-def _triangle_area(coords: FloatArray) -> float:
-    a = coords[1] - coords[0]
-    b = coords[2] - coords[0]
-    return abs(float(a[0] * b[1] - a[1] * b[0])) * 0.5
