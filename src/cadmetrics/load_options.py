@@ -124,6 +124,5 @@ def _resolve_mesh_deflection_input(value: float | str) -> float | str:
 def _format_axis_map(axis_map: tuple[tuple[int, float], ...]) -> str:
     names = ("x", "y", "z")
     return ",".join(
-        f"{'-' if sign < 0.0 else ''}{names[source_axis]}"
-        for source_axis, sign in axis_map
+        f"{'-' if sign < 0.0 else ''}{names[source_axis]}" for source_axis, sign in axis_map
     )

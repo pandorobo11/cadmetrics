@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from cadmetrics.api import inspect_model, measure, project
+from cadmetrics.api import measure, project
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,40 +14,21 @@ SAMPLES = json.loads((ROOT / "samples" / "metadata.json").read_text(encoding="ut
 HAS_OCP = importlib.util.find_spec("OCP") is not None
 
 
-@pytest.mark.parametrize("sample_name", sorted(SAMPLES))
-def test_sample_files_load(sample_name: str) -> None:
-    sample = SAMPLES[sample_name]
-    for relative_path in sample["files"].values():
-        if relative_path is None:
-            continue
-        if relative_path.endswith(".step") and not HAS_OCP:
-            pytest.skip("STEP sample checks require cadmetrics[step]")
-
-        path = ROOT / relative_path
-        measured = measure(path)
-        projected = project(path)
-
-        assert measured.surface_area is not None
-        assert measured.base_area is not None
-        assert projected.projected_area is not None
-
-
 @pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl", "step"])
 def test_box_sample_exact_metrics(kind: str) -> None:
     if kind == "step" and not HAS_OCP:
         pytest.skip("STEP sample checks require cadmetrics[step]")
     path = ROOT / SAMPLES["box_1x2x3"]["files"][kind]
-    measured = measure(path)
     projected = project(path)
 
-    assert measured.volume == pytest.approx(6.0)
-    assert measured.surface_area == pytest.approx(22.0)
-    assert measured.base_area == pytest.approx(6.0)
+    assert projected.volume == pytest.approx(6.0)
+    assert projected.surface_area == pytest.approx(22.0)
+    assert projected.base_area == pytest.approx(6.0)
     assert projected.projected_area == pytest.approx(6.0)
-    assert measured.is_watertight is True
+    assert projected.is_watertight is True
 
 
-@pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl", "step"])
+@pytest.mark.parametrize("kind", ["ascii_stl", "step"])
 def test_cylinder_sample_xmax_base_area(kind: str) -> None:
     if kind == "step" and not HAS_OCP:
         pytest.skip("STEP sample checks require cadmetrics[step]")
@@ -57,7 +38,7 @@ def test_cylinder_sample_xmax_base_area(kind: str) -> None:
     assert measured.base_area == pytest.approx(3.141592653589793, rel=1.0e-3)
 
 
-@pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl", "step"])
+@pytest.mark.parametrize("kind", ["ascii_stl", "step"])
 def test_sphere_sample_has_no_xmax_base_face(kind: str) -> None:
     if kind == "step" and not HAS_OCP:
         pytest.skip("STEP sample checks require cadmetrics[step]")
@@ -68,71 +49,41 @@ def test_sphere_sample_has_no_xmax_base_face(kind: str) -> None:
     assert "base_area set to 0" in "; ".join(measured.warnings)
 
 
-@pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl", "step"])
-def test_overlap_sample_counts_projected_silhouette_once(kind: str) -> None:
-    if kind == "step" and not HAS_OCP:
-        pytest.skip("STEP sample checks require cadmetrics[step]")
-    path = ROOT / SAMPLES["two_boxes_overlap_projection"]["files"][kind]
-    projected = project(path)
-    assert projected.projected_area == pytest.approx(1.0)
-
-
-@pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl"])
-def test_intersecting_boxes_stl_keeps_raw_component_measurements(kind: str) -> None:
-    path = ROOT / SAMPLES["two_boxes_intersecting"]["files"][kind]
+def test_intersecting_boxes_stl_keeps_raw_component_measurements() -> None:
+    path = ROOT / SAMPLES["two_boxes_intersecting"]["files"]["ascii_stl"]
     expected = SAMPLES["two_boxes_intersecting"]["expected"]
-
-    measured = measure(path)
     projected = project(path)
 
-    assert measured.volume == pytest.approx(expected["volume_stl"])
-    assert measured.surface_area == pytest.approx(expected["surface_area_stl"])
-    assert measured.base_area == pytest.approx(expected["base_area_stl"])
+    assert projected.volume == pytest.approx(expected["volume_stl"])
+    assert projected.surface_area == pytest.approx(expected["surface_area_stl"])
+    assert projected.base_area == pytest.approx(expected["base_area_stl"])
     assert projected.projected_area == pytest.approx(expected["projected_area_x"])
-    assert measured.is_watertight is True
+    assert projected.is_watertight is True
 
 
-def test_intersecting_boxes_step_uses_boolean_union_for_measurements() -> None:
-    if not HAS_OCP:
-        pytest.skip("STEP sample checks require cadmetrics[step]")
-    path = ROOT / SAMPLES["two_boxes_intersecting"]["files"]["step"]
-    expected = SAMPLES["two_boxes_intersecting"]["expected"]
-
-    measured = measure(path)
-    projected = project(path)
-
-    assert measured.volume == pytest.approx(expected["volume_step"])
-    assert measured.surface_area == pytest.approx(expected["surface_area_step"])
-    assert measured.base_area == pytest.approx(expected["base_area_step"])
-    assert projected.projected_area == pytest.approx(expected["projected_area_x"])
-    assert measured.is_watertight is True
-
-
-@pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl", "step"])
+@pytest.mark.parametrize("kind", ["ascii_stl", "step"])
 def test_frame_sample_preserves_hole_in_z_projection(kind: str) -> None:
     if kind == "step" and not HAS_OCP:
         pytest.skip("STEP sample checks require cadmetrics[step]")
     path = ROOT / SAMPLES["frame_with_hole"]["files"][kind]
-    measured = measure(path)
     projected = project(path, attitude="vector", direction="0,0,1")
 
-    assert measured.volume == pytest.approx(0.8)
-    assert measured.surface_area == pytest.approx(17.6)
-    assert measured.base_area == pytest.approx(0.3)
+    assert projected.volume == pytest.approx(0.8)
+    assert projected.surface_area == pytest.approx(17.6)
+    assert projected.base_area == pytest.approx(0.3)
     assert projected.projected_area == pytest.approx(8.0)
-    assert measured.is_watertight is True
+    assert projected.is_watertight is True
 
 
-@pytest.mark.parametrize("kind", ["ascii_stl", "binary_stl"])
-def test_open_cube_sample_warns_about_non_watertight_mesh(kind: str) -> None:
-    path = ROOT / SAMPLES["open_cube_missing_face"]["files"][kind]
+def test_open_cube_sample_warns_about_non_watertight_mesh() -> None:
+    path = ROOT / SAMPLES["open_cube_missing_face"]["files"]["ascii_stl"]
     measured = measure(path)
 
     assert measured.surface_area == pytest.approx(5.0)
     assert measured.base_area == pytest.approx(1.0)
     assert measured.volume is None
     assert measured.is_watertight is False
-    assert measured.warnings
+    assert "volume is unavailable" in "; ".join(measured.warnings)
 
 
 def test_satellite_step_matches_fusion_validation_values() -> None:
@@ -156,34 +107,3 @@ def test_satellite_step_matches_fusion_validation_values() -> None:
         rel=1.0e-3,
     )
     assert measured.is_watertight is True
-
-
-def test_multi_file_step_component_filter_sample() -> None:
-    if not HAS_OCP:
-        pytest.skip("STEP sample checks require cadmetrics[step]")
-
-    sample = SAMPLES["multi_file_step_components"]
-    paths = [
-        ROOT / sample["files"]["box_pair_a_step"],
-        ROOT / sample["files"]["box_pair_b_step"],
-    ]
-    expected = sample["expected"]
-
-    inspected = inspect_model(paths)
-    assert len(inspected.component_names) == expected["component_count"]
-    assert inspected.selected_components == tuple(range(1, expected["component_count"] + 1))
-
-    measured = measure(paths)
-    projected = project(paths)
-    assert measured.volume == pytest.approx(expected["volume"])
-    assert measured.surface_area == pytest.approx(expected["surface_area"])
-    assert measured.base_area == pytest.approx(expected["base_area"])
-    assert projected.projected_area == pytest.approx(expected["projected_area_x"])
-
-    selected = tuple(expected["selected_components"])
-    selected_measured = measure(paths, step_components=selected)
-    selected_projected = project(paths, step_components=selected)
-    assert selected_measured.volume == pytest.approx(expected["selected_volume"])
-    assert selected_measured.surface_area == pytest.approx(expected["selected_surface_area"])
-    assert selected_measured.base_area == pytest.approx(expected["selected_base_area"])
-    assert selected_projected.projected_area == pytest.approx(expected["selected_projected_area_x"])

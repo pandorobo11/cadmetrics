@@ -4,7 +4,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from cadmetrics.orientation import Orientation, normalize_vector, projection_direction_for_orientation
+from cadmetrics.orientation import (
+    Orientation,
+    normalize_vector,
+    projection_direction_for_orientation,
+)
 from cadmetrics.types import FloatArray, ModelData
 
 

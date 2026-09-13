@@ -47,7 +47,9 @@ def main() -> None:
 
         mesh = spec.stl_factory()
         mesh.remove_unreferenced_vertices()
-        write_stl_files(mesh, sample_dir / f"{spec.name}_ascii.stl", sample_dir / f"{spec.name}_binary.stl")
+        write_stl_files(
+            mesh, sample_dir / f"{spec.name}_ascii.stl", sample_dir / f"{spec.name}_binary.stl"
+        )
 
         files = {
             "ascii_stl": str((sample_dir / f"{spec.name}_ascii.stl").relative_to(ROOT)),
@@ -267,7 +269,9 @@ def two_boxes_intersecting_shape() -> object:
 def open_cube_mesh() -> trimesh.Trimesh:
     mesh = trimesh.creation.box(extents=(1.0, 1.0, 1.0))
     keep = mesh.triangles_center[:, 2] < 0.49
-    return trimesh.Trimesh(vertices=mesh.vertices.copy(), faces=mesh.faces[keep].copy(), process=False)
+    return trimesh.Trimesh(
+        vertices=mesh.vertices.copy(), faces=mesh.faces[keep].copy(), process=False
+    )
 
 
 def frame_with_hole_shape() -> object:
