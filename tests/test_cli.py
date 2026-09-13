@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import csv
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from rich.text import Text
 from typer.testing import CliRunner
 
 from cadmetrics.cli import app
+from cadmetrics._ocp import load_ocp_bindings
 
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -294,6 +296,53 @@ def test_cli_error_preserves_optional_extra_markup(
 
     assert result.exit_code == 1
     assert "cadmetrics[step]" in result.output
+
+
+@pytest.mark.parametrize(
+    ("import_error", "expected_message"),
+    [
+        (
+            ModuleNotFoundError("No module named 'OCP'", name="OCP"),
+            "STEP support requires the optional dependency: cadmetrics[step].",
+        ),
+        (
+            ImportError("cannot import name 'Bnd_Box' from 'OCP.Bnd'"),
+            "STEP support found OCP, but its required bindings could not be loaded:",
+        ),
+        (
+            ModuleNotFoundError("No module named 'OCP.Bnd'", name="OCP.Bnd"),
+            "STEP support found OCP, but its required bindings could not be loaded:",
+        ),
+        (
+            ModuleNotFoundError("No module named 'vtkmodules'", name="vtkmodules"),
+            "STEP support found OCP, but its required bindings could not be loaded:",
+        ),
+    ],
+)
+def test_step_binding_import_errors_identify_missing_extra_or_broken_install(
+    monkeypatch: pytest.MonkeyPatch,
+    import_error: ImportError,
+    expected_message: str,
+) -> None:
+    original_import = builtins.__import__
+
+    def fail_ocp_import(name, *args, **kwargs):
+        if name == "OCP.Bnd":
+            raise import_error
+        return original_import(name, *args, **kwargs)
+
+    load_ocp_bindings.cache_clear()
+    monkeypatch.setattr(builtins, "__import__", fail_ocp_import)
+    try:
+        with pytest.raises(RuntimeError) as caught:
+            load_ocp_bindings()
+        assert expected_message in str(caught.value)
+        assert caught.value.__cause__ is import_error
+        if import_error.name != "OCP":
+            assert str(import_error) in str(caught.value)
+            assert "requires the optional dependency" not in str(caught.value)
+    finally:
+        load_ocp_bindings.cache_clear()
 
 
 def test_cli_rejects_mixed_attitude_inputs(runner: CliRunner) -> None:

@@ -1,4 +1,5 @@
 import csv
+import re
 from pathlib import Path
 
 import numpy as np
@@ -19,16 +20,51 @@ from OCP.TopoDS import TopoDS, TopoDS_Compound
 
 from cadmetrics.api import inspect_model, measure, measure_model, project, project_model
 from cadmetrics.cli import app
-from cadmetrics._ocp import _usable_step_component_name
+from cadmetrics._ocp import (
+    _ocp_bounding_box_diagonal,
+    _ocp_bounds,
+    _usable_step_component_name,
+    load_ocp_bindings,
+)
 from typer.testing import CliRunner
 
 
 SAMPLES_DIR = Path(__file__).parents[1] / "samples"
 
 
+def test_ocp_bounds_and_diagonal_include_box_gap() -> None:
+    ocp = load_ocp_bindings()
+    shape = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+
+    def box_with_gap():
+        box = ocp.Bnd_Box()
+        box.SetGap(0.125)
+        return box
+
+    assert _ocp_bounds(
+        shape, Bnd_Box=box_with_gap, BRepBndLib=ocp.BRepBndLib,
+    ) == pytest.approx((-0.125, -0.125, -0.125, 1.125, 2.125, 3.125))
+    assert _ocp_bounding_box_diagonal(
+        shape, Bnd_Box=box_with_gap, BRepBndLib=ocp.BRepBndLib,
+    ) == pytest.approx((1.25**2 + 2.25**2 + 3.25**2) ** 0.5)
+
+
+def test_step_preserves_declared_component_name(tmp_path: Path) -> None:
+    path = tmp_path / "named_box.step"
+    _write_step_with_unit(path, BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape(), "MM")
+    path.write_text(re.sub(
+        r"Open CASCADE STEP translator [^']+", "Named body", path.read_text(),
+    ))
+
+    inspected = inspect_model(path, require_mesh=False)
+
+    assert inspected.component_names == ("Named body",)
+    assert inspected.selected_components == (1,)
+
+
 @pytest.mark.parametrize(
     ("writer_unit", "expected_input_unit"),
-    [("M", "m"), ("CM", "cm"), ("INCH", "in"), ("FT", "ft")],
+    [("MM", "mm"), ("M", "m"), ("CM", "cm"), ("INCH", "in"), ("FT", "ft")],
 )
 def test_declared_step_units_are_converted_once(
     tmp_path: Path,
@@ -733,7 +769,8 @@ def _write_open_step_box(path: Path) -> None:
     shape = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
     faces = []
     explorer = TopExp_Explorer(shape, TopAbs_FACE)
+    face_method = getattr(TopoDS, "Face_s", None) or getattr(TopoDS, "Face")
     while explorer.More():
-        faces.append(TopoDS.Face_s(explorer.Current()))
+        faces.append(face_method(explorer.Current()))
         explorer.Next()
     _write_step_compound(path, faces[:-1])
