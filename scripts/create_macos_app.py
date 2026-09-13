@@ -49,7 +49,7 @@ def build_app(repo: Path, output: Path, bundle_id: str) -> Path:
                 'if [ -x "$REPO/.venv/bin/cadmetrics-gui" ]; then',
                 '  exec "$REPO/.venv/bin/cadmetrics-gui"',
                 "fi",
-                'exec uv run cadmetrics-gui',
+                "exec uv run cadmetrics-gui",
                 "",
             ]
         ),
@@ -77,7 +77,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Create a lightweight macOS app wrapper.")
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=Path("dist"))
-    parser.add_argument("--bundle-id", default=os.environ.get("CADMETRICS_BUNDLE_ID", DEFAULT_BUNDLE_ID))
+    parser.add_argument(
+        "--bundle-id", default=os.environ.get("CADMETRICS_BUNDLE_ID", DEFAULT_BUNDLE_ID)
+    )
     args = parser.parse_args()
 
     repo = args.repo.resolve()

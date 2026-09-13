@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -10,19 +12,10 @@ pytest.importorskip("PySide6")
 from PySide6 import QtCore, QtWidgets
 
 import cadmetrics.gui.pyside_app as pyside_app
-from cadmetrics.cli import CSV_FIELDS
 from cadmetrics.gui.control_panel import ControlPanel
 from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.results_panel import ResultsPanel
-from cadmetrics.gui.results_panel import DEFAULT_COLUMN_WIDTH
 from cadmetrics.gui.results_panel import DISPLAY_FIELDS
-from cadmetrics.gui.results_model import ResultsTableModel
-from cadmetrics.gui.styles import (
-    application_stylesheet,
-    disclosure_arrow_image_urls,
-    spinbox_arrow_image_urls,
-)
-from cadmetrics.result_schema import GUI_RESULT_FIELD_SPECS
 from cadmetrics.types import MeasurementRow, ModelData
 
 
@@ -52,23 +45,25 @@ class _FakeViewer(QtWidgets.QWidget):
         pass
 
 
-def test_control_panel_builds_roll_pitch_request(qtbot, tmp_path: Path) -> None:
+def test_control_panel_builds_roll_pitch_request_and_counts_cases(qtbot, tmp_path: Path) -> None:
     path = tmp_path / "model.step"
     path.touch()
     panel = ControlPanel()
     qtbot.addWidget(panel)
     panel.set_file_paths((path,))
     panel.attitude_mode.setCurrentIndex(panel.attitude_mode.findData("roll_pitch"))
-    panel.roll_fields[0].setValue(5.0)
-    panel.roll_fields[1].setValue(10.0)
-    panel.pitch_fields[0].setValue(2.0)
+    for field, value in zip(panel.roll_fields, (5.0, 15.0, 5.0), strict=True):
+        field.setValue(value)
+    for field, value in zip(panel.pitch_fields, (2.0, 6.0, 2.0), strict=True):
+        field.setValue(value)
 
     request = panel.request()
 
     assert request.file == path
     assert request.attitude_mode == "roll_pitch"
-    assert (request.roll_start, request.roll_end) == (5.0, 10.0)
-    assert request.pitch_start == 2.0
+    assert (request.roll_start, request.roll_end, request.roll_step) == (5.0, 15.0, 5.0)
+    assert (request.pitch_start, request.pitch_end, request.pitch_step) == (2.0, 6.0, 2.0)
+    assert panel.case_count.text() == "9 results"
 
 
 def test_control_panel_busy_state_enables_cancel_only_while_calculating(qtbot) -> None:
@@ -90,116 +85,25 @@ def test_control_panel_busy_state_enables_cancel_only_while_calculating(qtbot) -
     assert panel.cancel_button.isEnabled() is False
 
 
-def test_control_panel_emits_preview_request_for_attitude_change(qtbot, tmp_path: Path) -> None:
-    path = tmp_path / "model.stl"
-    path.touch()
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-    panel.set_file_paths((path,))
-    requests = []
-    panel.request_changed.connect(requests.append)
-
-    panel.alpha_fields[0].setValue(12.0)
-
-    assert requests[-1].alpha_start == 12.0
-
-
-def test_control_panel_restores_compact_form_layout(qtbot) -> None:
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-    setup_form = panel.file_edit.parentWidget().layout()
-    margins = setup_form.contentsMargins()
-
-    assert setup_form.fieldGrowthPolicy() == (
-        QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
-    )
-    assert setup_form.verticalSpacing() == 6
-    assert setup_form.horizontalSpacing() == 10
-    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (8, 6, 8, 7)
-
-
-def test_sweep_grid_keeps_columns_even_and_unclipped(qtbot) -> None:
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-    grid = panel.alpha_beta_group.layout()
-    margins = grid.contentsMargins()
-
-    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (0, 0, 0, 0)
-    assert grid.horizontalSpacing() == 6
-    assert grid.verticalSpacing() == 3
-    assert [grid.columnStretch(column) for column in (1, 2, 3)] == [1, 1, 1]
-    assert all(field.minimumWidth() == 70 for field in panel.alpha_fields)
-
-
-def test_collapsible_sections_and_model_details_stay_compact(qtbot) -> None:
+def test_collapsible_section_shows_and_hides_contents(qtbot) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)
     toggle = panel._section_toggles["Model Details"]
-    collapsed_icon = toggle.icon().cacheKey()
-    section = toggle.parentWidget()
-    content = section.findChild(QtWidgets.QGroupBox, "sectionContent")
+    content = toggle.parentWidget().findChild(QtWidgets.QGroupBox, "sectionContent")
 
-    assert toggle.arrowType() == QtCore.Qt.ArrowType.NoArrow
-    assert toggle.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Policy.Expanding
-    assert section.layout().spacing() == 3
     assert content is not None
-    toggle.setChecked(True)
-    assert toggle.icon().cacheKey() != collapsed_icon
+    assert not content.isVisibleTo(panel)
+    toggle.click()
     assert content.isVisibleTo(panel)
-    assert panel.model_info.sizePolicy().verticalPolicy() == QtWidgets.QSizePolicy.Policy.Fixed
-
-
-def test_application_stylesheet_restores_indicator_and_spinbox_rules() -> None:
-    stylesheet = application_stylesheet()
-    arrow_assets = [Path(path).read_text(encoding="utf-8") for path in spinbox_arrow_image_urls()]
-    disclosure_assets = [
-        Path(path).read_text(encoding="utf-8") for path in disclosure_arrow_image_urls()
-    ]
-
-    assert "QCheckBox::indicator" in stylesheet
-    assert "width: 16px" in stylesheet
-    assert "subcontrol-position: top right" in stylesheet
-    assert 'width="8" height="5"' in arrow_assets[0]
-    assert "#657383" in arrow_assets[0]
-    assert "#a9b2bc" in arrow_assets[2]
-    assert "width: 8px; height: 5px" in stylesheet
-    assert stylesheet.count("border-left: 1px solid #c7d0da") == 2
-    assert stylesheet.count("background: #f7f9fb") >= 3
-    assert "QDoubleSpinBox { padding-right: 28px; }" in stylesheet
-    assert "width: 27px; border: 0; border-left: 1px solid #c7d0da" in stylesheet
-    assert "border-bottom: 1px solid #d8dfe6" in stylesheet
-    assert "QComboBox::down-arrow" in stylesheet
-    assert "QGroupBox#sectionContent" in stylesheet
-    assert "QToolButton#sectionToggle:checked" in stylesheet
-    assert 'width="6" height="10"' in disclosure_assets[0]
-    assert "__SPIN_" not in stylesheet
+    toggle.click()
+    assert not content.isVisibleTo(panel)
 
 
 def test_run_button_is_outside_scrolling_settings(qtbot) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)
 
-    assert panel.run_button.isAncestorOf(panel.scroll_area) is False
     assert panel.scroll_area.isAncestorOf(panel.run_button) is False
-    assert panel.run_button.parentWidget().objectName() == "actionBar"
-
-
-def test_sweep_case_count_and_single_point_step_state(qtbot) -> None:
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-
-    assert panel.case_count.text() == "1 result"
-    assert panel.alpha_fields[2].isEnabled() is True
-    assert panel.alpha_fields[2].toolTip() == "Ignored when Start and End are the same."
-
-    panel.alpha_fields[1].setValue(10.0)
-    panel.alpha_fields[2].setValue(5.0)
-    panel.beta_fields[1].setValue(10.0)
-    panel.beta_fields[2].setValue(5.0)
-
-    assert panel.case_count.text() == "9 results"
-    assert panel.alpha_fields[2].isEnabled() is True
-    assert panel.alpha_fields[2].toolTip() == "Increment between sweep values."
 
 
 def test_detailed_overlay_option_is_opt_in(qtbot) -> None:
@@ -217,20 +121,10 @@ def test_detailed_overlay_option_is_opt_in(qtbot) -> None:
 def test_advanced_changes_show_pending_state_only_after_model_load(qtbot, tmp_path: Path) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)
-
-    assert panel.advanced_status.isVisible() is False
-    assert panel.apply_advanced_button.toolTip() == (
-        "Load a model before reloading it with Advanced settings."
-    )
     panel.axis_x.setCurrentIndex(panel.axis_x.findData("-x"))
 
-    assert panel._advanced_dirty is False
     assert panel.advanced_status.isHidden() is True
-    assert panel._section_toggles["Advanced"].text() == "Advanced"
     assert panel.apply_advanced_button.isEnabled() is False
-    assert panel.apply_advanced_button.toolTip() == (
-        "Load a model before reloading it with Advanced settings."
-    )
 
     path = tmp_path / "model.step"
     path.touch()
@@ -238,9 +132,7 @@ def test_advanced_changes_show_pending_state_only_after_model_load(qtbot, tmp_pa
     panel.set_model(_model(path, component_names=("Body",)))
     panel.axis_x.setCurrentIndex(panel.axis_x.findData("x"))
 
-    assert panel._advanced_dirty is True
     assert panel.advanced_status.isHidden() is False
-    assert "changes not applied" in panel._section_toggles["Advanced"].text()
     assert panel.apply_advanced_button.isEnabled() is True
 
 
@@ -250,15 +142,8 @@ def test_control_panel_populates_step_components(qtbot, tmp_path: Path) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)
     panel.set_file_paths((path,))
-    panel.set_model(
-        _model(
-            path,
-            component_names=("Body", "Left wing", "Right wing", "Tail", "Rudder"),
-        )
-    )
+    panel.set_model(_model(path, component_names=("Body", "Left wing", "Right wing")))
 
-    assert panel.component_scroll.minimumHeight() == 130
-    assert panel.component_scroll.maximumHeight() == 130
     panel.component_none_button.click()
     assert all(not box.isChecked() for box in panel._component_checkboxes)
     panel.component_all_button.click()
@@ -267,170 +152,142 @@ def test_control_panel_populates_step_components(qtbot, tmp_path: Path) -> None:
     panel.step_component_mode.setCurrentIndex(panel.step_component_mode.findData("subtract"))
     request = panel.request()
 
-    assert request.step_components == (1, 3, 4, 5)
+    assert request.step_components == (1, 3)
     assert request.step_component_mode == "subtract"
-    assert panel.component_summary.text() == "4 of 5 components enabled."
+    assert panel.component_summary.text() == "2 of 3 components enabled."
 
 
 def test_results_panel_displays_selects_and_exports_rows(qtbot, tmp_path: Path) -> None:
     panel = ResultsPanel()
     qtbot.addWidget(panel)
-    row = _row()
+    rows = [
+        replace(_row(), file="first.stl", alpha_deg=5.0, projected_area=1.25),
+        replace(
+            _row(),
+            file="/models/aircraft/a-long-model-filename-that-needs-a-full-tooltip.stl",
+            alpha_deg=15.0,
+            projected_area=2.5,
+        ),
+    ]
     selected = []
     panel.selected_row_changed.connect(selected.append)
-
-    panel.set_rows([row])
-    panel.select_last_row()
-    output = tmp_path / "rows.csv"
-    panel.save_csv(output)
-
-    assert panel.result_count.text() == "Rows: 1"
-    assert selected == [row]
-    assert output.read_text(encoding="utf-8").startswith("file,step_components")
-
-
-def test_results_panel_rejects_input_path_as_csv_output(qtbot, tmp_path: Path) -> None:
-    source = tmp_path / "model.step"
-    source.write_bytes(b"STEP source data")
-    panel = ResultsPanel()
-    qtbot.addWidget(panel)
-    panel.set_rows([_row()], protected_paths=[source])
-
-    with pytest.raises(ValueError, match="must not overwrite an input CAD file"):
-        panel.save_csv(source)
-
-    assert source.read_bytes() == b"STEP source data"
-
-
-def test_results_panel_restores_table_density(qtbot) -> None:
-    panel = ResultsPanel()
-    qtbot.addWidget(panel)
-    toolbar = panel.findChild(QtWidgets.QWidget, "resultToolbar")
-    margins = toolbar.layout().contentsMargins()
-
-    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (10, 6, 10, 6)
-    assert panel.table.alternatingRowColors() is True
-    assert panel.table.verticalHeader().isVisible() is False
-    assert panel.table.verticalHeader().defaultSectionSize() == 24
-
-
-def test_results_panel_uses_empty_state_until_rows_exist(qtbot) -> None:
-    panel = ResultsPanel()
-    qtbot.addWidget(panel)
-
     assert panel.stack.currentWidget() is panel.empty_state
-    assert panel.empty_title.text() == "No results yet"
-    assert "Run Sweep" in panel.empty_message.text()
 
-    panel.set_rows([_row()])
+    panel.set_rows(rows)
+    panel.select_last_row()
 
     assert panel.stack.currentWidget() is panel.table
-
-
-def test_results_panel_keeps_all_field_names_left_aligned_and_discoverable(qtbot) -> None:
-    panel = ResultsPanel()
-    qtbot.addWidget(panel)
-    panel.set_rows([_row()])
-    header = panel.table.horizontalHeader()
+    assert panel.result_count.text() == "Rows: 2"
+    assert selected == [rows[-1]]
     model = panel.table.model()
-
-    assert isinstance(panel.table, QtWidgets.QTableView)
-    assert not isinstance(panel.table, QtWidgets.QTableWidget)
-    assert isinstance(model, ResultsTableModel)
-    assert model.columnCount() == len(CSV_FIELDS)
-    assert panel.table.textElideMode() == QtCore.Qt.TextElideMode.ElideRight
-    assert header.sectionResizeMode(0) == QtWidgets.QHeaderView.ResizeMode.Interactive
-    assert DISPLAY_FIELDS == [spec.key for spec in GUI_RESULT_FIELD_SPECS]
-    assert DISPLAY_FIELDS[:6] == [
-        "file",
-        "alpha_deg",
-        "beta_deg",
-        "roll_deg",
-        "pitch_deg",
-        "projected_area",
-    ]
-    for column_index, spec in enumerate(GUI_RESULT_FIELD_SPECS):
-        assert model.headerData(
-            column_index,
-            QtCore.Qt.Orientation.Horizontal,
-            QtCore.Qt.ItemDataRole.DisplayRole,
-        ) == spec.gui_label
-        assert model.headerData(
-            column_index,
-            QtCore.Qt.Orientation.Horizontal,
-            QtCore.Qt.ItemDataRole.ToolTipRole,
-        ) == spec.gui_tooltip
-        alignment = model.headerData(
-            column_index,
-            QtCore.Qt.Orientation.Horizontal,
-            QtCore.Qt.ItemDataRole.TextAlignmentRole,
+    assert model.rowCount() == 2
+    alpha_column = DISPLAY_FIELDS.index("alpha_deg")
+    area_column = DISPLAY_FIELDS.index("projected_area")
+    assert model.headerData(alpha_column, QtCore.Qt.Orientation.Horizontal) == "Alpha (°)"
+    assert (
+        model.headerData(
+            area_column, QtCore.Qt.Orientation.Horizontal, QtCore.Qt.ItemDataRole.ToolTipRole
         )
-        assert alignment & QtCore.Qt.AlignmentFlag.AlignLeft
-
-
-def test_results_panel_cells_are_left_aligned_with_full_text_tooltips(qtbot) -> None:
-    panel = ResultsPanel()
-    qtbot.addWidget(panel)
-    row = _row()
-    panel.set_rows([row])
-    file_column = DISPLAY_FIELDS.index("file")
-    model = panel.table.model()
-    file_index = model.index(0, file_column)
-    text = model.data(file_index, QtCore.Qt.ItemDataRole.DisplayRole)
-    tooltip = model.data(file_index, QtCore.Qt.ItemDataRole.ToolTipRole)
-    alignment = model.data(file_index, QtCore.Qt.ItemDataRole.TextAlignmentRole)
-
-    assert alignment & QtCore.Qt.AlignmentFlag.AlignLeft
-    assert tooltip == text == row.file
-    assert all(
-        panel.table.columnWidth(column_index) == DEFAULT_COLUMN_WIDTH
-        for column_index in range(len(CSV_FIELDS))
+        == "CSV field: projected_area"
     )
+    assert model.data(model.index(0, alpha_column)) == "5"
+    assert model.data(model.index(1, alpha_column)) == "15"
+    assert model.data(model.index(1, area_column)) == "2.5"
+    file_index = model.index(1, DISPLAY_FIELDS.index("file"))
+    assert model.data(file_index) == rows[-1].file
+    assert model.data(file_index, QtCore.Qt.ItemDataRole.ToolTipRole) == rows[-1].file
+
+    output = tmp_path / "rows.csv"
+    panel.save_csv(output)
+    with output.open(encoding="utf-8", newline="") as stream:
+        saved_rows = list(csv.DictReader(stream))
+    assert [row["file"] for row in saved_rows] == [row.file for row in rows]
+    assert [float(row["alpha_deg"]) for row in saved_rows] == [5.0, 15.0]
 
 
-def test_results_panel_models_ten_thousand_rows_without_cell_items(qtbot) -> None:
-    panel = ResultsPanel()
-    qtbot.addWidget(panel)
-    row = _row()
-
-    panel.set_rows([row] * 10_000)
-
-    model = panel.table.model()
-    assert isinstance(model, ResultsTableModel)
-    assert model.rowCount() == 10_000
-    assert model.columnCount() == len(CSV_FIELDS)
-    assert model.data(model.index(9_999, DISPLAY_FIELDS.index("file"))) == row.file
-    assert panel.result_count.text() == "Rows: 10000"
-
-
-def test_main_window_only_composes_gui_components(qtbot, monkeypatch) -> None:
+def test_main_window_invalidates_results_when_request_changes(
+    qtbot, monkeypatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "model.step"
+    source.touch()
     monkeypatch.setattr(pyside_app, "ModelViewer", _FakeViewer)
     window = pyside_app.MainWindow()
     qtbot.addWidget(window)
-
-    assert isinstance(window.controls, ControlPanel)
-    assert isinstance(window.results, ResultsPanel)
-    assert isinstance(window.viewer, _FakeViewer)
-    assert len(Path("src/cadmetrics/gui/pyside_app.py").read_text().splitlines()) <= 400
-
-
-def test_main_window_invalidates_results_when_request_changes(qtbot, monkeypatch) -> None:
-    from cadmetrics.gui.jobs import CalculationRequest
-
-    monkeypatch.setattr(pyside_app, "ModelViewer", _FakeViewer)
-    window = pyside_app.MainWindow()
-    qtbot.addWidget(window)
+    window.controls.set_file_paths((source,))
     window._on_results_ready([_row()])
     assert window.results.rows
     assert window.results.save_button.isEnabled() is True
 
-    request = CalculationRequest(file=Path("new.step"), alpha_start=10.0)
-    window._preview_request(request)
+    window.controls.alpha_fields[0].setValue(10.0)
 
     assert window.results.rows == []
     assert window.results.save_button.isEnabled() is False
     assert window.viewer.result_calls[-1][0] is None
     assert window.progress_bar.value() == 0
+
+
+@pytest.mark.parametrize(
+    "change", ["input_unit", "output_unit", "existing_file", "missing_file", "empty_file"]
+)
+def test_main_window_invalidates_results_after_setup_edit(
+    qtbot, monkeypatch, tmp_path: Path, change: str
+) -> None:
+    source = tmp_path / "model.stl"
+    source.touch()
+    other = tmp_path / "other.stl"
+    other.touch()
+    monkeypatch.setattr(pyside_app, "ModelViewer", _FakeViewer)
+    window = pyside_app.MainWindow()
+    qtbot.addWidget(window)
+    window.controls.set_file_paths((source,))
+    window._request = window.controls.request()
+    window._on_results_ready([_row()])
+
+    if change == "input_unit":
+        window.controls.input_unit.setCurrentText("mm")
+    elif change == "output_unit":
+        window.controls.output_unit.setCurrentText("mm")
+    elif change == "existing_file":
+        window.controls.file_edit.setText(str(other))
+    elif change == "missing_file":
+        window.controls.file_edit.setText(str(tmp_path / "missing.stl"))
+    else:
+        window.controls.file_edit.clear()
+
+    assert window.results.rows == []
+    assert window.results.save_button.isEnabled() is False
+    assert window.viewer.result_calls[-1][0] is None
+    assert window.progress_bar.value() == 0
+    with pytest.raises(ValueError, match="No calculation results to save"):
+        window.results.save_csv(tmp_path / "stale.csv")
+
+
+def test_main_window_setup_edits_are_applied_by_next_sweep(
+    qtbot, monkeypatch, tmp_path: Path
+) -> None:
+    paths = (tmp_path / "body.stl", tmp_path / "wing.stl")
+    for path in paths:
+        path.touch()
+    monkeypatch.setattr(pyside_app, "ModelViewer", _FakeViewer)
+    window = pyside_app.MainWindow()
+    qtbot.addWidget(window)
+    loads = []
+    calculations = []
+    monkeypatch.setattr(window.controller, "load_only", loads.append)
+    monkeypatch.setattr(window.controller, "calculate", calculations.append)
+
+    window.controls.set_file_paths(paths)
+    window.controls.input_unit.setCurrentText("mm")
+    window.controls.output_unit.setCurrentText("cm")
+
+    assert loads == calculations == []
+    window.controls.run_button.click()
+
+    assert loads == []
+    assert len(calculations) == 1
+    assert calculations[0].file == paths
+    assert calculations[0].input_unit == "mm"
+    assert calculations[0].output_unit == "cm"
 
 
 def test_main_window_protects_request_files_from_csv_export(

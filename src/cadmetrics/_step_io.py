@@ -281,11 +281,10 @@ def _prepare_step_assembly_input(
     ocp: OcpBindings,
 ) -> PreparedStepInput:
     parts = tuple(
-        _prepare_step_assembly_part(path, input_unit=input_unit, ocp=ocp)
-        for path in paths
+        _prepare_step_assembly_part(path, input_unit=input_unit, ocp=ocp) for path in paths
     )
-    original_shape, solids, additional_shapes, shape_warnings = (
-        _combine_step_assembly_parts(parts, ocp=ocp)
+    original_shape, solids, additional_shapes, shape_warnings = _combine_step_assembly_parts(
+        parts, ocp=ocp
     )
     resolved_input_unit = _resolve_step_assembly_input_unit(parts, input_unit=input_unit)
     kernel_unit = _resolve_step_assembly_kernel_unit(
@@ -339,9 +338,7 @@ def _prepare_step_assembly_part(
         )
     else:
         non_solid_shapes = (read_result.shape,)
-    component_names = tuple(
-        f"{path.name}: {name}" for name in _component_names(path, solids)
-    )
+    component_names = tuple(f"{path.name}: {name}" for name in _component_names(path, solids))
     declared_unit = (
         (
             _step_unit_name_to_length_unit(read_result.declared_unit_name)
@@ -370,9 +367,7 @@ def _combine_step_assembly_parts(
     ocp: OcpBindings,
 ) -> tuple[Any, tuple[Any, ...], tuple[Any, ...], tuple[str, ...]]:
     solids = tuple(solid for part in parts for solid in part.solids)
-    non_solid_shapes = tuple(
-        shape for part in parts for shape in part.non_solid_shapes
-    )
+    non_solid_shapes = tuple(shape for part in parts for shape in part.non_solid_shapes)
     builder = ocp.BRep_Builder()
     original_shape = ocp.TopoDS_Compound()
     builder.MakeCompound(original_shape)
@@ -436,14 +431,10 @@ def _read_step_file(
         TColStd_SequenceOfAsciiString=ocp.TColStd_SequenceOfAsciiString,
     )
     declared_input_unit = (
-        None
-        if declared_unit_name is None
-        else _step_unit_name_to_length_unit(declared_unit_name)
+        None if declared_unit_name is None else _step_unit_name_to_length_unit(declared_unit_name)
     )
     declared_unit_mm = (
-        None
-        if declared_unit_name is None
-        else _step_unit_name_to_millimetres(declared_unit_name)
+        None if declared_unit_name is None else _step_unit_name_to_millimetres(declared_unit_name)
     )
     warnings: list[str] = []
     coordinate_scale = 1.0
@@ -549,9 +540,7 @@ def _finalize_step_model(
         geometry,
         angular_deflection=options.angular_deflection,
         must_tessellate=(
-            options.require_mesh
-            or options.metric_source == "mesh"
-            or exact_metrics.base_failed
+            options.require_mesh or options.metric_source == "mesh" or exact_metrics.base_failed
         ),
         ocp=ocp,
     )
@@ -642,26 +631,28 @@ def _select_step_shape(
     if unioned is None:
         subject = "STEP assembly solids" if prepared.is_assembly else "STEP solids"
         warnings.append(
-            f"Could not boolean-union {subject}; "
-            "volume and surface area may double-count overlaps."
+            f"Could not boolean-union {subject}; volume and surface area may double-count overlaps."
         )
     empty_result = not _ocp_shape_has_subshape(
         shape,
         ocp.TopAbs_FACE,
         ocp.TopExp_Explorer,
     )
-    topology_watertight = False if empty_result else _ocp_shape_is_watertight(
-        shape,
-        BRepCheck_Analyzer=ocp.BRepCheck_Analyzer,
-        BRep_Tool=ocp.BRep_Tool,
-        TopAbs_FACE=ocp.TopAbs_FACE,
-        TopAbs_SHELL=ocp.TopAbs_SHELL,
-        TopAbs_SOLID=ocp.TopAbs_SOLID,
-        TopExp_Explorer=ocp.TopExp_Explorer,
+    topology_watertight = (
+        False
+        if empty_result
+        else _ocp_shape_is_watertight(
+            shape,
+            BRepCheck_Analyzer=ocp.BRepCheck_Analyzer,
+            BRep_Tool=ocp.BRep_Tool,
+            TopAbs_FACE=ocp.TopAbs_FACE,
+            TopAbs_SHELL=ocp.TopAbs_SHELL,
+            TopAbs_SOLID=ocp.TopAbs_SOLID,
+            TopExp_Explorer=ocp.TopExp_Explorer,
+        )
     )
     subtraction_active = (
-        options.step_component_mode == "subtract"
-        and len(selected_components) < solid_count
+        options.step_component_mode == "subtract" and len(selected_components) < solid_count
     )
     retained_faces_tuple = None if retained_faces is None else tuple(retained_faces)
     cut_faces_tuple = None if cut_faces is None else tuple(cut_faces)
@@ -687,16 +678,24 @@ def _describe_step_geometry(
 ) -> StepGeometry:
     scale = length_scale(prepared.kernel_unit, options.output_unit)
     empty_result = selected.empty_result
-    native_bounds = None if empty_result else _ocp_bounds(
-        selected.shape,
-        Bnd_Box=ocp.Bnd_Box,
-        BRepBndLib=ocp.BRepBndLib,
+    native_bounds = (
+        None
+        if empty_result
+        else _ocp_bounds(
+            selected.shape,
+            Bnd_Box=ocp.Bnd_Box,
+            BRepBndLib=ocp.BRepBndLib,
+        )
     )
     bounds = None if native_bounds is None else _scaled_output_bounds(native_bounds, scale)
-    native_diagonal = 1.0 if empty_result else _ocp_bounding_box_diagonal(
-        selected.shape,
-        Bnd_Box=ocp.Bnd_Box,
-        BRepBndLib=ocp.BRepBndLib,
+    native_diagonal = (
+        1.0
+        if empty_result
+        else _ocp_bounding_box_diagonal(
+            selected.shape,
+            Bnd_Box=ocp.Bnd_Box,
+            BRepBndLib=ocp.BRepBndLib,
+        )
     )
     mesh_deflection_value = _resolve_mesh_deflection(
         options.mesh_deflection,
@@ -743,16 +742,24 @@ def _calculate_exact_step_metrics(
             TopoDS=ocp.TopoDS,
             excluded_faces=selected.cut_faces or (),
         )
-    brep_volume = 0.0 if selected.empty_result else _ocp_volume_metric_gk(
-        selected.shape,
-        GProp_GProps=ocp.GProp_GProps,
-        BRepGProp=ocp.BRepGProp,
+    brep_volume = (
+        0.0
+        if selected.empty_result
+        else _ocp_volume_metric_gk(
+            selected.shape,
+            GProp_GProps=ocp.GProp_GProps,
+            BRepGProp=ocp.BRepGProp,
+        )
     )
-    brep_surface_area = 0.0 if selected.empty_result else _ocp_shape_metric(
-        selected.shape,
-        ocp.GProp_GProps,
-        ocp.BRepGProp,
-        "SurfaceProperties",
+    brep_surface_area = (
+        0.0
+        if selected.empty_result
+        else _ocp_shape_metric(
+            selected.shape,
+            ocp.GProp_GProps,
+            ocp.BRepGProp,
+            "SurfaceProperties",
+        )
     )
     brep_newly_exposed_surface_area: float | None = None
     if selected.retained_faces is not None and selected.cut_faces is not None:
@@ -796,17 +803,15 @@ def _tessellate_selected_step_shape(
             angular_deflection,
             True,
         )
-        vertices, faces, newly_exposed_face_indices = (
-            _tessellate_ocp_shape_with_marked_faces(
-                selected.shape,
-                marked_faces=selected.cut_faces or (),
-                BRep_Tool=ocp.BRep_Tool,
-                TopAbs_FACE=ocp.TopAbs_FACE,
-                TopAbs_REVERSED=ocp.TopAbs_REVERSED,
-                TopExp_Explorer=ocp.TopExp_Explorer,
-                TopLoc_Location=ocp.TopLoc_Location,
-                TopoDS=ocp.TopoDS,
-            )
+        vertices, faces, newly_exposed_face_indices = _tessellate_ocp_shape_with_marked_faces(
+            selected.shape,
+            marked_faces=selected.cut_faces or (),
+            BRep_Tool=ocp.BRep_Tool,
+            TopAbs_FACE=ocp.TopAbs_FACE,
+            TopAbs_REVERSED=ocp.TopAbs_REVERSED,
+            TopExp_Explorer=ocp.TopExp_Explorer,
+            TopLoc_Location=ocp.TopLoc_Location,
+            TopoDS=ocp.TopoDS,
         )
     else:
         vertices, faces = _empty_mesh()
@@ -890,7 +895,9 @@ def _select_native_step_metrics(
             surface_area = None
         warnings.append("STEP volume and surface area were calculated from the tessellated mesh.")
         if not mesh_watertight:
-            warnings.append("STEP tessellated mesh is not watertight; mesh volume may be unreliable.")
+            warnings.append(
+                "STEP tessellated mesh is not watertight; mesh volume may be unreliable."
+            )
     else:
         volume = exact_metrics.volume
         surface_area = exact_metrics.surface_area
@@ -993,9 +1000,7 @@ def _final_step_warnings(
     prepared: PreparedStepInput,
     *warning_groups: tuple[str, ...],
 ) -> tuple[str, ...]:
-    warnings = prepared.warnings + tuple(
-        warning for group in warning_groups for warning in group
-    )
+    warnings = prepared.warnings + tuple(warning for group in warning_groups for warning in group)
     return tuple(dict.fromkeys(warnings)) if prepared.is_assembly else warnings
 
 

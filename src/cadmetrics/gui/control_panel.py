@@ -325,6 +325,9 @@ class ControlPanel(QtWidgets.QWidget):
         self._sync_attitude_controls()
         self.mesh_deflection.setEnabled(False)
         self._sync_case_count()
+        self.file_edit.textChanged.connect(self._emit_preview_request)
+        self.input_unit.currentIndexChanged.connect(self._emit_preview_request)
+        self.output_unit.currentIndexChanged.connect(self._emit_preview_request)
 
     @property
     def file_paths(self) -> tuple[Path, ...]:
@@ -476,10 +479,11 @@ class ControlPanel(QtWidgets.QWidget):
         self.viewer_options_changed.emit(self.viewer_options())
 
     def _emit_preview_request(self) -> None:
+        request: CalculationRequest | None
         try:
             request = self.request()
         except Exception:
-            return
+            request = None
         self.request_changed.emit(request)
 
     def _populate_components(self, model: ModelData) -> None:
@@ -628,9 +632,7 @@ class ControlPanel(QtWidgets.QWidget):
     def _set_advanced_dirty(self, dirty: bool) -> None:
         self._advanced_dirty = dirty and self._model_loaded
         self.advanced_status.setVisible(self._advanced_dirty)
-        self.apply_advanced_button.setEnabled(
-            self._advanced_dirty and self.run_button.isEnabled()
-        )
+        self.apply_advanced_button.setEnabled(self._advanced_dirty and self.run_button.isEnabled())
         self.apply_advanced_button.setToolTip(
             "Reload the model using the changed axis, component, and tessellation settings."
             if self._model_loaded
@@ -638,9 +640,7 @@ class ControlPanel(QtWidgets.QWidget):
         )
         toggle = self._section_toggles.get("Advanced")
         if toggle is not None:
-            toggle.setText(
-                "Advanced · changes not applied" if self._advanced_dirty else "Advanced"
-            )
+            toggle.setText("Advanced · changes not applied" if self._advanced_dirty else "Advanced")
 
     def _section(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:
         box = QtWidgets.QGroupBox(title)

@@ -15,9 +15,7 @@ RESULT_HEADER_LABELS = {spec.key: spec.gui_label for spec in RESULT_FIELD_SPECS}
 _DISPLAY_ROLE = int(QtCore.Qt.ItemDataRole.DisplayRole)
 _TOOLTIP_ROLE = int(QtCore.Qt.ItemDataRole.ToolTipRole)
 _ALIGNMENT_ROLE = int(QtCore.Qt.ItemDataRole.TextAlignmentRole)
-_CELL_ALIGNMENT = (
-    QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
-)
+_CELL_ALIGNMENT = QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
 
 
 class ResultsTableModel(QtCore.QAbstractTableModel):
