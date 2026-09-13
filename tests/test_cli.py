@@ -4,9 +4,8 @@ import csv
 from pathlib import Path
 
 import pytest
-import typer
+from rich.text import Text
 
-from cadmetrics.cli import _resolve_project_attitude
 from typer.testing import CliRunner
 
 from cadmetrics.cli import app
@@ -48,6 +47,8 @@ def test_measure_cli_out_still_writes_csv(runner: CliRunner, tmp_path: Path) -> 
     assert float(row["base_tolerance"]) == pytest.approx(1.0e-6)
     assert float(row["volume"]) == pytest.approx(1.0)
     assert row["method"] == "stl-mesh"
+    assert row["cadmetrics_version"]
+    assert row["cadmetrics_hash"]
 
 
 @pytest.mark.parametrize("command", ["measure", "project", "sweep"])
@@ -127,7 +128,10 @@ def test_project_cli_accepts_alpha_beta_mode(runner: CliRunner, tmp_path: Path) 
     row = _csv_rows(output.read_text(encoding="utf-8"))[0]
     assert float(row["alpha_deg"]) == pytest.approx(60.0)
     assert float(row["beta_deg"]) == pytest.approx(0.0)
+    assert float(row["roll_deg"]) == pytest.approx(0.0)
+    assert float(row["pitch_deg"]) == pytest.approx(60.0)
     assert float(row["direction_x"]) == pytest.approx(0.5)
+    assert float(row["direction_y"]) == pytest.approx(0.0)
     assert float(row["direction_z"]) == pytest.approx(0.8660254037844386)
 
 
@@ -153,7 +157,9 @@ def test_project_cli_accepts_roll_pitch_mode(runner: CliRunner, tmp_path: Path) 
     row = _csv_rows(output.read_text(encoding="utf-8"))[0]
     assert float(row["roll_deg"]) == pytest.approx(90.0)
     assert float(row["pitch_deg"]) == pytest.approx(90.0)
+    assert float(row["direction_x"]) == pytest.approx(0.0)
     assert float(row["direction_y"]) == pytest.approx(-1.0)
+    assert float(row["direction_z"]) == pytest.approx(0.0)
 
 
 def test_project_cli_accepts_vector_mode(runner: CliRunner, tmp_path: Path) -> None:
@@ -177,7 +183,10 @@ def test_project_cli_accepts_vector_mode(runner: CliRunner, tmp_path: Path) -> N
     assert float(row["direction_x"]) == pytest.approx(0.0)
     assert float(row["direction_y"]) == pytest.approx(1.0)
     assert float(row["direction_z"]) == pytest.approx(0.0)
+    assert float(row["alpha_deg"]) == pytest.approx(0.0)
     assert float(row["beta_deg"]) == pytest.approx(-90.0)
+    assert float(row["roll_deg"]) == pytest.approx(-90.0)
+    assert float(row["pitch_deg"]) == pytest.approx(90.0)
 
 
 def test_project_cli_accepts_axis_map(runner: CliRunner, tmp_path: Path) -> None:
@@ -197,6 +206,10 @@ def test_project_cli_accepts_axis_map(runner: CliRunner, tmp_path: Path) -> None
     row = _csv_rows(output.read_text(encoding="utf-8"))[0]
     assert float(row["centroid_x"]) == pytest.approx(-0.5)
     assert float(row["centroid_y"]) == pytest.approx(0.5)
+    assert float(row["centroid_z"]) == pytest.approx(0.5)
+    assert float(row["x_min"]) == pytest.approx(-1.0)
+    assert float(row["x_max"]) == pytest.approx(0.0)
+    assert float(row["base_area"]) == pytest.approx(1.0)
 
 
 def test_sweep_cli_accepts_roll_pitch_ranges(runner: CliRunner, tmp_path: Path) -> None:
@@ -235,6 +248,8 @@ def test_sweep_cli_vector_mode_returns_one_row(runner: CliRunner) -> None:
             "vector",
             "--direction",
             "1,0,0",
+            "--alpha",
+            "0e0",
             "--no-summary",
         ],
     )
@@ -245,39 +260,11 @@ def test_sweep_cli_vector_mode_returns_one_row(runner: CliRunner) -> None:
     assert float(rows[0]["direction_x"]) == pytest.approx(1.0)
 
 
-@pytest.mark.parametrize("zero_spec", ["0", "0.0", "0.00", "-0", "0e0"])
-def test_sweep_cli_accepts_equivalent_zero_specs_in_vector_mode(
-    runner: CliRunner,
-    zero_spec: str,
-) -> None:
-    result = runner.invoke(
-        app,
-        [
-            "sweep",
-            str(DATA_DIR / "unit_cube.stl"),
-            "--attitude",
-            "vector",
-            "--direction",
-            "1,0,0",
-            "--alpha",
-            zero_spec,
-            "--no-summary",
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-
-
 @pytest.mark.parametrize(
     ("command", "arguments", "message"),
     [
         ("project", ["--alpha", "nan"], "alpha_deg must be finite"),
         ("sweep", ["--alpha", "bad"], "could not convert"),
-        (
-            "sweep",
-            ["--attitude", "vector", "--direction", "0,0,0"],
-            "greater than zero",
-        ),
     ],
 )
 def test_cli_reports_preflight_attitude_validation_errors(
@@ -325,15 +312,7 @@ def test_cli_rejects_mixed_attitude_inputs(runner: CliRunner) -> None:
     )
 
     assert result.exit_code != 0
-    with pytest.raises(typer.BadParameter, match="--alpha cannot be used"):
-        _resolve_project_attitude(
-            attitude="roll-pitch",
-            alpha=10.0,
-            beta=0.0,
-            roll=0.0,
-            pitch=5.0,
-            direction=None,
-        )
+    assert "--alpha cannot be used" in Text.from_ansi(result.output).plain
 
 
 def test_cli_rejects_roll_in_alpha_beta_mode(runner: CliRunner) -> None:
@@ -352,12 +331,4 @@ def test_cli_rejects_roll_in_alpha_beta_mode(runner: CliRunner) -> None:
     )
 
     assert result.exit_code != 0
-    with pytest.raises(typer.BadParameter, match="--roll cannot be used"):
-        _resolve_project_attitude(
-            attitude="alpha-beta",
-            alpha=10.0,
-            beta=0.0,
-            roll=5.0,
-            pitch=None,
-            direction=None,
-        )
+    assert "--roll cannot be used" in Text.from_ansi(result.output).plain

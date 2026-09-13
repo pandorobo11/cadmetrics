@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.metadata
+from importlib import resources
 from typing import Any
 
 from PySide6 import QtCore, QtWidgets
@@ -43,6 +44,22 @@ def main() -> None:
         name: importlib.metadata.version(name)
         for name in ("cadmetrics", "PySide6", "pyvista", "pyvistaqt")
     }
+    entry_points = [
+        entry
+        for entry in importlib.metadata.distribution("cadmetrics").entry_points
+        if entry.name == "cadmetrics-gui"
+    ]
+    if (
+        len(entry_points) != 1
+        or entry_points[0].group != "gui_scripts"
+        or entry_points[0].load() is not pyside_app.main
+    ):
+        raise RuntimeError("Packaged GUI entry point is missing or incorrectly registered")
+    docs = resources.files("cadmetrics").joinpath("_docs_site")
+    for relative_path in ("index.html", "docs/gui.html", "docs/assets/gui-main.png"):
+        if not docs.joinpath(relative_path).is_file():
+            raise RuntimeError(f"Packaged documentation is missing: {relative_path}")
+
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     pyside_app.ModelViewer = SmokeViewer
     window = pyside_app.MainWindow()

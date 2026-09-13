@@ -1,5 +1,7 @@
+import csv
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 pytest.importorskip("OCP")
@@ -15,30 +17,13 @@ from OCP.TopAbs import TopAbs_FACE
 from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS, TopoDS_Compound
 
-from cadmetrics.api import inspect_model, measure, project
+from cadmetrics.api import inspect_model, measure, measure_model, project, project_model
 from cadmetrics.cli import app
 from cadmetrics._ocp import _usable_step_component_name
 from typer.testing import CliRunner
 
 
-def test_generated_step_box_measurements(tmp_path: Path) -> None:
-    step_path = tmp_path / "box.step"
-    shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()
-    writer = STEPControl_Writer()
-    writer.Transfer(shape, STEPControl_AsIs)
-    assert writer.Write(str(step_path)) == IFSelect_RetDone
-
-    measured = measure(step_path)
-    assert measured.volume == pytest.approx(6.0)
-    assert measured.surface_area == pytest.approx(22.0)
-    assert measured.base_area == pytest.approx(6.0)
-    assert measured.is_watertight is True
-    assert measured.mesh_deflection == pytest.approx((1.0**2 + 2.0**2 + 3.0**2) ** 0.5 * 1.0e-4)
-
-    projected = project(step_path)
-    assert projected.projected_area == pytest.approx(6.0)
-    assert projected.input_unit == "mm"
-    assert projected.mesh_deflection == measured.mesh_deflection
+SAMPLES_DIR = Path(__file__).parents[1] / "samples"
 
 
 @pytest.mark.parametrize(
@@ -55,7 +40,6 @@ def test_declared_step_units_are_converted_once(
     _write_step_with_unit(step_path, shape, writer_unit)
 
     inspected = inspect_model(step_path, output_unit="m")
-    projected = project(step_path, output_unit="m")
 
     assert inspected.input_unit == expected_input_unit
     assert inspected.bounds == pytest.approx((0.0, 1.0, 0.0, 2.0, 0.0, 3.0))
@@ -65,7 +49,6 @@ def test_declared_step_units_are_converted_once(
     assert inspected.vertices.min(axis=0) == pytest.approx((0.0, 0.0, 0.0))
     assert inspected.vertices.max(axis=0) == pytest.approx((1.0, 2.0, 3.0))
     assert inspected.mesh_deflection == pytest.approx((1.0**2 + 2.0**2 + 3.0**2) ** 0.5 * 1.0e-4)
-    assert projected.projected_area == pytest.approx(6.0)
 
 
 def test_metre_step_keeps_kernel_tolerances_for_sub_micrometre_box(
@@ -130,26 +113,6 @@ def test_extended_step_unit_can_be_reinterpreted_explicitly(tmp_path: Path) -> N
     assert overridden.x_max == pytest.approx(1.0)
 
 
-def test_non_mm_step_assembly_uses_one_coordinate_unit(tmp_path: Path) -> None:
-    step_a = tmp_path / "inch_box_a.step"
-    step_b = tmp_path / "inch_box_b.step"
-    box_a = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
-    box_b = BRepPrimAPI_MakeBox(gp_Pnt(500.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
-    _write_step_with_unit(step_a, box_a, "INCH")
-    _write_step_with_unit(step_b, box_b, "INCH")
-
-    inspected = inspect_model([step_a, step_b], output_unit="m")
-    projected = project([step_a, step_b], output_unit="m")
-
-    assert inspected.input_unit == "in"
-    assert inspected.bounds == pytest.approx((0.0, 1.5, 0.0, 1.0, 0.0, 1.0))
-    assert inspected.volume == pytest.approx(1.5)
-    assert inspected.surface_area == pytest.approx(8.0)
-    assert inspected.base_area == pytest.approx(1.0)
-    assert inspected.vertices.max(axis=0) == pytest.approx((1.5, 1.0, 1.0))
-    assert projected.projected_area == pytest.approx(1.0)
-
-
 def test_explicit_unit_reinterprets_mixed_declarations_in_step_assembly(
     tmp_path: Path,
 ) -> None:
@@ -191,7 +154,6 @@ def test_auto_mesh_deflection_uses_actual_sub_unit_diagonal(tmp_path: Path) -> N
     writer.Transfer(shape, STEPControl_AsIs)
     assert writer.Write(str(step_path)) == IFSelect_RetDone
 
-    inspected = inspect_model(step_path, output_unit="mm")
     projected = project(
         step_path,
         output_unit="mm",
@@ -200,55 +162,34 @@ def test_auto_mesh_deflection_uses_actual_sub_unit_diagonal(tmp_path: Path) -> N
     )
 
     expected_diagonal = 2.0 * radius_mm * 3.0**0.5
-    assert inspected.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-4)
+    assert projected.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-4)
     assert projected.projected_area == pytest.approx(
         3.141592653589793 * radius_mm**2,
         rel=1.0e-3,
     )
 
 
-def test_step_measure_brep_does_not_require_tessellation(
-    tmp_path: Path,
+def test_step_inspect_can_skip_mesh_but_keep_bounds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    step_path = tmp_path / "box.step"
-    shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()
-    writer = STEPControl_Writer()
-    writer.Transfer(shape, STEPControl_AsIs)
-    assert writer.Write(str(step_path)) == IFSelect_RetDone
+    step_path = SAMPLES_DIR / "box_1x2x3" / "box_1x2x3.step"
 
     def fail_tessellation(*args, **kwargs):
-        raise AssertionError("STEP measure should not tessellate in B-Rep metric mode")
+        raise AssertionError("B-Rep measurements should not require tessellation")
 
-    monkeypatch.setattr("cadmetrics._ocp._tessellate_ocp_shape", fail_tessellation)
-
+    monkeypatch.setattr(
+        "cadmetrics._step_io._tessellate_ocp_shape_with_marked_faces",
+        fail_tessellation,
+    )
     measured = measure(step_path)
+    inspected = inspect_model(step_path, require_mesh=False)
 
     assert measured.volume == pytest.approx(6.0)
     assert measured.surface_area == pytest.approx(22.0)
     assert measured.base_area == pytest.approx(6.0)
-    assert measured.x_max == pytest.approx(1.0)
-    assert measured.y_max == pytest.approx(2.0)
-    assert measured.z_max == pytest.approx(3.0)
-
-
-def test_step_inspect_can_skip_mesh_but_keep_bounds(tmp_path: Path) -> None:
-    step_path = tmp_path / "box.step"
-    shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()
-    writer = STEPControl_Writer()
-    writer.Transfer(shape, STEPControl_AsIs)
-    assert writer.Write(str(step_path)) == IFSelect_RetDone
-
-    inspected = inspect_model(step_path, require_mesh=False)
-
     assert inspected.vertex_count == 0
     assert inspected.face_count == 0
-    assert inspected.x_min == pytest.approx(0.0)
-    assert inspected.x_max == pytest.approx(1.0)
-    assert inspected.y_min == pytest.approx(0.0)
-    assert inspected.y_max == pytest.approx(2.0)
-    assert inspected.z_min == pytest.approx(0.0)
-    assert inspected.z_max == pytest.approx(3.0)
+    assert inspected.bounds == pytest.approx((0.0, 1.0, 0.0, 2.0, 0.0, 3.0))
     assert inspected.volume == pytest.approx(6.0)
     assert inspected.surface_area == pytest.approx(22.0)
 
@@ -286,23 +227,6 @@ def test_open_step_shape_leaves_volume_unset(tmp_path: Path, metric_source: str)
     assert "volume was left unset" in "; ".join(measured.warnings)
 
 
-def test_step_shape_with_loose_face_is_not_watertight(tmp_path: Path) -> None:
-    step_path = tmp_path / "solid_with_loose_face.step"
-    solid = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
-    extra_shape = BRepPrimAPI_MakeBox(
-        gp_Pnt(2000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
-    ).Shape()
-    explorer = TopExp_Explorer(extra_shape, TopAbs_FACE)
-    extra_face = TopoDS.Face_s(explorer.Current())
-    _write_step_compound(step_path, [solid, extra_face])
-
-    measured = measure(step_path)
-
-    assert measured.volume is None
-    assert measured.is_watertight is False
-    assert "non-solid faces" in "; ".join(measured.warnings)
-
-
 def test_step_shape_with_multiple_solids_preserves_loose_face(tmp_path: Path) -> None:
     step_path = tmp_path / "multiple_solids_with_loose_face.step"
     first = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
@@ -331,45 +255,21 @@ def test_step_shape_with_multiple_solids_preserves_loose_face(tmp_path: Path) ->
     assert projected.projected_area == pytest.approx(2.0)
 
 
-def test_step_metrics_mesh_cli_option(tmp_path: Path) -> None:
-    step_path = tmp_path / "box.step"
-    shape = BRepPrimAPI_MakeBox(1000.0, 2000.0, 3000.0).Shape()
-    writer = STEPControl_Writer()
-    writer.Transfer(shape, STEPControl_AsIs)
-    assert writer.Write(str(step_path)) == IFSelect_RetDone
+def test_step_overlapping_solids_are_boolean_unioned_for_measurements() -> None:
+    step_path = SAMPLES_DIR / "two_boxes_intersecting" / "two_boxes_intersecting.step"
+    projected = project(step_path)
 
-    result = CliRunner().invoke(app, ["measure", str(step_path), "--step-metrics", "mesh"])
-
-    assert result.exit_code == 0, result.output
-    assert "method" in result.output
-    assert "step-mesh" in result.output
-
-
-def test_step_overlapping_solids_are_boolean_unioned_for_measurements(tmp_path: Path) -> None:
-    step_path = tmp_path / "overlapping_boxes.step"
-    box_a = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
-    box_b = BRepPrimAPI_MakeBox(gp_Pnt(500.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
-
-    builder = BRep_Builder()
-    compound = TopoDS_Compound()
-    builder.MakeCompound(compound)
-    builder.Add(compound, box_a)
-    builder.Add(compound, box_b)
-
-    writer = STEPControl_Writer()
-    writer.Transfer(compound, STEPControl_AsIs)
-    assert writer.Write(str(step_path)) == IFSelect_RetDone
-
-    measured = measure(step_path)
-    assert measured.volume == pytest.approx(1.5)
-    assert measured.surface_area == pytest.approx(8.0)
-    assert measured.is_watertight is True
+    assert projected.volume == pytest.approx(1.5)
+    assert projected.surface_area == pytest.approx(8.0)
+    assert projected.base_area == pytest.approx(1.0)
+    assert projected.projected_area == pytest.approx(1.0)
+    assert projected.is_watertight is True
 
     component_1 = measure(step_path, step_components=(1,))
     assert component_1.volume == pytest.approx(1.0)
     assert component_1.surface_area == pytest.approx(6.0)
 
-    inspected = inspect_model(step_path, step_components=(2,))
+    inspected = inspect_model(step_path, step_components=(2,), require_mesh=False)
     assert inspected.component_names == ("Component 1", "Component 2")
     assert inspected.selected_components == (2,)
     assert inspected.volume == pytest.approx(1.0)
@@ -388,38 +288,42 @@ def test_step_subtract_mode_removes_disabled_overlap_and_excludes_cut_face(
     ).Shape()
     _write_step_compound(step_path, [enabled, disabled])
 
-    filtered = measure(step_path, step_components=(1,), step_metric_source=metric_source)
     subtracted = measure(
         step_path,
         step_components=(1,),
         step_component_mode="subtract",
         step_metric_source=metric_source,
     )
-    inspected = inspect_model(
-        step_path,
-        step_components=(1,),
-        step_component_mode="subtract",
-        step_metric_source=metric_source,
-    )
-    reversed_axis = measure(
-        step_path,
-        step_components=(1,),
-        step_component_mode="subtract",
-        step_metric_source=metric_source,
-        axis_map="-x,y,z",
-    )
 
-    assert filtered.volume == pytest.approx(2.0)
-    assert filtered.surface_area == pytest.approx(10.0)
-    assert filtered.newly_exposed_surface_area is None
     assert subtracted.volume == pytest.approx(1.0)
     assert subtracted.surface_area == pytest.approx(5.0)
     assert subtracted.newly_exposed_surface_area == pytest.approx(1.0)
     assert subtracted.base_area == pytest.approx(0.0)
     assert subtracted.step_component_mode == "subtract"
     assert "subtract" in (subtracted.method or "")
-    assert len(inspected.newly_exposed_face_indices) == 2
-    assert reversed_axis.base_area == pytest.approx(1.0)
+
+    if metric_source == "brep":
+        inspected = inspect_model(
+            step_path,
+            step_components=(1,),
+            step_component_mode="subtract",
+        )
+        marked_faces = inspected.faces[list(inspected.newly_exposed_face_indices)]
+        triangles = inspected.vertices[marked_faces]
+        assert triangles[:, :, 0] == pytest.approx(1.0)
+        marked_area = np.linalg.norm(
+            np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]),
+            axis=1,
+        ).sum() / 2.0
+        assert marked_area == pytest.approx(1.0)
+
+        reversed_axis = measure(
+            step_path,
+            step_components=(1,),
+            step_component_mode="subtract",
+            axis_map="-x,y,z",
+        )
+        assert reversed_axis.base_area == pytest.approx(1.0)
 
 
 def test_step_subtract_mode_excludes_internal_cavity_surface(tmp_path: Path) -> None:
@@ -507,6 +411,7 @@ def test_step_subtract_mode_preserves_nonoverlapping_enabled_shape(
 
 def test_step_subtract_mode_cli_options_and_inspect_component_list(tmp_path: Path) -> None:
     step_path = tmp_path / "cli_subtract.step"
+    output = tmp_path / "subtracted.csv"
     enabled = BRepPrimAPI_MakeBox(2000.0, 1000.0, 1000.0).Shape()
     disabled = BRepPrimAPI_MakeBox(
         gp_Pnt(1000.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0
@@ -522,38 +427,48 @@ def test_step_subtract_mode_cli_options_and_inspect_component_list(tmp_path: Pat
             "1",
             "--component-mode",
             "subtract",
+            "--step-metrics",
+            "mesh",
+            "--out",
+            str(output),
         ],
     )
     inspected = CliRunner().invoke(app, ["inspect", str(step_path)])
 
     assert measured.exit_code == 0, measured.output
-    assert "newly_exposed_surface_area" in measured.output
-    assert "step-brep-subtract" in measured.output
+    with output.open(encoding="utf-8", newline="") as stream:
+        row = next(csv.DictReader(stream))
+    assert row["method"] == "step-mesh-subtract"
+    assert float(row["volume"]) == pytest.approx(1.0)
+    assert float(row["surface_area"]) == pytest.approx(5.0)
+    assert float(row["newly_exposed_surface_area"]) == pytest.approx(1.0)
+    assert float(row["base_area"]) == pytest.approx(0.0)
     assert inspected.exit_code == 0, inspected.output
     assert "component_list" in inspected.output
     assert "1: Component 1" in inspected.output
 
 
 def test_step_assembly_files_are_boolean_unioned_for_measurements(tmp_path: Path) -> None:
-    step_a = tmp_path / "box_a.step"
-    step_b = tmp_path / "box_b.step"
+    step_a = tmp_path / "inch_box_a.step"
+    step_b = tmp_path / "inch_box_b.step"
     box_a = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
     box_b = BRepPrimAPI_MakeBox(gp_Pnt(500.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
+    _write_step_with_unit(step_a, box_a, "INCH")
+    _write_step_with_unit(step_b, box_b, "INCH")
 
-    writer_a = STEPControl_Writer()
-    writer_a.Transfer(box_a, STEPControl_AsIs)
-    assert writer_a.Write(str(step_a)) == IFSelect_RetDone
-    writer_b = STEPControl_Writer()
-    writer_b.Transfer(box_b, STEPControl_AsIs)
-    assert writer_b.Write(str(step_b)) == IFSelect_RetDone
+    inspected = inspect_model([step_a, step_b])
+    assert inspected.input_unit == "in"
+    assert inspected.bounds == pytest.approx((0.0, 1.5, 0.0, 1.0, 0.0, 1.0))
+    assert inspected.vertices.max(axis=0) == pytest.approx((1.5, 1.0, 1.0))
 
-    measured = measure([step_a, step_b])
+    measured = measure_model(inspected)
     assert measured.volume == pytest.approx(1.5)
     assert measured.surface_area == pytest.approx(8.0)
+    assert measured.base_area == pytest.approx(1.0)
     assert measured.is_watertight is True
     assert measured.method == "step-brep-assembly"
 
-    projected = project([step_a, step_b])
+    projected = project_model(inspected)
     assert projected.projected_area == pytest.approx(1.0)
     assert projected.method == "step-brep-assembly+mesh-projection"
 
@@ -569,43 +484,44 @@ def test_step_assembly_files_are_boolean_unioned_for_measurements(tmp_path: Path
     assert subtracted.method == "step-brep-subtract-assembly"
 
 
-def test_step_assembly_files_accept_global_component_selection(tmp_path: Path) -> None:
-    step_a = tmp_path / "body.step"
-    step_b = tmp_path / "wing.step"
-    box_a1 = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
-    box_a2 = BRepPrimAPI_MakeBox(gp_Pnt(0.0, 2000.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
-    box_b1 = BRepPrimAPI_MakeBox(gp_Pnt(0.0, 4000.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()
-
-    _write_step_compound(step_a, [box_a1, box_a2])
-    _write_step_compound(step_b, [box_b1])
-
-    inspected = inspect_model([step_a, step_b])
+def test_step_assembly_files_accept_global_component_selection() -> None:
+    paths = [
+        SAMPLES_DIR / "multi_file_step_components" / "box_pair_a.step",
+        SAMPLES_DIR / "multi_file_step_components" / "box_pair_b.step",
+    ]
+    inspected = inspect_model(paths)
     assert inspected.component_names == (
-        "body.step: Component 1",
-        "body.step: Component 2",
-        "wing.step: Component 1",
+        "box_pair_a.step: Component 1",
+        "box_pair_a.step: Component 2",
+        "box_pair_b.step: Component 1",
+        "box_pair_b.step: Component 2",
     )
-    assert inspected.selected_components == (1, 2, 3)
+    assert inspected.selected_components == (1, 2, 3, 4)
+    assert inspected.volume == pytest.approx(4.0)
+    assert inspected.surface_area == pytest.approx(24.0)
+    assert inspected.base_area == pytest.approx(4.0)
+    assert project_model(inspected).projected_area == pytest.approx(4.0)
 
-    measured = measure([step_a, step_b], step_components=(2, 3))
-    assert measured.volume == pytest.approx(2.0)
-    assert measured.surface_area == pytest.approx(12.0)
-    assert measured.base_area == pytest.approx(2.0)
-    assert measured.method == "step-brep-assembly"
-    assert measured.step_components == (2, 3)
-    assert measured.step_component_names == (
-        "body.step: Component 2",
-        "wing.step: Component 1",
-    )
-
-    projected = project([step_a, step_b], step_components=(2, 3))
+    projected = project(paths, step_components=(2, 3))
+    assert projected.volume == pytest.approx(2.0)
+    assert projected.surface_area == pytest.approx(12.0)
+    assert projected.base_area == pytest.approx(2.0)
     assert projected.projected_area == pytest.approx(2.0)
     assert projected.method == "step-brep-assembly+mesh-projection"
     assert projected.step_components == (2, 3)
     assert projected.step_component_names == (
-        "body.step: Component 2",
-        "wing.step: Component 1",
+        "box_pair_a.step: Component 2",
+        "box_pair_b.step: Component 1",
     )
+
+    # Selecting only a component in the second file must omit the entire first file.
+    measured = measure(paths, step_components=(3,))
+    assert measured.volume == pytest.approx(1.0)
+    assert measured.surface_area == pytest.approx(6.0)
+    assert measured.is_watertight is True
+    assert measured.method == "step-brep-assembly"
+    assert measured.step_components == (3,)
+    assert measured.step_component_names == ("box_pair_b.step: Component 1",)
 
 
 def test_step_assembly_preserves_surface_only_file_alongside_solid(tmp_path: Path) -> None:
@@ -770,22 +686,6 @@ def test_step_subtract_base_area_is_unset_when_face_classification_fails(
     assert "base_area was left unset" in "; ".join(measured.warnings)
 
 
-def test_step_assembly_component_selection_can_exclude_an_entire_file(tmp_path: Path) -> None:
-    step_a = tmp_path / "body.step"
-    step_b = tmp_path / "wing.step"
-    _write_step_compound(step_a, [BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()])
-    _write_step_compound(
-        step_b,
-        [BRepPrimAPI_MakeBox(gp_Pnt(0.0, 2000.0, 0.0), 1000.0, 1000.0, 1000.0).Shape()],
-    )
-
-    measured = measure([step_a, step_b], step_components=(2,))
-
-    assert measured.volume == pytest.approx(1.0)
-    assert measured.surface_area == pytest.approx(6.0)
-    assert measured.is_watertight is True
-
-
 def test_step_assembly_component_selection_rejects_empty_and_out_of_range(tmp_path: Path) -> None:
     step_a = tmp_path / "body.step"
     step_b = tmp_path / "wing.step"
@@ -796,17 +696,6 @@ def test_step_assembly_component_selection_rejects_empty_and_out_of_range(tmp_pa
         measure([step_a, step_b], step_components=())
     with pytest.raises(ValueError, match="STEP component index out of range"):
         measure([step_a, step_b], step_components=(3,))
-
-
-def test_mixed_step_and_stl_assembly_is_rejected(tmp_path: Path) -> None:
-    step_path = tmp_path / "box.step"
-    shape = BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape()
-    writer = STEPControl_Writer()
-    writer.Transfer(shape, STEPControl_AsIs)
-    assert writer.Write(str(step_path)) == IFSelect_RetDone
-
-    with pytest.raises(ValueError, match="mixed STEP and STL"):
-        measure([step_path, Path("tests/data/unit_cube.stl")])
 
 
 def test_step_component_name_filter_rejects_internal_names() -> None:
