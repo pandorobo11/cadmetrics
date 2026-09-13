@@ -58,15 +58,26 @@ def load_ocp_bindings() -> OcpBindings:
         from OCP.GProp import GProp_GProps
         from OCP.IFSelect import IFSelect_RetDone
         from OCP.STEPControl import STEPControl_Reader
-        from OCP.TColStd import TColStd_SequenceOfAsciiString
+
+        try:
+            from OCP.TColStd import TColStd_SequenceOfAsciiString
+        except ImportError:
+            # OCP 8 exposes the underlying NCollection specialization directly.
+            from OCP.collections import (
+                Sequence_TCollection_AsciiString as TColStd_SequenceOfAsciiString,
+            )
         from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED, TopAbs_SHELL, TopAbs_SOLID
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS, TopoDS_Compound
         from OCP.gp import gp_Pnt, gp_Trsf
     except ImportError as exc:
+        if isinstance(exc, ModuleNotFoundError) and exc.name == "OCP":
+            raise RuntimeError(
+                "STEP support requires the optional dependency: cadmetrics[step]."
+            ) from exc
         raise RuntimeError(
-            "STEP support requires the optional dependency: cadmetrics[step]."
+            f"STEP support found OCP, but its required bindings could not be loaded: {exc}"
         ) from exc
 
     return OcpBindings(
@@ -103,10 +114,12 @@ def _ocp_bounding_box_diagonal(
     Bnd_Box: Any,
     BRepBndLib: Any,
 ) -> float:
-    box = Bnd_Box()
-    _add_ocp_bounds(shape, box, BRepBndLib)
     try:
-        xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+        xmin, ymin, zmin, xmax, ymax, zmax = _ocp_bounds(
+            shape,
+            Bnd_Box=Bnd_Box,
+            BRepBndLib=BRepBndLib,
+        )
     except Exception:
         return 1.0
     diagonal = float(np.linalg.norm([xmax - xmin, ymax - ymin, zmax - zmin]))
@@ -172,14 +185,16 @@ def _ocp_bounds(
 ) -> tuple[float, float, float, float, float, float]:
     box = Bnd_Box()
     _add_ocp_bounds(shape, box, BRepBndLib)
-    xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+    # OCP 8's Get() selects an unbound Bnd_Box::Limits overload. Both versions'
+    # corner accessors include the same gap and reject void boxes, just like Get().
+    minimum, maximum = box.CornerMin(), box.CornerMax()
     return (
-        float(xmin),
-        float(ymin),
-        float(zmin),
-        float(xmax),
-        float(ymax),
-        float(zmax),
+        float(minimum.X()),
+        float(minimum.Y()),
+        float(minimum.Z()),
+        float(maximum.X()),
+        float(maximum.Y()),
+        float(maximum.Z()),
     )
 
 
@@ -537,7 +552,12 @@ def _step_component_names_from_xcaf(path: Path, *, expected_count: int) -> tuple
         from OCP.STEPCAFControl import STEPCAFControl_Reader
         from OCP.TCollection import TCollection_ExtendedString
         from OCP.TDataStd import TDataStd_Name
-        from OCP.TDF import TDF_Label, TDF_LabelSequence
+        from OCP.TDF import TDF_Label
+
+        try:
+            from OCP.TDF import TDF_LabelSequence
+        except ImportError:
+            from OCP.collections import Sequence_TDF_Label as TDF_LabelSequence
         from OCP.TDocStd import TDocStd_Document
         from OCP.TopAbs import TopAbs_SOLID
         from OCP.TopExp import TopExp_Explorer
@@ -646,9 +666,7 @@ def _ocp_shape_metric(
     shape: Any, props_type: Any, gprop_type: Any, method_name: str
 ) -> float | None:
     props = props_type()
-    method = getattr(gprop_type, f"{method_name}_s", None) or getattr(
-        gprop_type, method_name, None
-    )
+    method = getattr(gprop_type, f"{method_name}_s", None) or getattr(gprop_type, method_name, None)
     if method is None:
         return None
     try:
@@ -801,8 +819,7 @@ def _step_length_unit_name(
         return None
 
     units = [
-        lengths.Value(index).ToCString().strip().lower()
-        for index in range(1, lengths.Length() + 1)
+        lengths.Value(index).ToCString().strip().lower() for index in range(1, lengths.Length() + 1)
     ]
     if not units:
         return None

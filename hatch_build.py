@@ -32,7 +32,9 @@ class CustomBuildHook(BuildHookInterface):
             encoding="utf-8",
         )
 
-        target = "cadmetrics/_build.py" if self.target_name == "wheel" else "src/cadmetrics/_build.py"
+        target = (
+            "cadmetrics/_build.py" if self.target_name == "wheel" else "src/cadmetrics/_build.py"
+        )
         force_include[str(generated)] = target
 
 

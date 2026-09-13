@@ -14,16 +14,13 @@ from cadmetrics.units import area_scale, length_scale, normalize_unit, volume_sc
 
 
 _NOT_WATERTIGHT_WARNING = "Mesh is not watertight; volume is unavailable."
-_INCONSISTENT_WINDING_WARNING = (
-    "Mesh face winding is inconsistent; volume is unavailable."
-)
+_INCONSISTENT_WINDING_WARNING = "Mesh face winding is inconsistent; volume is unavailable."
 _OPPOSING_SHELLS_WARNING = (
     "Mesh contains closed shells with opposing face orientations; signed shell volumes "
     "may cancel, so volume is unavailable."
 )
 _INVALID_SHELL_VOLUME_WARNING = (
-    "Mesh has a closed shell with an invalid or near-zero signed volume; "
-    "volume is unavailable."
+    "Mesh has a closed shell with an invalid or near-zero signed volume; volume is unavailable."
 )
 
 
@@ -131,15 +128,12 @@ def _load_stl_assembly(
         )
         for path in paths
     ]
-    vertices, faces = _combine_meshes(
-        [(model.vertices, model.faces) for model in models]
-    )
+    vertices, faces = _combine_meshes([(model.vertices, model.faces) for model in models])
     metrics = _mesh_metrics(vertices, faces)
     valid_component_volumes = [model.volume for model in models]
     volume = (
         math.fsum(value for value in valid_component_volumes if value is not None)
-        if metrics.is_watertight
-        and all(value is not None for value in valid_component_volumes)
+        if metrics.is_watertight and all(value is not None for value in valid_component_volumes)
         else None
     )
     base_area, base_found = _mesh_xmax_base_area(
@@ -334,8 +328,7 @@ def _bounds_strictly_contain(parent: _MeshShell, child: _MeshShell) -> bool:
     )
     tolerance = np.finfo(float).eps * coordinate_scale * 64.0
     return bool(
-        np.all(child_min > parent_min + tolerance)
-        and np.all(child_max < parent_max - tolerance)
+        np.all(child_min > parent_min + tolerance) and np.all(child_max < parent_max - tolerance)
     )
 
 
@@ -347,8 +340,7 @@ def _shell_contains(parent: _MeshShell, child: _MeshShell) -> bool | None:
         point_indices.add(int(np.argmax(child_points[:, axis])))
 
     classifications = {
-        _point_inside_shell(child_points[index], parent.triangles)
-        for index in point_indices
+        _point_inside_shell(child_points[index], parent.triangles) for index in point_indices
     }
     if None in classifications or len(classifications) != 1:
         return None
@@ -371,10 +363,7 @@ def _point_inside_shell(point: np.ndarray, triangles: np.ndarray) -> bool | None
         + np.einsum("ij,ij->i", second, third)
         + np.einsum("ij,ij->i", third, first)
     )
-    solid_angle = math.fsum(
-        float(value)
-        for value in 2.0 * np.arctan2(numerators, denominators)
-    )
+    solid_angle = math.fsum(float(value) for value in 2.0 * np.arctan2(numerators, denominators))
     winding = abs(solid_angle) / (4.0 * math.pi)
     if math.isclose(winding, 1.0, rel_tol=1.0e-7, abs_tol=1.0e-7):
         return True
@@ -439,7 +428,9 @@ def _mesh_bounding_box_diagonal(vertices: np.ndarray) -> float:
     return float(np.linalg.norm(extents))
 
 
-def _combine_meshes(meshes: Sequence[tuple[np.ndarray, np.ndarray]]) -> tuple[np.ndarray, np.ndarray]:
+def _combine_meshes(
+    meshes: Sequence[tuple[np.ndarray, np.ndarray]],
+) -> tuple[np.ndarray, np.ndarray]:
     vertices: list[np.ndarray] = []
     faces: list[np.ndarray] = []
     offset = 0

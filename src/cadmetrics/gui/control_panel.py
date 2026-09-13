@@ -632,9 +632,7 @@ class ControlPanel(QtWidgets.QWidget):
     def _set_advanced_dirty(self, dirty: bool) -> None:
         self._advanced_dirty = dirty and self._model_loaded
         self.advanced_status.setVisible(self._advanced_dirty)
-        self.apply_advanced_button.setEnabled(
-            self._advanced_dirty and self.run_button.isEnabled()
-        )
+        self.apply_advanced_button.setEnabled(self._advanced_dirty and self.run_button.isEnabled())
         self.apply_advanced_button.setToolTip(
             "Reload the model using the changed axis, component, and tessellation settings."
             if self._model_loaded
@@ -642,9 +640,7 @@ class ControlPanel(QtWidgets.QWidget):
         )
         toggle = self._section_toggles.get("Advanced")
         if toggle is not None:
-            toggle.setText(
-                "Advanced · changes not applied" if self._advanced_dirty else "Advanced"
-            )
+            toggle.setText("Advanced · changes not applied" if self._advanced_dirty else "Advanced")
 
     def _section(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:
         box = QtWidgets.QGroupBox(title)

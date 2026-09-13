@@ -131,8 +131,7 @@ def _raise_too_many_values(count: int | None = None) -> None:
         f"{count:,} values" if count is not None else "more values than can be represented safely"
     )
     raise ValueError(
-        f"Sweep range would generate {generated}; "
-        f"the maximum is {MAX_SWEEP_COMBINATIONS:,}."
+        f"Sweep range would generate {generated}; the maximum is {MAX_SWEEP_COMBINATIONS:,}."
     )
 
 
