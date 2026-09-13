@@ -64,7 +64,14 @@ def projected_metrics(
 
     polygons = []
     for face in model.faces:
-        polygon = Polygon(projected[face])
+        coords = projected[face]
+        # A constant u or v coordinate is exactly degenerate, at any scale.
+        # Leave other cases to Polygon; do not round small positive areas away.
+        if coords[0, 0] == coords[1, 0] == coords[2, 0] or (
+            coords[0, 1] == coords[1, 1] == coords[2, 1]
+        ):
+            continue
+        polygon = Polygon(coords)
         if polygon.is_valid and polygon.area > 0.0:
             polygons.append(polygon)
 
