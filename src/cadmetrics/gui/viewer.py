@@ -319,7 +319,7 @@ class ModelViewer(QtWidgets.QWidget):
             return
         direction = self._projection_direction()
         self._remove_actor("_vector_actor")
-        if self._options.show_projection_arrow:
+        if self._options.show_projection_arrow and direction is not None:
             start, vector = projection_arrow_geometry(
                 self._model.vertices,
                 direction,
@@ -329,7 +329,7 @@ class ModelViewer(QtWidgets.QWidget):
                 start.reshape(1, 3), vector.reshape(1, 3), color="#d04a02"
             )
         self._update_centroid()
-        if align_camera:
+        if align_camera and direction is not None:
             position, focal_point, view_up = projection_camera_geometry(
                 self._model.vertices, direction
             )
@@ -337,7 +337,7 @@ class ModelViewer(QtWidgets.QWidget):
         self._update_overlay()
         self._plotter.render()
 
-    def _projection_direction(self) -> np.ndarray:
+    def _projection_direction(self) -> np.ndarray | None:
         if self._row is not None and self._row.direction_x is not None:
             return np.array(
                 [self._row.direction_x, self._row.direction_y, self._row.direction_z], dtype=float
@@ -346,7 +346,11 @@ class ModelViewer(QtWidgets.QWidget):
         if request is None:
             return np.array([1.0, 0.0, 0.0], dtype=float)
         if request.attitude_mode == "vector":
-            return parse_vector(f"{request.vector_x},{request.vector_y},{request.vector_z}")
+            try:
+                return parse_vector(f"{request.vector_x},{request.vector_y},{request.vector_z}")
+            except ValueError:
+                # An unfinished vector has no preview; calculation validates it separately.
+                return None
         if request.attitude_mode == "roll_pitch":
             orientation = Orientation(
                 roll_deg=request.roll_start,
