@@ -34,7 +34,7 @@ from cadmetrics._ocp import (
     _tessellated_ocp_shapes_surface_area,
     load_ocp_bindings,
 )
-from cadmetrics.load_options import normalize_step_metric_source
+from cadmetrics.load_options import ModelLoadOptions
 from cadmetrics.types import FloatArray, IntArray, ModelData
 from cadmetrics.units import area_scale, length_scale, normalize_unit, volume_scale
 
@@ -72,19 +72,6 @@ class PreparedStepAssemblyPart:
     resolved_input_unit: str
     kernel_unit: str
     warnings: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class StepFinalizationOptions:
-    output_unit: str
-    mesh_deflection: float | str
-    angular_deflection: float
-    metric_source: str
-    step_components: tuple[int, ...] | None
-    step_component_mode: str
-    base_axis_map: str
-    base_tolerance: float
-    require_mesh: bool
 
 
 @dataclass(frozen=True)
@@ -164,67 +151,25 @@ class ScaledStepMetrics:
 def _load_step(
     path: Path,
     *,
-    input_unit: str,
-    output_unit: str,
-    mesh_deflection: float | str,
-    angular_deflection: float,
-    step_metric_source: str,
-    step_components: tuple[int, ...] | None,
-    step_component_mode: str,
-    base_axis_map: str,
-    base_tolerance: float,
-    require_mesh: bool,
+    options: ModelLoadOptions,
 ) -> ModelData:
     ocp = load_ocp_bindings()
-    prepared = _prepare_step_input(path, input_unit=input_unit, ocp=ocp)
-    return _finalize_step_model(
-        prepared,
-        output_unit=output_unit,
-        mesh_deflection=mesh_deflection,
-        angular_deflection=angular_deflection,
-        step_metric_source=step_metric_source,
-        step_components=step_components,
-        step_component_mode=step_component_mode,
-        base_axis_map=base_axis_map,
-        base_tolerance=base_tolerance,
-        require_mesh=require_mesh,
-        ocp=ocp,
-    )
+    prepared = _prepare_step_input(path, input_unit=options.input_unit, ocp=ocp)
+    return _finalize_step_model(prepared, options=options, ocp=ocp)
 
 
 def _load_step_assembly(
     paths: tuple[Path, ...],
     *,
-    input_unit: str,
-    output_unit: str,
-    mesh_deflection: float | str,
-    angular_deflection: float,
-    step_metric_source: str,
-    step_components: tuple[int, ...] | None,
-    step_component_mode: str,
-    base_axis_map: str,
-    base_tolerance: float,
-    require_mesh: bool,
+    options: ModelLoadOptions,
 ) -> ModelData:
     ocp = load_ocp_bindings()
     prepared = _prepare_step_assembly_input(
         paths,
-        input_unit=input_unit,
+        input_unit=options.input_unit,
         ocp=ocp,
     )
-    return _finalize_step_model(
-        prepared,
-        output_unit=output_unit,
-        mesh_deflection=mesh_deflection,
-        angular_deflection=angular_deflection,
-        step_metric_source=step_metric_source,
-        step_components=step_components,
-        step_component_mode=step_component_mode,
-        base_axis_map=base_axis_map,
-        base_tolerance=base_tolerance,
-        require_mesh=require_mesh,
-        ocp=ocp,
-    )
+    return _finalize_step_model(prepared, options=options, ocp=ocp)
 
 
 def _prepare_step_input(
@@ -500,28 +445,9 @@ def _component_names(path: Path, solids: tuple[Any, ...]) -> tuple[str, ...]:
 def _finalize_step_model(
     prepared: PreparedStepInput,
     *,
-    output_unit: str,
-    mesh_deflection: float | str,
-    angular_deflection: float,
-    step_metric_source: str,
-    step_components: tuple[int, ...] | None,
-    step_component_mode: str,
-    base_axis_map: str,
-    base_tolerance: float,
-    require_mesh: bool,
+    options: ModelLoadOptions,
     ocp: OcpBindings,
 ) -> ModelData:
-    options = StepFinalizationOptions(
-        output_unit=output_unit,
-        mesh_deflection=mesh_deflection,
-        angular_deflection=angular_deflection,
-        metric_source=normalize_step_metric_source(step_metric_source),
-        step_components=step_components,
-        step_component_mode=step_component_mode,
-        base_axis_map=base_axis_map,
-        base_tolerance=base_tolerance,
-        require_mesh=require_mesh,
-    )
     selected = _select_step_shape(prepared, options=options, ocp=ocp)
     geometry = _describe_step_geometry(
         prepared,
@@ -540,7 +466,9 @@ def _finalize_step_model(
         geometry,
         angular_deflection=options.angular_deflection,
         must_tessellate=(
-            options.require_mesh or options.metric_source == "mesh" or exact_metrics.base_failed
+            options.require_mesh
+            or options.step_metric_source == "mesh"
+            or exact_metrics.base_failed
         ),
         ocp=ocp,
     )
@@ -554,19 +482,19 @@ def _finalize_step_model(
         exact_metrics,
         mesh,
         selected,
-        metric_source=options.metric_source,
+        metric_source=options.step_metric_source,
         ocp=ocp,
     )
     validated_metrics = _validate_native_step_metrics(
         native_metrics,
         base_metric,
         selected,
-        metric_source=options.metric_source,
+        metric_source=options.step_metric_source,
     )
     scaled_metrics = _scale_step_metrics(
         validated_metrics,
         selected,
-        metric_source=options.metric_source,
+        metric_source=options.step_metric_source,
         kernel_unit=prepared.kernel_unit,
         output_unit=options.output_unit,
     )
@@ -594,7 +522,7 @@ def _finalize_step_model(
 def _select_step_shape(
     prepared: PreparedStepInput,
     *,
-    options: StepFinalizationOptions,
+    options: ModelLoadOptions,
     ocp: OcpBindings,
 ) -> SelectedStepShape:
     warnings: list[str] = []
@@ -673,7 +601,7 @@ def _describe_step_geometry(
     prepared: PreparedStepInput,
     selected: SelectedStepShape,
     *,
-    options: StepFinalizationOptions,
+    options: ModelLoadOptions,
     ocp: OcpBindings,
 ) -> StepGeometry:
     scale = length_scale(prepared.kernel_unit, options.output_unit)
@@ -718,7 +646,7 @@ def _calculate_exact_step_metrics(
     selected: SelectedStepShape,
     geometry: StepGeometry,
     *,
-    options: StepFinalizationOptions,
+    options: ModelLoadOptions,
     ocp: OcpBindings,
 ) -> ExactStepMetrics:
     warnings: list[str] = []
@@ -729,7 +657,7 @@ def _calculate_exact_step_metrics(
     else:
         exact_base_area, exact_base_found, exact_base_failed = _ocp_xmax_base_area(
             selected.shape,
-            base_axis_map=options.base_axis_map,
+            base_axis_map=options.axis_map,
             scale=geometry.scale,
             native_diagonal=geometry.native_diagonal,
             relative_tolerance=options.base_tolerance,
@@ -828,7 +756,7 @@ def _resolve_step_base_metric(
     mesh: TessellatedStepShape,
     geometry: StepGeometry,
     *,
-    options: StepFinalizationOptions,
+    options: ModelLoadOptions,
 ) -> StepBaseMetric:
     warnings: list[str] = []
     base_area: float | None
@@ -837,7 +765,7 @@ def _resolve_step_base_metric(
         base_area, base_found = _mesh_xmax_base_area(
             mesh.vertices,
             mesh.faces,
-            base_axis_map=options.base_axis_map,
+            base_axis_map=options.axis_map,
             scale=geometry.scale,
             native_diagonal=geometry.native_diagonal,
             relative_tolerance=options.base_tolerance,
@@ -1007,7 +935,7 @@ def _final_step_warnings(
 def _build_step_model_data(
     prepared: PreparedStepInput,
     *,
-    options: StepFinalizationOptions,
+    options: ModelLoadOptions,
     selected: SelectedStepShape,
     geometry: StepGeometry,
     mesh: TessellatedStepShape,
@@ -1031,7 +959,7 @@ def _build_step_model_data(
         mesh_deflection=geometry.mesh_deflection,
         angular_deflection=options.angular_deflection,
         base_tolerance=options.base_tolerance,
-        step_metric_source=options.metric_source,
+        step_metric_source=options.step_metric_source,
         step_component_mode=options.step_component_mode,
         is_assembly=prepared.is_assembly,
         component_names=prepared.component_names,
