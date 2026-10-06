@@ -70,6 +70,51 @@ def test_step_preserves_declared_component_name(tmp_path: Path) -> None:
     assert inspected.selected_components == (1,)
 
 
+@pytest.mark.parametrize("assembly", [False, True])
+def test_step_load_preserves_nondefault_options(tmp_path: Path, assembly: bool) -> None:
+    enabled = BRepPrimAPI_MakeBox(2.0, 3.0, 4.0).Shape()
+    disabled = BRepPrimAPI_MakeBox(gp_Pnt(1.0, 0.0, 0.0), 1.0, 3.0, 4.0).Shape()
+    if assembly:
+        paths = [tmp_path / "enabled.step", tmp_path / "disabled.step"]
+        _write_step_with_unit(paths[0], enabled, "MM")
+        _write_step_with_unit(paths[1], disabled, "MM")
+        path = paths
+    else:
+        path = tmp_path / "components.step"
+        _write_step_compound(path, [enabled, disabled])
+
+    inspected = inspect_model(
+        path,
+        input_unit="CM",
+        output_unit="millimeters",
+        mesh_deflection="0.25",
+        angular_deflection=0.2,
+        axis_map="-X, Z, Y",
+        step_metric_source="tessellated",
+        step_components=(1,),
+        step_component_mode="difference",
+        base_tolerance=2.5e-5,
+        require_mesh=False,
+    )
+
+    assert inspected.input_unit == "cm"
+    assert inspected.output_unit == "mm"
+    assert inspected.mesh_deflection == 0.25
+    assert inspected.angular_deflection == 0.2
+    assert inspected.base_tolerance == 2.5e-5
+    assert inspected.step_metric_source == "mesh"
+    assert inspected.step_component_mode == "subtract"
+    assert inspected.selected_components == (1,)
+    assert inspected.is_assembly is assembly
+    # Mesh metrics still require tessellation, even when display mesh is optional.
+    assert inspected.face_count > 0
+    assert inspected.bounds == pytest.approx((-10.0, 0.0, 0.0, 40.0, 0.0, 30.0))
+    assert inspected.volume == pytest.approx(12000.0)
+    assert inspected.surface_area == pytest.approx(2600.0)
+    assert inspected.newly_exposed_surface_area == pytest.approx(1200.0)
+    assert inspected.base_area == pytest.approx(1200.0)
+
+
 @pytest.mark.parametrize(
     ("writer_unit", "expected_input_unit"),
     [("MM", "mm"), ("M", "m"), ("CM", "cm"), ("INCH", "in"), ("FT", "ft")],
