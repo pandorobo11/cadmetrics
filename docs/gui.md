@@ -69,6 +69,20 @@ successful process launch alone does not verify the visible GUI. Missing runtime
 point errors should be resolved by preparing the environment and rebuilding, without changing
 macOS security settings.
 
+### macOS result selection
+
+Qt 6.11.1 on macOS 27.0.1 can crash in Cocoa's `accessibilitySelectedChildren` when a whole result
+row is selected. This was reproduced with the native launcher and with a standalone standard Qt
+table, independently of CAD loading or calculations. Keeping a valid native app PID addresses app
+identification; the table crash needs its own workaround.
+
+On macOS, the results view keeps one native selected cell and paints the current row with the usual
+full-row highlight. Clicking cells or using the arrow keys still chooses the corresponding result,
+updates the preview and camera, and saves every result column to CSV. Linux and Windows retain
+native whole-row selection. This avoids the observed multi-cell enumeration path while retaining
+accessibility; it is not a general fix for Qt accessibility lifetime defects. Other Qt/macOS
+combinations still require real-screen validation.
+
 ## Screenshot
 
 ![cadmetrics GUI showing a satellite STEP sweep](assets/gui-main.png)

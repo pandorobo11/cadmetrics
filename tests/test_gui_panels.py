@@ -12,6 +12,7 @@ pytest.importorskip("PySide6")
 from PySide6 import QtCore, QtWidgets
 
 import cadmetrics.gui.pyside_app as pyside_app
+import cadmetrics.gui.results_panel as results_panel
 from cadmetrics.gui.control_panel import ControlPanel
 from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.results_panel import ResultsPanel
@@ -341,3 +342,49 @@ def _row() -> MeasurementRow:
         projected_area=1.0,
         is_watertight=True,
     )
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+def test_result_selection_keeps_row_preview_with_cocoa_single_cell(qtbot, monkeypatch, platform):
+    monkeypatch.setattr(results_panel.sys, "platform", platform)
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(900, 250)
+    panel.show()
+    rows = [replace(_row(), file="first.stl"), replace(_row(), file="second.stl")]
+    selected = []
+    panel.selected_row_changed.connect(selected.append)
+    panel.set_rows(rows)
+    panel.select_last_row()
+    panel.table.setFocus()
+    qtbot.waitUntil(lambda: panel.table.hasFocus())
+
+    expected = 1 if platform == "darwin" else len(DISPLAY_FIELDS)
+    assert len(panel.table.selectionModel().selectedIndexes()) == expected
+    assert selected[-1] is rows[1]
+    qtbot.keyClick(panel.table, QtCore.Qt.Key.Key_Up)
+    assert selected[-1] is rows[0]
+    assert len(panel.table.selectionModel().selectedIndexes()) == expected
+
+    if platform == "darwin":
+        # Only the first cell is natively selected, but the visible full row must
+        # still be highlighted. Compare blank areas in multiple actual painted cells.
+        assert not panel.table.selectionModel().isSelected(panel.table.model().index(0, 2))
+        image = panel.table.viewport().grab().toImage()
+        colors = []
+        for column in (0, 1, 2):
+            rect = panel.table.visualRect(panel.table.model().index(0, column))
+            colors.append(image.pixelColor(rect.right() - 8, rect.bottom() - 5))
+        # The focused cell may have a distinct focus decoration; unselected
+        # cells in the current row must share the highlight, not the background.
+        assert colors[1] == colors[2]
+        for column, color in enumerate(colors):
+            rect = panel.table.visualRect(panel.table.model().index(1, column))
+            assert color != image.pixelColor(rect.right() - 8, rect.bottom() - 5)
+
+    panel.clear()
+    assert not panel.table.selectionModel().hasSelection()
+    panel.set_rows(rows)
+    panel.select_last_row()
+    assert selected[-1] is rows[1]
+    assert len(panel.table.selectionModel().selectedIndexes()) == expected
