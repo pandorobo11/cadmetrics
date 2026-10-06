@@ -112,6 +112,9 @@ class ResultsPanel(QtWidgets.QWidget):
             self.table.selectionModel().currentRowChanged.connect(
                 lambda *_: self.table.viewport().update()
             )
+            self.table.selectionModel().selectionChanged.connect(
+                lambda *_: self.table.viewport().update()
+            )
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(24)
         self.table.selectionModel().currentRowChanged.connect(self._emit_selected_row)
