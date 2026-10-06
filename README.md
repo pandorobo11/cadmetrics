@@ -60,6 +60,11 @@ uv sync --extra step --extra gui
 
 cadmetrics currently targets Python 3.12.
 
+For the macOS development app, build with
+`.venv/bin/python scripts/create_macos_app.py` and launch `open dist/Cadmetrics.app` from the
+checkout root. Xcode Command Line Tools are required; see [GUI launch instructions](docs/gui.md#launch)
+for rebuilding and Python environment selection.
+
 ## Quickstart
 
 The STEP examples below require `cadmetrics[step]`.

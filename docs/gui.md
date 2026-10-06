@@ -30,11 +30,44 @@ uv run cadmetrics-gui
 cadmetrics-gui
 ```
 
-If using the local macOS helper app from the repository root:
+To build the local macOS helper app, install the development GUI dependencies and use a Mac with
+Xcode Command Line Tools (`xcrun clang`). From the repository root:
 
 ```bash
+uv sync --extra step --extra gui
+.venv/bin/python scripts/create_macos_app.py
 open dist/Cadmetrics.app
 ```
+
+The generated app is a development helper tied to its checkout and Python environment, not a
+standalone distribution. Its native executable loads CPython without replacing the process, which
+retains the macOS app PID used by accessibility clients such as Computer Use. It runs the ordinary
+`cadmetrics-gui` entry point; numerical calculations and the installed CLI are unchanged.
+
+Each launch discovers the Python shared library again. The checkout's executable
+`.venv/bin/cadmetrics-gui` selects `.venv/bin/python`; otherwise `uv run python` discovers the
+environment and its GUI entry point. Install the GUI extras first: the fallback does not add extras
+or change the existing `uv run` synchronization policy. `sys.executable` remains the real selected
+interpreter so Python subprocesses and spawn workers use that environment. The uv fallback also
+propagates uv's PATH and VIRTUAL_ENV into the GUI process. The launcher sets the
+checkout working directory, preserves the previous PATH prefix and inherited display environment,
+forwards command-line arguments (except macOS `-psn_` arguments), and returns Python's exit status.
+
+The app stores a relative checkout location in its resources, so moving the checkout together with
+its `dist` app works. After moving only the app or checkout, or changing the launcher sources,
+rebuild it. `--output` and `--bundle-id` are supported for isolated diagnostic builds. Compilation is
+completed in a temporary directory before publishing the bundle. An existing app is refused by
+default; close it before explicitly replacing it:
+
+```bash
+.venv/bin/python scripts/create_macos_app.py --replace
+```
+
+For Computer Use, launch with the relative `open` command above and select the app by its absolute
+path. Distinguish startup errors in stderr from app identification or Qt accessibility errors. A
+successful process launch alone does not verify the visible GUI. Missing runtime/library/entry
+point errors should be resolved by preparing the environment and rebuilding, without changing
+macOS security settings.
 
 ## Screenshot
 
