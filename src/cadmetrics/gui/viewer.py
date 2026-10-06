@@ -51,6 +51,7 @@ class ModelViewer(QtWidgets.QWidget):
         self._vector_actor: Any | None = None
         self._centroid_actor: Any | None = None
         self._overlay_actor: Any | None = None
+        self._grid_actor: Any | None = None
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         widget = self._create_plotter(plotter_factory)
@@ -79,7 +80,6 @@ class ModelViewer(QtWidgets.QWidget):
         self.newly_exposed_surface_available.emit(self._newly_exposed_surface_polydata is not None)
         self._configure_lighting()
         self._plotter.add_axes()
-        self._plotter.show_grid()
         self._mesh_actor = self._plotter.add_mesh(
             self._mesh_polydata,
             color="#9fc8ef",
@@ -93,6 +93,7 @@ class ModelViewer(QtWidgets.QWidget):
             specular=0.18,
             specular_power=24,
         )
+        self._update_grid()
         self._apply_mesh_shading()
         self._update_feature_edges(render=False)
         self._update_base_face(render=False)
@@ -118,7 +119,10 @@ class ModelViewer(QtWidgets.QWidget):
 
     def set_options(self, options: ViewerOptions) -> None:
         camera_changed = options.camera_direction != self._options.camera_direction
+        grid_changed = options.show_grid != self._options.show_grid
         self._options = options
+        if grid_changed:
+            self._update_grid()
         self._apply_display_options()
         self._update_base_face(render=False)
         self._update_newly_exposed_surface(render=False)
@@ -173,7 +177,6 @@ class ModelViewer(QtWidgets.QWidget):
         self._plotter.set_background("white")
         self._configure_lighting()
         self._plotter.add_axes()
-        self._plotter.show_grid()
         self._plotter.enable_parallel_projection()
         return self._plotter
 
@@ -185,6 +188,26 @@ class ModelViewer(QtWidgets.QWidget):
         self._vector_actor = None
         self._centroid_actor = None
         self._overlay_actor = None
+        self._grid_actor = None
+
+    def _update_grid(self) -> None:
+        if self._plotter is None:
+            return
+        self._plotter.remove_bounds_axes()
+        self._grid_actor = None
+        if not self._options.show_grid or self._mesh_polydata is None:
+            return
+        # Bind to geometry rather than the empty renderer or auxiliary actors.
+        # Explicit text settings avoid theme-sized labels and VTK-version defaults.
+        self._grid_actor = self._plotter.show_grid(
+            mesh=self._mesh_polydata,
+            font_size=12,
+            bold=False,
+            use_3d_text=False,
+            n_xlabels=3,
+            n_ylabels=3,
+            n_zlabels=3,
+        )
 
     def _configure_lighting(self) -> None:
         if self._plotter is None:
@@ -335,6 +358,10 @@ class ModelViewer(QtWidgets.QWidget):
             )
             self._set_camera(position, focal_point, view_up)
         self._update_overlay()
+        # PyVista refreshes grid bounds from every actor when overlays are added/removed.
+        # Keep projection arrows and highlight offsets out of the coordinate grid.
+        if self._grid_actor is not None and self._mesh_polydata is not None:
+            self._grid_actor.bounds = self._mesh_polydata.bounds
         self._plotter.render()
 
     def _projection_direction(self) -> np.ndarray | None:
@@ -410,9 +437,11 @@ class ModelViewer(QtWidgets.QWidget):
     ) -> None:
         if self._plotter is None:
             return
-        self._plotter.reset_camera()
         self._plotter.camera_position = (tuple(position), tuple(focal_point), tuple(view_up))
         self._plotter.enable_parallel_projection()
+        self._plotter.reset_camera()
+        # Leave room for grid labels outside the geometry bounds.
+        self._plotter.camera.zoom(0.9)
         try:
             self._plotter.reset_camera_clipping_range()
         except AttributeError:

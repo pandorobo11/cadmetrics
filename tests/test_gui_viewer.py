@@ -21,6 +21,11 @@ class _Property:
         return lambda *args, **kwargs: None
 
 
+class _Camera:
+    def zoom(self, factor) -> None:
+        pass
+
+
 class _Actor:
     prop = _Property()
 
@@ -36,7 +41,10 @@ class _Plotter(QtWidgets.QWidget):
         self.actors = {}
         self.screenshots = []
         self.camera_position = None
+        self.camera = _Camera()
         self.parallel_projection = False
+        self.cube_axes_actor = None
+        self.grid_calls = []
 
     def __getattr__(self, name):
         if name in {
@@ -44,7 +52,6 @@ class _Plotter(QtWidgets.QWidget):
             "remove_all_lights",
             "add_light",
             "add_axes",
-            "show_grid",
             "render",
             "reset_camera",
             "reset_camera_clipping_range",
@@ -55,6 +62,17 @@ class _Plotter(QtWidgets.QWidget):
 
     def clear(self) -> None:
         self.actors.clear()
+        self.cube_axes_actor = None
+
+    def show_grid(self, **kwargs):
+        self.grid_calls.append(kwargs)
+        self.cube_axes_actor = self._add("grid", kwargs)
+        return self.cube_axes_actor
+
+    def remove_bounds_axes(self) -> None:
+        if self.cube_axes_actor is not None:
+            self.remove_actor(self.cube_axes_actor)
+            self.cube_axes_actor = None
 
     def render(self) -> None:
         pass
@@ -170,6 +188,83 @@ def test_model_viewer_renders_model_and_result(viewer_window) -> None:
     viewer.set_model(replace(model, base_area=0.0, newly_exposed_face_indices=(6, 7)))
     assert not window.controls.show_base_face.isEnabled()
     assert not window.controls.show_base_face.isChecked()
+
+
+def test_grid_toggle_preserves_camera_results_and_other_actors(viewer_window, tmp_path) -> None:
+    window, plotter = viewer_window
+    viewer = window.viewer
+    model = _model()
+    request = CalculationRequest(file=model.path)
+    viewer.set_model(model)
+    viewer.set_result(_row(), request, align_camera=True)
+    camera = plotter.camera_position
+    grid_actor = plotter.cube_axes_actor
+    mesh_actor = viewer._mesh_actor
+    window.results.set_rows([_row()])
+
+    window.controls.show_grid.setChecked(False)
+
+    assert grid_actor not in plotter.actors
+    assert not plotter.active("grid")
+    assert mesh_actor in plotter.actors
+    assert plotter.active("arrow")
+    assert plotter.active("text")
+    assert plotter.camera_position == camera
+    assert window.results.rows == [_row()]
+    assert viewer._row == _row()
+    viewer.set_result(_row(), request, align_camera=True)
+    assert not plotter.active("grid")
+    viewer.save_image(tmp_path / "grid-off.png")
+
+    window.controls.show_grid.setChecked(True)
+
+    assert len(plotter.active("grid")) == 1
+    assert mesh_actor in plotter.actors
+    assert plotter.camera_position == camera
+    assert window.results.rows == [_row()]
+    assert viewer._row == _row()
+    assert viewer._grid_actor.bounds == viewer._mesh_polydata.bounds
+    viewer.save_image(tmp_path / "grid-on.png")
+    assert plotter.screenshots == [str(tmp_path / "grid-off.png"), str(tmp_path / "grid-on.png")]
+
+
+def test_grid_follows_loaded_geometry_and_survives_reload(viewer_window) -> None:
+    window, plotter = viewer_window
+    viewer = window.viewer
+    model = _model()
+    assert not plotter.active("grid")
+    viewer.set_model(model)
+    options = plotter.grid_calls[-1]
+    assert options["mesh"].bounds == pytest.approx((0, 1, 0, 1, 0, 1))
+    assert options["font_size"] == 12
+    assert options["use_3d_text"] is False
+    assert options["bold"] is False
+
+    window.controls.show_grid.setChecked(False)
+    larger = replace(model, vertices=model.vertices * 20)
+    viewer.set_model(larger)
+    assert not plotter.active("grid")
+    window.controls.show_grid.setChecked(True)
+    assert len(plotter.active("grid")) == 1
+    assert plotter.grid_calls[-1]["mesh"].bounds == pytest.approx((0, 20, 0, 20, 0, 20))
+    window.controls.show_base_face.setChecked(True)
+    assert viewer._grid_actor.bounds == viewer._mesh_polydata.bounds
+    window.controls.mesh_edges.setChecked(True)
+    assert len(plotter.active("grid")) == 1
+    assert len(plotter.grid_calls) == 2
+    viewer.set_model(model)
+    assert len(plotter.active("grid")) == 1
+    assert plotter.grid_calls[-1]["mesh"].bounds == pytest.approx((0, 1, 0, 1, 0, 1))
+
+
+def test_grid_can_be_disabled_before_loading_model(viewer_window) -> None:
+    window, plotter = viewer_window
+    window.controls.show_grid.setChecked(False)
+    window.viewer.set_model(_model())
+    assert not plotter.active("grid")
+    assert plotter.grid_calls == []
+    window.controls.show_grid.setChecked(True)
+    assert len(plotter.active("grid")) == 1
 
 
 def test_gui_view_can_be_saved_as_image(viewer_window, tmp_path: Path) -> None:

@@ -147,6 +147,7 @@ The 3D view supports:
 - transparent shape display
 - mesh-edge display
 - feature-edge display
+- coordinate-grid display (enabled by default)
 - projection-arrow display (enabled by default)
 - centroid-marker display (enabled by default)
 - optional yellow highlighting of the Xmax base face
@@ -159,6 +160,11 @@ The compact overlay is the default so it does not compete with the model. Before
 shows only model-level values. Selecting a result appends that row's attitude and projected area
 without moving or replacing the common model values. Unavailable base areas are shown as `n/a`.
 Expand `Shape Display` and enable `Detailed overlay` when diagnostic values are needed.
+
+Use `Shape Display` > `Grid` to show or hide the coordinate grid, axis titles, and tick labels.
+The setting is retained when loading another model or selecting a result, and applies to PNG
+exports. The small orientation axes remain visible. The grid follows the loaded model bounds
+and uses compact, explicitly sized text instead of the PyVista theme font.
 
 The viewer uses parallel projection. After a calculation, selecting a result row points the
 camera along that row's projection direction.
