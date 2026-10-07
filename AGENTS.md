@@ -16,9 +16,14 @@ cd cadmetrics
 open dist/Cadmetrics.app
 ```
 
-The app bundle runs the local `.venv/bin/cadmetrics-gui`, so install GUI dependencies first when
-needed:
+The app keeps a native process alive and loads the selected CPython shared library in that process.
+Install GUI dependencies and build the app first when needed (macOS with Xcode Command Line Tools):
 
 ```bash
 uv sync --extra step --extra gui
+.venv/bin/python scripts/create_macos_app.py
 ```
+
+An existing app is not overwritten by default. After closing it, use
+`.venv/bin/python scripts/create_macos_app.py --replace` to explicitly rebuild it.
+Select the app in Computer Use by its absolute path to avoid similarly named diagnostic apps.

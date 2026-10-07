@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Iterable
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.results_model import DISPLAY_FIELDS
@@ -13,6 +14,28 @@ from cadmetrics.gui.results_model import ResultsTableModel
 from cadmetrics.types import MeasurementRow
 
 DEFAULT_COLUMN_WIDTH = 130
+
+
+class _SelectedRowDelegate(QtWidgets.QStyledItemDelegate):
+    """Keep row highlighting when Cocoa must receive a single selected cell."""
+
+    def __init__(self, table: QtWidgets.QTableView) -> None:
+        super().__init__(table)
+        self._table = table
+
+    def paint(
+        self,
+        painter: QtGui.QPainter,
+        option: QtWidgets.QStyleOptionViewItem,
+        index: QtCore.QModelIndex | QtCore.QPersistentModelIndex,
+    ) -> None:
+        row_option = QtWidgets.QStyleOptionViewItem(option)
+        if (
+            self._table.selectionModel().hasSelection()
+            and index.row() == self._table.currentIndex().row()
+        ):
+            row_option.state |= QtWidgets.QStyle.StateFlag.State_Selected
+        super().paint(painter, row_option, index)
 
 
 class ResultsPanel(QtWidgets.QWidget):
@@ -74,8 +97,24 @@ class ResultsPanel(QtWidgets.QWidget):
                 DEFAULT_COLUMN_WIDTH,
             )
         self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
+        # Qt 6.11.1's Cocoa selectedChildren enumerator can invalidate sibling
+        # accessible cell pointers while materializing a whole selected row.
+        # Keep one native selected cell and paint the same full-row highlight.
+        self._cocoa_cell_selection = sys.platform == "darwin"
+        self.table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectItems
+            if self._cocoa_cell_selection
+            else QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        if self._cocoa_cell_selection:
+            self.table.setItemDelegate(_SelectedRowDelegate(self.table))
+            self.table.selectionModel().currentRowChanged.connect(
+                lambda *_: self.table.viewport().update()
+            )
+            self.table.selectionModel().selectionChanged.connect(
+                lambda *_: self.table.viewport().update()
+            )
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(24)
         self.table.selectionModel().currentRowChanged.connect(self._emit_selected_row)
@@ -109,7 +148,10 @@ class ResultsPanel(QtWidgets.QWidget):
 
     def select_last_row(self) -> None:
         if self._rows:
-            self.table.selectRow(len(self._rows) - 1)
+            if self._cocoa_cell_selection:
+                self.table.setCurrentIndex(self._table_model.index(len(self._rows) - 1, 0))
+            else:
+                self.table.selectRow(len(self._rows) - 1)
 
     def set_busy(self, busy: bool) -> None:
         self.save_button.setEnabled(not busy and bool(self._rows))
