@@ -119,6 +119,26 @@ def test_detailed_overlay_option_is_opt_in(qtbot) -> None:
     assert panel.viewer_options().detailed_overlay is True
 
 
+def test_grid_option_can_be_toggled_with_keyboard_without_changing_request(qtbot) -> None:
+    panel = ControlPanel()
+    qtbot.addWidget(panel)
+    panel._section_toggles["Shape Display"].click()
+    panel.show()
+    options = []
+    requests = []
+    panel.viewer_options_changed.connect(options.append)
+    panel.request_changed.connect(requests.append)
+    assert panel.viewer_options().show_grid is True
+    panel.show_grid.setFocus()
+    qtbot.keyClick(panel.show_grid, QtCore.Qt.Key.Key_Space)
+    assert panel.viewer_options().show_grid is False
+    assert options[-1].show_grid is False
+    qtbot.keyClick(panel.show_grid, QtCore.Qt.Key.Key_Space)
+    assert panel.viewer_options().show_grid is True
+    assert options[-1].show_grid is True
+    assert requests == []
+
+
 def test_advanced_changes_show_pending_state_only_after_model_load(qtbot, tmp_path: Path) -> None:
     panel = ControlPanel()
     qtbot.addWidget(panel)

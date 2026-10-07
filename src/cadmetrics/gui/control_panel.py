@@ -151,6 +151,9 @@ class ControlPanel(QtWidgets.QWidget):
         self.mesh_edges = self._check("Mesh edges", False)
         self.feature_edges = self._check("Feature edges", True)
         self.show_overlay = self._check("Overlay", True)
+        self.show_grid = self._check("Grid", True)
+        self.show_grid.setObjectName("showGrid")
+        self.show_grid.setToolTip("Show coordinate grid lines, axis titles, and tick labels.")
         self.show_projection_arrow = self._check("Projection arrow", True)
         self.show_centroid = self._check("Centroid", True)
         self.show_centroid.setToolTip("Show the centroid marker for the selected result.")
@@ -176,6 +179,7 @@ class ControlPanel(QtWidgets.QWidget):
             self.mesh_edges,
             self.feature_edges,
             self.show_overlay,
+            self.show_grid,
             self.show_projection_arrow,
             self.show_centroid,
             self.show_base_face,
@@ -192,10 +196,11 @@ class ControlPanel(QtWidgets.QWidget):
         display_layout.addWidget(self.show_base_face, 2, 1)
         display_layout.addWidget(self.show_centroid, 3, 0)
         display_layout.addWidget(self.detailed_overlay, 3, 1)
-        display_layout.addWidget(self.show_newly_exposed_surface, 4, 0, 1, 2)
-        display_layout.addWidget(QtWidgets.QLabel("Camera"), 5, 0)
-        display_layout.addWidget(self.camera_direction, 5, 1)
-        display_layout.addWidget(self.save_image_button, 6, 0, 1, 2)
+        display_layout.addWidget(self.show_grid, 4, 0)
+        display_layout.addWidget(self.show_newly_exposed_surface, 5, 0, 1, 2)
+        display_layout.addWidget(QtWidgets.QLabel("Camera"), 6, 0)
+        display_layout.addWidget(self.camera_direction, 6, 1)
+        display_layout.addWidget(self.save_image_button, 7, 0, 1, 2)
 
         advanced = self._collapsible(layout, "Advanced")
         self.axis_x = self._axis_combo("x")
@@ -397,6 +402,7 @@ class ControlPanel(QtWidgets.QWidget):
             show_base_face=self.show_base_face.isChecked(),
             show_newly_exposed_surface=self.show_newly_exposed_surface.isChecked(),
             show_overlay=self.show_overlay.isChecked(),
+            show_grid=self.show_grid.isChecked(),
             detailed_overlay=self.detailed_overlay.isChecked(),
             camera_direction=tuple(self.camera_direction.currentData()),
         )
