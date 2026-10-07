@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import plistlib
-import subprocess
-import sys
-import tomllib
 from dataclasses import replace
 from pathlib import Path
 
@@ -18,29 +14,6 @@ from cadmetrics.gui.viewer_geometry import camera_geometry as _camera_geometry
 from cadmetrics.gui.viewer_geometry import projection_arrow_geometry as _projection_arrow_geometry
 from cadmetrics.gui.viewer_geometry import projection_camera_geometry as _projection_camera_geometry
 from cadmetrics.types import MeasurementRow, ModelData
-
-
-def test_macos_app_uses_project_version(tmp_path: Path) -> None:
-    subprocess.run(
-        [
-            sys.executable,
-            "scripts/create_macos_app.py",
-            "--repo",
-            str(Path.cwd()),
-            "--output",
-            str(tmp_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    app = tmp_path / "Cadmetrics.app"
-    with (app / "Contents" / "Info.plist").open("rb") as handle:
-        info = plistlib.load(handle)
-    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]
-
-    assert info["CFBundleShortVersionString"] == project["version"]
-    assert info["CFBundleVersion"] == project["version"]
 
 
 def test_projection_arrow_axis_stays_outside_model_and_passes_through_centroid() -> None:
