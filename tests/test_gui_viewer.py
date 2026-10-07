@@ -181,6 +181,44 @@ def test_gui_view_can_be_saved_as_image(viewer_window, tmp_path: Path) -> None:
     assert plotter.screenshots == [str(output)]
 
 
+def test_invalid_vector_preview_clears_arrow_and_reports_calculation_error(
+    viewer_window, monkeypatch, tmp_path: Path
+) -> None:
+    window, plotter = viewer_window
+    source = tmp_path / "model.stl"
+    source.touch()
+    errors = []
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox, "critical", lambda parent, title, message: errors.append(message)
+    )
+    window.controls.set_file_paths((source,))
+    window._on_model_loaded(replace(_model(), path=source))
+    window.controls.attitude_mode.setCurrentIndex(window.controls.attitude_mode.findData("vector"))
+    window._on_results_ready([_row()])
+    assert plotter.active("arrow")
+
+    window.controls.vector_fields[0].setValue(0.0)
+
+    assert not plotter.active("arrow")
+    assert window.results.rows == []
+    assert not window.results.save_button.isEnabled()
+    assert "Volume  1 m³" in next(iter(plotter.active("text").values()))
+    assert errors == []
+
+    window.controls.run_button.click()
+
+    assert len(errors) == 1
+    assert "Vector magnitude must be greater than zero" in errors[0]
+    assert errors[0] in window.status.text()
+
+    window.controls.vector_fields[1].setValue(1.0)
+
+    arrows = list(plotter.active("arrow").values())
+    assert len(arrows) == 1
+    _, vector = arrows[0]
+    assert vector[0] / np.linalg.norm(vector[0]) == pytest.approx((0.0, 1.0, 0.0))
+
+
 def test_gui_documentation_action_builds_then_reuses_local_site(
     viewer_window, monkeypatch, tmp_path: Path
 ) -> None:
