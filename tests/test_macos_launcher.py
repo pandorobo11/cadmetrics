@@ -1,4 +1,8 @@
-"""Native process contracts, independent of Qt and display availability."""
+"""Native process contracts, independent of Qt and display availability.
+
+The moved-checkout tests run a self-contained PROBE, not cadmetrics. Real editable
+package imports and environment recovery are checked by scripts/verify_editable_move.py.
+"""
 
 from __future__ import annotations
 
@@ -145,7 +149,8 @@ def checkout(tmp_path):
 
 @MAC_ONLY
 @pytest.mark.parametrize("use_uv", [False, True], ids=["venv", "uv-fallback"])
-def test_native_argv_spawn_exit_and_restart_after_move(checkout, use_uv):
+def test_native_probe_argv_spawn_exit_and_restart_after_move(checkout, use_uv):
+    """Verify relative app lookup and process contracts, not editable-package portability."""
     env = dict(os.environ, UV_OFFLINE="1", UV_PYTHON=sys.executable)
     env["UV_CACHE_DIR"] = str(checkout.parent / "uv-cache")
     prefix_name = ".uv-env" if use_uv else ".venv"
