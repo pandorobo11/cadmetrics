@@ -21,6 +21,13 @@ from cadmetrics.types import ModelData
 UNIT_OPTIONS = ["auto", "m", "mm", "cm", "in", "ft"]
 OUTPUT_UNIT_OPTIONS = ["m", "mm", "cm", "in", "ft"]
 COMPONENT_LIST_MAX_HEIGHT = 200
+# One label column for every form in the panel so all fields share a left edge.
+LABEL_WIDTH = 112
+FIELD_GAP = 10  # Between a label and its field.
+GRID_GAP = 6  # Between fields in a row.
+ROW_GAP = 6
+CARD_INSET = 12
+CONTROL_HEIGHT = 34  # Matches the stylesheet's input and button height.
 
 
 class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
@@ -108,25 +115,25 @@ class ControlPanel(QtWidgets.QWidget):
         file_row.setSpacing(8)
         file_row.addWidget(self.file_edit)
         file_row.addWidget(self.browse_button)
-        setup.addRow("File", file_row)
+        self._add_row(setup, "File", file_row)
         self.input_unit = PanelComboBox()
         self.input_unit.addItems(UNIT_OPTIONS)
-        setup.addRow("Input unit", self.input_unit)
+        self._add_row(setup, "Input unit", self.input_unit)
         self.output_unit = PanelComboBox()
         self.output_unit.addItems(OUTPUT_UNIT_OPTIONS)
-        setup.addRow("Output unit", self.output_unit)
+        self._add_row(setup, "Output unit", self.output_unit)
 
         self.attitude_box = QtWidgets.QGroupBox("Attitude")
         attitude_layout = QtWidgets.QVBoxLayout(self.attitude_box)
-        attitude_layout.setContentsMargins(8, 6, 8, 8)
-        attitude_layout.setSpacing(5)
+        attitude_layout.setContentsMargins(CARD_INSET, 2, CARD_INSET, CARD_INSET)
+        attitude_layout.setSpacing(ROW_GAP)
         self.attitude_mode = PanelComboBox()
         self.attitude_mode.addItem("Alpha / Beta", "alpha_beta")
         self.attitude_mode.addItem("Roll / Pitch", "roll_pitch")
         self.attitude_mode.addItem("Unit vector", "vector")
         attitude_mode_row = QtWidgets.QFormLayout()
-        self._configure_form_layout(attitude_mode_row, margins=(0, 0, 0, 2))
-        attitude_mode_row.addRow("Mode", self.attitude_mode)
+        self._configure_form_layout(attitude_mode_row, margins=(0, 0, 0, 0))
+        self._add_row(attitude_mode_row, "Mode", self.attitude_mode)
         attitude_layout.addLayout(attitude_mode_row)
         self.alpha_beta_group, self.alpha_fields, self.beta_fields = self._sweep_grid(
             "Alpha", "Beta"
@@ -168,7 +175,7 @@ class ControlPanel(QtWidgets.QWidget):
 
         components = self._collapsible_widget(layout, "Components")
         components_layout = QtWidgets.QVBoxLayout(components)
-        components_layout.setContentsMargins(8, 8, 8, 8)
+        components_layout.setContentsMargins(CARD_INSET, 10, CARD_INSET, CARD_INSET)
         components_layout.setSpacing(6)
         self.component_summary = QtWidgets.QLabel("Load a multi-solid STEP file.")
         self.component_summary.setWordWrap(True)
@@ -212,27 +219,23 @@ class ControlPanel(QtWidgets.QWidget):
         mode_row = QtWidgets.QFormLayout()
         self._configure_form_layout(mode_row, margins=(0, 0, 0, 0))
         self.step_component_mode = PanelComboBox()
-        self.step_component_mode.addItem("Exclude unchecked components (default)", "filter")
-        self.step_component_mode.addItem("Subtract unchecked components from the model", "subtract")
+        self.step_component_mode.addItem("Exclude unchecked (default)", "filter")
+        self.step_component_mode.addItem("Subtract unchecked", "subtract")
         self.step_component_mode.setToolTip(
             "Exclude: unchecked components are left out of the measurement.\n"
             "Subtract: unchecked components are cut away from the checked ones, "
             "which can expose new surfaces."
         )
-        self.step_component_mode.setMinimumContentsLength(24)
-        self.step_component_mode.setSizeAdjustPolicy(
-            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
-        )
-        mode_row.addRow("Mode", self.step_component_mode)
+        self._add_row(mode_row, "Mode", self.step_component_mode)
         detail_layout.addLayout(mode_row)
         components_layout.addWidget(self.component_detail)
         self.component_detail.setVisible(False)
 
         display = self._collapsible_widget(layout, "Shape Display")
         display_layout = QtWidgets.QGridLayout(display)
-        display_layout.setContentsMargins(8, 6, 8, 6)
+        display_layout.setContentsMargins(CARD_INSET, 10, CARD_INSET, CARD_INSET)
         display_layout.setHorizontalSpacing(12)
-        display_layout.setVerticalSpacing(4)
+        display_layout.setVerticalSpacing(ROW_GAP)
         self.transparent_shape = self._check("Transparent", False)
         self.mesh_edges = self._check("Mesh edges", False)
         self.feature_edges = self._check("Feature edges", True)
@@ -288,17 +291,26 @@ class ControlPanel(QtWidgets.QWidget):
         self.axis_z = self._axis_combo("z")
         axis_row = QtWidgets.QHBoxLayout()
         axis_row.setContentsMargins(0, 0, 0, 0)
-        axis_row.setSpacing(6)
-        for label, combo in (("X", self.axis_x), ("Y", self.axis_y), ("Z", self.axis_z)):
-            axis_row.addWidget(QtWidgets.QLabel(label))
+        axis_row.setSpacing(4)
+        for index, (label, combo) in enumerate(
+            (("X", self.axis_x), ("Y", self.axis_y), ("Z", self.axis_z))
+        ):
+            if index:
+                axis_row.addSpacing(GRID_GAP)
+            axis_label = QtWidgets.QLabel(label)
+            axis_label.setObjectName("subheadingLabel")
+            axis_row.addWidget(axis_label)
             axis_row.addWidget(combo, 1)
-        advanced.addRow(QtWidgets.QLabel("Axis map"))
-        advanced.addRow(axis_row)
+        axis_label_widget = self._add_row(advanced, "Axis map", axis_row)
+        axis_label_widget.setToolTip(
+            "Choose which model axis becomes cadmetrics X, Y, and Z. "
+            "Use a minus sign for a reversed axis."
+        )
 
         self.step_metrics = PanelComboBox()
         self.step_metrics.addItem("B-Rep (default)", "brep")
         self.step_metrics.addItem("Mesh", "mesh")
-        advanced.addRow("STEP metrics", self.step_metrics)
+        self._add_row(advanced, "STEP metrics", self.step_metrics)
         self.mesh_deflection = FlexibleDoubleSpinBox()
         self.mesh_deflection.setRange(1.0e-8, 1.0)
         self.mesh_deflection.setDecimals(8)
@@ -316,12 +328,12 @@ class ControlPanel(QtWidgets.QWidget):
         mesh_row.setSpacing(8)
         mesh_row.addWidget(self.mesh_deflection)
         mesh_row.addWidget(self.mesh_deflection_auto)
-        advanced.addRow("Mesh deflection", mesh_row)
+        self._add_row(advanced, "Mesh deflection", mesh_row)
         self.angular_deflection = FlexibleDoubleSpinBox()
         self.angular_deflection.setRange(1.0e-6, 1.0)
         self.angular_deflection.setValue(0.1)
         self.angular_deflection.setToolTip("Maximum angle between tessellation facets, in radians.")
-        advanced.addRow("Angular deflection", self.angular_deflection)
+        self._add_row(advanced, "Angular deflection", self.angular_deflection)
         self.base_tolerance = FlexibleDoubleSpinBox()
         self.base_tolerance.setRange(1.0e-12, 1.0)
         self.base_tolerance.setDecimals(12)
@@ -330,7 +342,7 @@ class ControlPanel(QtWidgets.QWidget):
             "How close a face must be to Xmax to count as base area, relative to the "
             "bounding-box diagonal."
         )
-        advanced.addRow("Base tolerance", self.base_tolerance)
+        self._add_row(advanced, "Base tolerance", self.base_tolerance)
         self.apply_advanced_button = QtWidgets.QPushButton("Preview with Settings")
         self.apply_advanced_button.clicked.connect(self._apply_advanced_settings)
         self.advanced_status = QtWidgets.QLabel("Changes will apply on the next Run Sweep")
@@ -616,7 +628,7 @@ class ControlPanel(QtWidgets.QWidget):
         ):
             if group_name:
                 group_label = QtWidgets.QLabel(group_name)
-                group_label.setObjectName("componentGroupLabel")
+                group_label.setObjectName("subheadingLabel")
                 self.component_list_layout.addWidget(group_label)
             for index, name in components:
                 checkbox = QtWidgets.QCheckBox(f"{index}: {name}")
@@ -634,19 +646,17 @@ class ControlPanel(QtWidgets.QWidget):
 
     def _fit_component_list(self) -> None:
         """Fit short lists exactly and scroll only long ones."""
-        # New rows are not shown until the event loop runs, so the list's own size hint
-        # would ignore them; add up the rows' hints instead.
+        # New rows stay hidden until the event loop runs, and the layout caches their
+        # unstyled size hints; show and polish them, then drop the cache before measuring.
         layout = self.component_list_layout
-        items = (layout.itemAt(index) for index in range(layout.count()))
-        rows = [item.widget() for item in items if item is not None]
-        heights = [row.sizeHint().height() for row in rows if row is not None]
-        margins = layout.contentsMargins()
-        content = (
-            margins.top()
-            + margins.bottom()
-            + sum(heights)
-            + layout.spacing() * max(len(heights) - 1, 0)
-        )
+        for index in range(layout.count()):
+            item = layout.itemAt(index)
+            row = item.widget() if item is not None else None
+            if row is not None:
+                row.ensurePolished()
+                row.setVisible(True)
+        layout.invalidate()
+        content = self._component_list.sizeHint().height()
         frame = self.component_scroll.frameWidth() * 2
         self.component_scroll.setFixedHeight(min(content + frame, COMPONENT_LIST_MAX_HEIGHT))
 
@@ -783,7 +793,7 @@ class ControlPanel(QtWidgets.QWidget):
     def _section(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:
         box = QtWidgets.QGroupBox(title)
         form = QtWidgets.QFormLayout(box)
-        self._configure_form_layout(form, margins=(8, 6, 8, 7))
+        self._configure_form_layout(form, margins=(CARD_INSET, 2, CARD_INSET, CARD_INSET))
         parent.addWidget(box)
         return form
 
@@ -826,7 +836,7 @@ class ControlPanel(QtWidgets.QWidget):
     def _collapsible(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:
         content = self._collapsible_widget(parent, title)
         form = QtWidgets.QFormLayout(content)
-        self._configure_form_layout(form, margins=(8, 8, 8, 8))
+        self._configure_form_layout(form, margins=(CARD_INSET, 10, CARD_INSET, CARD_INSET))
         return form
 
     def _sweep_grid(
@@ -839,13 +849,10 @@ class ControlPanel(QtWidgets.QWidget):
         widget = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(widget)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(6)
-        grid.setVerticalSpacing(3)
+        grid.setHorizontalSpacing(GRID_GAP)
+        grid.setVerticalSpacing(ROW_GAP)
         for column, text in enumerate(("Start", "End", "Step"), start=1):
-            header = QtWidgets.QLabel(text)
-            header.setStyleSheet("color: #5f6872;")
-            header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            grid.addWidget(header, 0, column)
+            grid.addWidget(self._column_heading(text), 0, column)
         first = self._sweep_row(grid, 1, first_label)
         second = self._sweep_row(grid, 2, second_label)
         grid.setColumnStretch(0, 0)
@@ -856,10 +863,7 @@ class ControlPanel(QtWidgets.QWidget):
     def _sweep_row(
         self, grid: QtWidgets.QGridLayout, row: int, label: str
     ) -> tuple[FlexibleDoubleSpinBox, FlexibleDoubleSpinBox, FlexibleDoubleSpinBox]:
-        row_label = QtWidgets.QLabel(label)
-        row_label.setStyleSheet("color: #374151;")
-        row_label.setMinimumWidth(46)
-        grid.addWidget(row_label, row, 0)
+        grid.addWidget(self._grid_label(label), row, 0)
         fields = (self._number(0.0), self._number(0.0), self._number(1.0))
         for column, field in enumerate(fields, start=1):
             field.setSuffix("°")
@@ -878,14 +882,13 @@ class ControlPanel(QtWidgets.QWidget):
         widget = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(widget)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(6)
+        grid.setHorizontalSpacing(GRID_GAP)
+        grid.setVerticalSpacing(ROW_GAP)
+        grid.addWidget(self._grid_label("Direction"), 1, 0)
         fields = (self._number(1.0), self._number(0.0), self._number(0.0))
-        for column, (label, field) in enumerate(zip(("X", "Y", "Z"), fields, strict=True)):
+        for column, (label, field) in enumerate(zip(("X", "Y", "Z"), fields, strict=True), start=1):
             field.setSingleStep(0.1)
-            header = QtWidgets.QLabel(label)
-            header.setStyleSheet("color: #5f6872;")
-            header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            grid.addWidget(header, 0, column)
+            grid.addWidget(self._column_heading(label), 0, column)
             grid.addWidget(field, 1, column)
             grid.setColumnStretch(column, 1)
             field.valueChanged.connect(self._emit_preview_request)
@@ -898,13 +901,13 @@ class ControlPanel(QtWidgets.QWidget):
         field.setDecimals(6)
         field.setSingleStep(1.0)
         field.setValue(value)
-        field.setMinimumWidth(70)
+        field.setMinimumWidth(60)
         return field
 
     def _axis_combo(self, default: str) -> PanelComboBox:
         combo = PanelComboBox()
-        combo.setMinimumWidth(84)
-        combo.setMinimumContentsLength(3)
+        combo.setMinimumWidth(56)
+        combo.setMinimumContentsLength(2)
         combo.setSizeAdjustPolicy(
             QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
@@ -912,6 +915,38 @@ class ControlPanel(QtWidgets.QWidget):
             combo.addItem(axis.upper(), axis)
         combo.setCurrentIndex(combo.findData(default))
         return combo
+
+    def _add_row(
+        self,
+        form: QtWidgets.QFormLayout,
+        text: str,
+        field: QtWidgets.QWidget | QtWidgets.QLayout,
+    ) -> QtWidgets.QLabel:
+        label = self._field_label(text, LABEL_WIDTH)
+        form.addRow(label, field)
+        return label
+
+    @staticmethod
+    def _grid_label(text: str) -> QtWidgets.QLabel:
+        """Row label for grids, sized so its fields line up with form fields."""
+        return ControlPanel._field_label(text, LABEL_WIDTH + FIELD_GAP - GRID_GAP)
+
+    @staticmethod
+    def _field_label(text: str, width: int) -> QtWidgets.QLabel:
+        label = QtWidgets.QLabel(text)
+        label.setObjectName("fieldLabel")
+        label.setFixedWidth(width)
+        # Span the control height so the text centres on the field beside it.
+        label.setMinimumHeight(CONTROL_HEIGHT)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        return label
+
+    @staticmethod
+    def _column_heading(text: str) -> QtWidgets.QLabel:
+        label = QtWidgets.QLabel(text)
+        label.setObjectName("subheadingLabel")
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        return label
 
     @staticmethod
     def _subheading(text: str) -> QtWidgets.QLabel:
@@ -931,8 +966,10 @@ class ControlPanel(QtWidgets.QWidget):
         margins: tuple[int, int, int, int],
     ) -> None:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        form.setLabelAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
         form.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
-        form.setVerticalSpacing(6)
-        form.setHorizontalSpacing(10)
+        form.setVerticalSpacing(ROW_GAP)
+        form.setHorizontalSpacing(FIELD_GAP)
         form.setContentsMargins(*margins)

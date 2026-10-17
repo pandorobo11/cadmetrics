@@ -152,10 +152,10 @@ QCheckBox::indicator:checked:disabled {
 }
 QGroupBox {
     border: 0; border-radius: 8px; margin-top: 0;
-    padding: 30px 8px 8px 8px; background: #ffffff; font-weight: 600;
+    padding: 34px 0 0 0; background: #ffffff; font-weight: 600;
 }
 QGroupBox::title {
-    subcontrol-origin: padding; subcontrol-position: top left; left: 10px; top: 9px;
+    subcontrol-origin: padding; subcontrol-position: top left; left: 24px; top: 10px;
     padding: 0; font-size: 13px; font-weight: 600; color: #17212b;
 }
 QGroupBox#sectionContent {
@@ -165,7 +165,7 @@ QGroupBox#sectionContent {
 }
 QToolButton#sectionToggle {
     min-height: 32px; border: 0; border-radius: 7px; background: #ffffff;
-    font-weight: 600; padding: 5px 10px; text-align: left;
+    font-weight: 600; padding: 5px 12px; text-align: left;
 }
 QToolButton#sectionToggle:hover { background: #eaf0f6; }
 QToolButton#sectionToggle:checked {
@@ -177,7 +177,8 @@ QScrollArea#componentList {
     border: 1px solid #dbe1e7; border-radius: 6px; background: #ffffff;
 }
 QWidget#componentListContent { background: #ffffff; }
-QLabel#componentGroupLabel { color: #4a5663; font-size: 12px; font-weight: 600; }
+/* One sub-heading style: column headings, groups, and section sub-groups. */
+QLabel#subheadingLabel { color: #5f6b78; font-size: 12px; font-weight: 600; }
 QProgressBar {
     min-height: 8px; max-height: 8px; border: 0; border-radius: 4px; background: #dce2e8;
 }
@@ -202,7 +203,7 @@ QWidget#actionBar {
 }
 QLabel#modelSummaryLabel { color: #53606d; font-size: 12px; }
 QLabel#operationLabel { color: #165f9f; font-weight: 600; }
-QLabel#caseCountLabel { color: #53606d; font-size: 12px; font-weight: 600; }
+QLabel#caseCountLabel { color: #5f6b78; font-size: 12px; font-weight: 600; }
 QLabel#caseCountLabel[invalid="true"] { color: #a23b32; }
 QLabel#dirtyStatusLabel {
     color: #925c12; background: #fff4d8; border-radius: 5px; padding: 5px 7px;

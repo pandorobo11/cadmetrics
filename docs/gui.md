@@ -207,9 +207,9 @@ traced back to the component checkboxes that were enabled.
 
 `Mode` controls what an unchecked component means:
 
-- `Exclude unchecked components (default)` removes unchecked components before union and leaves
+- `Exclude unchecked (default)` removes unchecked components before union and leaves
   enabled geometry intact.
-- `Subtract unchecked components from the model` creates `Union(enabled) - Union(disabled)`, so
+- `Subtract unchecked` creates `Union(enabled) - Union(disabled)`, so
   disabled components carve their overlapping volume out of enabled geometry.
 
 Subtraction-mode `surface_area` counts only surviving faces from the enabled union. Newly created

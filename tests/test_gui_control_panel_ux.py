@@ -158,8 +158,8 @@ def test_component_mode_labels(qtbot) -> None:
     qtbot.addWidget(panel)
     combo = panel.step_component_mode
     assert combo.itemData(0) == "filter" and combo.itemData(1) == "subtract"
-    assert combo.itemText(0) == "Exclude unchecked components (default)"
-    assert combo.itemText(1) == "Subtract unchecked components from the model"
+    assert combo.itemText(0) == "Exclude unchecked (default)"
+    assert combo.itemText(1) == "Subtract unchecked"
     assert combo.toolTip()
 
 
@@ -182,12 +182,59 @@ def test_shape_display_groups_and_no_empty_cells(qtbot) -> None:
     assert occupied == {(r, c) for r in range(grid.rowCount()) for c in range(3)}
 
 
-def test_axis_map_combos_keep_minimum_width(qtbot) -> None:
+def test_axis_map_combos_fit_the_longest_axis_label(qtbot) -> None:
+    from cadmetrics.gui.styles import application_stylesheet
+
     panel = ControlPanel()
     qtbot.addWidget(panel)
+    panel.setStyleSheet(application_stylesheet())
+    panel._section_toggles["Advanced"].setChecked(True)
+    panel.resize(panel.minimumWidth(), 900)
+    panel.show()
+    qtbot.waitExposed(panel)
     for combo in (panel.axis_x, panel.axis_y, panel.axis_z):
-        assert combo.minimumWidth() >= 84
-        assert combo.minimumSizeHint().width() >= 60
+        # Text padding (7px) plus the 26px drop-down area must leave room for "-Z".
+        assert combo.width() >= combo.fontMetrics().horizontalAdvance("-Z") + 7 + 26
+
+
+def test_all_fields_share_one_left_and_right_edge(qtbot) -> None:
+    from cadmetrics.gui.styles import application_stylesheet
+
+    panel = ControlPanel()
+    qtbot.addWidget(panel)
+    panel.setStyleSheet(application_stylesheet())
+    for title in ("Components", "Advanced"):
+        panel._section_toggles[title].setChecked(True)
+    panel.component_detail.setVisible(True)
+    panel.resize(440, 1600)
+    panel.show()
+    qtbot.waitExposed(panel)
+    content = panel.scroll_area.widget()
+
+    def edges(widget) -> tuple[int, int]:
+        left = widget.mapTo(content, QtCore.QPoint(0, 0)).x()
+        return left, left + widget.width()
+
+    fields = (
+        panel.input_unit,
+        panel.output_unit,
+        panel.attitude_mode,
+        panel.step_component_mode,
+        panel.step_metrics,
+        panel.angular_deflection,
+        panel.base_tolerance,
+    )
+    assert len({edges(field) for field in fields}) == 1
+    left, right = edges(panel.input_unit)
+    assert edges(panel.file_edit)[0] == left
+    assert edges(panel.browse_button)[1] == right
+    assert edges(panel.alpha_fields[0])[0] == left
+    assert edges(panel.alpha_fields[2])[1] == right
+    assert edges(panel.axis_z)[1] == right
+    labels = [
+        label for label in content.findChildren(QtWidgets.QLabel, "fieldLabel") if label.isVisible()
+    ]
+    assert len({edges(label)[0] for label in labels}) == 1
 
 
 def test_unavailable_checkboxes_have_tooltips(qtbot) -> None:
