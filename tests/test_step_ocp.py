@@ -21,11 +21,18 @@ from OCP.TopoDS import TopoDS, TopoDS_Compound
 from cadmetrics.api import inspect_model, measure, measure_model, project, project_model
 from cadmetrics.cli import app
 from cadmetrics._ocp import (
+    _OcpShapeSet,
+    _boolean_union_ocp_solids,
+    _explore_ocp_subshapes,
+    _extract_ocp_solids,
     _ocp_bounding_box_diagonal,
     _ocp_bounds,
+    _ocp_shape_metric,
+    _ocp_volume_metric_gk,
     _usable_step_component_name,
     load_ocp_bindings,
 )
+from cadmetrics._step_io import _read_step_file
 from typer.testing import CliRunner
 
 
@@ -810,6 +817,98 @@ def _write_open_step_box(path: Path) -> None:
         faces.append(face_method(explorer.Current()))
         explorer.Next()
     _write_step_compound(path, faces[:-1])
+
+
+@pytest.mark.parametrize(
+    ("step_paths", "expected_solids"),
+    [
+        (("two_boxes_intersecting/two_boxes_intersecting.step",), 2),
+        (("two_boxes_overlap_projection/two_boxes_overlap_projection.step",), 2),
+        (
+            (
+                "multi_file_step_components/box_pair_a.step",
+                "multi_file_step_components/box_pair_b.step",
+            ),
+            4,
+        ),
+        # A single solid takes the no-op path and must come back unchanged.
+        (("satellite/satellite.step",), 1),
+    ],
+)
+def test_single_fuse_union_matches_pairwise_union(
+    step_paths: tuple[str, ...],
+    expected_solids: int,
+) -> None:
+    ocp = load_ocp_bindings()
+    solids = [
+        solid
+        for step_path in step_paths
+        for solid in _extract_ocp_solids(
+            _read_step_file(SAMPLES_DIR / step_path, input_unit="auto", ocp=ocp).shape,
+            TopAbs_SOLID=ocp.TopAbs_SOLID,
+            TopExp_Explorer=ocp.TopExp_Explorer,
+            TopoDS=ocp.TopoDS,
+        )
+    ]
+    assert len(solids) == expected_solids
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for solid in solids:
+        builder.Add(compound, solid)
+
+    fused, unioned = _boolean_union_ocp_solids(
+        compound,
+        BRepAlgoAPI_Fuse=ocp.BRepAlgoAPI_Fuse,
+        TopAbs_SOLID=ocp.TopAbs_SOLID,
+        TopExp_Explorer=ocp.TopExp_Explorer,
+        TopoDS=ocp.TopoDS,
+    )
+    reference = _pairwise_union_reference(solids)
+
+    assert unioned is (expected_solids > 1)
+    assert _union_signature(fused) == pytest.approx(_union_signature(reference), rel=1e-9)
+
+
+def test_ocp_shape_set_uses_is_same_semantics() -> None:
+    box = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+    other_box = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
+    faces = _explore_ocp_subshapes(box, TopAbs_FACE, TopExp_Explorer)
+    shape_set = _OcpShapeSet(faces[:3])
+
+    assert faces[0] in shape_set
+    assert faces[0].Reversed() in shape_set
+    assert faces[3] not in shape_set
+    assert box not in shape_set
+    assert _explore_ocp_subshapes(other_box, TopAbs_FACE, TopExp_Explorer)[0] not in shape_set
+    assert shape_set.add(faces[3]) is True
+    assert shape_set.add(faces[3].Reversed()) is False
+
+
+def _pairwise_union_reference(solids):
+    ocp = load_ocp_bindings()
+    fused = solids[0]
+    for solid in solids[1:]:
+        fuse = ocp.BRepAlgoAPI_Fuse(fused, solid)
+        fuse.Build()
+        assert fuse.IsDone()
+        fuse.SimplifyResult(True, True, 1.0e-7)
+        fused = fuse.Shape()
+    return fused
+
+
+def _union_signature(shape) -> tuple[float, float, int, int, bool]:
+    ocp = load_ocp_bindings()
+    volume = _ocp_volume_metric_gk(shape, GProp_GProps=ocp.GProp_GProps, BRepGProp=ocp.BRepGProp)
+    area = _ocp_shape_metric(shape, ocp.GProp_GProps, ocp.BRepGProp, "SurfaceProperties")
+    assert volume is not None and area is not None
+    return (
+        volume,
+        area,
+        len(_explore_ocp_subshapes(shape, ocp.TopAbs_FACE, ocp.TopExp_Explorer)),
+        len(_explore_ocp_subshapes(shape, ocp.TopAbs_SOLID, ocp.TopExp_Explorer)),
+        bool(ocp.BRepCheck_Analyzer(shape).IsValid()),
+    )
 
 
 def test_component_preview_meshes_are_display_only() -> None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import cache
 from math import isfinite
@@ -41,6 +41,8 @@ class OcpBindings:
     TopLoc_Location: Any
     TopoDS: Any
     TopoDS_Compound: Any
+    TopTools_ListOfShape: Any
+    TopTools_MapOfShape: Any
     gp_Pnt: Any
     gp_Trsf: Any
 
@@ -71,6 +73,15 @@ def load_ocp_bindings() -> OcpBindings:
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS, TopoDS_Compound
+
+        try:
+            from OCP.TopTools import TopTools_ListOfShape, TopTools_MapOfShape
+        except ImportError:
+            # OCP 8 exports these NCollection specializations from collections.
+            from OCP.collections import (
+                List_TopoDS_Shape as TopTools_ListOfShape,
+                Map_TopoDS_Shape_TopTools_ShapeMapHasher as TopTools_MapOfShape,
+            )
         from OCP.gp import gp_Pnt, gp_Trsf
     except ImportError as exc:
         if isinstance(exc, ModuleNotFoundError) and exc.name == "OCP":
@@ -105,6 +116,8 @@ def load_ocp_bindings() -> OcpBindings:
         TopLoc_Location=TopLoc_Location,
         TopoDS=TopoDS,
         TopoDS_Compound=TopoDS_Compound,
+        TopTools_ListOfShape=TopTools_ListOfShape,
+        TopTools_MapOfShape=TopTools_MapOfShape,
         gp_Pnt=gp_Pnt,
         gp_Trsf=gp_Trsf,
     )
@@ -155,12 +168,13 @@ def _ocp_xmax_base_area(
         target = shape_bounds[source_axis + 3] if sign > 0.0 else shape_bounds[source_axis]
         explorer = TopExp_Explorer(shape, TopAbs_FACE)
         face_method = getattr(TopoDS, "Face_s", None) or getattr(TopoDS, "Face")
+        excluded_face_set = _OcpShapeSet(excluded_faces)
         native_area = 0.0
         found = False
 
         while explorer.More():
             face = face_method(explorer.Current())
-            if _contains_same_ocp_shape(excluded_faces, face):
+            if face in excluded_face_set:
                 explorer.Next()
                 continue
             face_bounds = _ocp_bounds(face, Bnd_Box=Bnd_Box, BRepBndLib=BRepBndLib)
@@ -252,21 +266,28 @@ def _boolean_union_ocp_solids(
     if len(solids) <= 1:
         return shape, False
 
-    fused = solids[0]
+    # Fuse all solids in one General Fuse run: a pairwise loop re-intersects the growing
+    # result against every remaining solid, which is quadratic in the solid count.
+    list_of_shape = load_ocp_bindings().TopTools_ListOfShape
+    arguments = list_of_shape()
+    arguments.Append(solids[0])
+    tools = list_of_shape()
     for solid in solids[1:]:
-        fuse = BRepAlgoAPI_Fuse(fused, solid)
-        if hasattr(fuse, "SetRunParallel"):
-            fuse.SetRunParallel(True)
-        fuse.Build()
-        if not fuse.IsDone():
-            return shape, None
-        try:
-            fuse.SimplifyResult(True, True, 1.0e-7)
-        except Exception:
-            pass
-        fused = fuse.Shape()
+        tools.Append(solid)
 
-    return fused, True
+    fuse = BRepAlgoAPI_Fuse()
+    fuse.SetArguments(arguments)
+    fuse.SetTools(tools)
+    if hasattr(fuse, "SetRunParallel"):
+        fuse.SetRunParallel(True)
+    fuse.Build()
+    if not fuse.IsDone():
+        return shape, None
+    try:
+        fuse.SimplifyResult(True, True, 1.0e-7)
+    except Exception:
+        pass
+    return fuse.Shape(), True
 
 
 def _ocp_shape_is_watertight(
@@ -289,7 +310,7 @@ def _ocp_shape_is_watertight(
     if not solids:
         return False
 
-    solid_faces: list[Any] = []
+    solid_faces = _OcpShapeSet()
     for solid in solids:
         try:
             if not BRepCheck_Analyzer(solid).IsValid():
@@ -304,10 +325,10 @@ def _ocp_shape_is_watertight(
                 return False
         except Exception:
             return False
-        solid_faces.extend(_explore_ocp_subshapes(solid, TopAbs_FACE, TopExp_Explorer))
+        solid_faces.update(_explore_ocp_subshapes(solid, TopAbs_FACE, TopExp_Explorer))
 
     all_faces = _explore_ocp_subshapes(shape, TopAbs_FACE, TopExp_Explorer)
-    return all(any(face.IsSame(solid_face) for solid_face in solid_faces) for face in all_faces)
+    return all(face in solid_faces for face in all_faces)
 
 
 def _explore_ocp_subshapes(shape: Any, shape_type: Any, TopExp_Explorer: Any) -> list[Any]:
@@ -363,15 +384,15 @@ def _extract_ocp_non_solid_faces(
     TopAbs_FACE: Any,
     TopExp_Explorer: Any,
 ) -> list[Any]:
-    solid_faces = [
+    solid_faces = _OcpShapeSet(
         face
         for solid in solids
         for face in _explore_ocp_subshapes(solid, TopAbs_FACE, TopExp_Explorer)
-    ]
+    )
     return [
         face
         for face in _explore_ocp_subshapes(shape, TopAbs_FACE, TopExp_Explorer)
-        if not _contains_same_ocp_shape(solid_faces, face)
+        if face not in solid_faces
     ]
 
 
@@ -517,33 +538,45 @@ def _classify_cut_result_faces(
 
     result_faces = _explore_ocp_subshapes(result_shape, TopAbs_FACE, TopExp_Explorer)
     retained_faces: list[Any] = []
+    retained_face_set = _OcpShapeSet()
     source_faces = _explore_ocp_subshapes(source_shape, TopAbs_FACE, TopExp_Explorer)
     try:
         for source_face in source_faces:
             modified = list(cut.Modified(source_face))
             if modified:
                 for face in modified:
-                    _append_unique_ocp_shape(retained_faces, face)
+                    if retained_face_set.add(face):
+                        retained_faces.append(face)
             elif not cut.IsDeleted(source_face):
-                _append_unique_ocp_shape(retained_faces, source_face)
+                if retained_face_set.add(source_face):
+                    retained_faces.append(source_face)
     except Exception:
         return None, None
 
-    if any(not _contains_same_ocp_shape(result_faces, face) for face in retained_faces):
+    result_face_set = _OcpShapeSet(result_faces)
+    if any(face not in result_face_set for face in retained_faces):
         return None, None
-    generated_faces = [
-        face for face in result_faces if not _contains_same_ocp_shape(retained_faces, face)
-    ]
+    generated_faces = [face for face in result_faces if face not in retained_face_set]
     return retained_faces, generated_faces
 
 
-def _append_unique_ocp_shape(shapes: list[Any], candidate: Any) -> None:
-    if not _contains_same_ocp_shape(shapes, candidate):
-        shapes.append(candidate)
+class _OcpShapeSet:
+    """Set of OCP shapes compared with ``IsSame`` (same TShape and Location), hashed by OCCT."""
 
+    def __init__(self, shapes: Iterable[Any] = ()) -> None:
+        self._map = load_ocp_bindings().TopTools_MapOfShape()
+        self.update(shapes)
 
-def _contains_same_ocp_shape(shapes: Sequence[Any], candidate: Any) -> bool:
-    return any(shape.IsSame(candidate) for shape in shapes)
+    def add(self, shape: Any) -> bool:
+        """Add ``shape`` and return whether it was not already present."""
+        return bool(self._map.Add(shape))
+
+    def update(self, shapes: Iterable[Any]) -> None:
+        for shape in shapes:
+            self._map.Add(shape)
+
+    def __contains__(self, shape: Any) -> bool:
+        return bool(self._map.Contains(shape))
 
 
 def _step_component_names_from_xcaf(path: Path, *, expected_count: int) -> tuple[str, ...]:
@@ -737,6 +770,7 @@ def _tessellate_ocp_shape_with_marked_faces(
         BRep_Tool, "Triangulation"
     )
     face_method = getattr(TopoDS, "Face_s", None) or getattr(TopoDS, "Face")
+    marked_face_set = _OcpShapeSet(marked_faces)
 
     while explorer.More():
         face = face_method(explorer.Current())
@@ -753,7 +787,7 @@ def _tessellate_ocp_shape_with_marked_faces(
             rows.append((float(point.X()), float(point.Y()), float(point.Z())))
 
         reversed_face = face.Orientation() == TopAbs_REVERSED
-        marked = _contains_same_ocp_shape(marked_faces, face)
+        marked = face in marked_face_set
         for index in range(1, triangulation.NbTriangles() + 1):
             n1, n2, n3 = triangulation.Triangle(index).Get()
             if reversed_face:
