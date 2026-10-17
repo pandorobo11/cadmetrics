@@ -839,3 +839,28 @@ def test_component_preview_meshes_are_display_only() -> None:
     np.testing.assert_allclose(selected.min(axis=0), preview.vertices.min(axis=0))
     np.testing.assert_allclose(selected.max(axis=0), preview.vertices.max(axis=0))
     assert preview.component_mesh_elapsed_sec > 0.0
+
+
+def test_component_preview_meshes_are_coarser_than_the_measurement_mesh(tmp_path: Path) -> None:
+    from cadmetrics.api import _inspect_model_with_options
+    from cadmetrics.load_options import ModelLoadOptions
+
+    path = tmp_path / "spheres.step"
+    _write_step_compound(
+        path,
+        [
+            BRepPrimAPI_MakeSphere(gp_Pnt(0.0, 0.0, 0.0), 1.0).Shape(),
+            BRepPrimAPI_MakeSphere(gp_Pnt(5.0, 0.0, 0.0), 1.0).Shape(),
+        ],
+    )
+    plain = _inspect_model_with_options(path, ModelLoadOptions.resolve())
+    preview = _inspect_model_with_options(
+        path, ModelLoadOptions.resolve(component_preview_meshes=True)
+    )
+    preview_triangles = sum(faces.shape[0] for _, faces in preview.component_meshes)
+    assert 0 < preview_triangles * 5 < preview.faces.shape[0]
+    # Meshing the copies must not touch the measured mesh or metrics.
+    np.testing.assert_array_equal(preview.vertices, plain.vertices)
+    np.testing.assert_array_equal(preview.faces, plain.faces)
+    assert preview.volume == plain.volume
+    assert preview.surface_area == plain.surface_area

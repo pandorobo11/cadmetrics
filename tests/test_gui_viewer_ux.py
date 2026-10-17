@@ -407,3 +407,15 @@ def test_models_without_component_meshes_never_preview(viewer) -> None:
     widget.set_model(_model())
     widget.set_component_selection(((1,), "filter"))
     assert widget.component_preview_active is False
+
+
+def test_component_preview_keeps_the_grid_on_the_shown_geometry(viewer) -> None:
+    widget, _ = viewer
+    widget.set_model(_component_model((1,)))
+    # Component 2 (x 2..3) is not in the loaded model; re-checking it widens the grid.
+    widget.set_component_selection(((1, 2), "filter"))
+    assert widget.component_preview_active is True
+    assert tuple(widget._grid_actor.bounds) == (0.0, 3.0, 0.0, 1.0, 0.0, 1.0)
+
+    widget.set_component_selection(((1,), "filter"))
+    assert tuple(widget._grid_actor.bounds) == (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)

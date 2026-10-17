@@ -828,23 +828,34 @@ class ModelViewer(QtWidgets.QWidget):
                 if actor is not None:
                     actor.SetVisibility(not pending)
         self._component_preview_shown = pending
+        preview_bounds: list[tuple[float, ...]] = []
         if pending:
-            self._add_component_preview_actors()
+            preview_bounds = self._add_component_preview_actors()
+        # PyVista refits the grid to every actor (including the projection arrow) when
+        # actors change; keep it on the geometry shown.
+        if self._grid_actor is not None and self._mesh_polydata is not None:
+            bounds = [tuple(self._mesh_polydata.bounds), *preview_bounds]
+            self._grid_actor.bounds = tuple(
+                function(values)
+                for function, values in zip((min, max) * 3, zip(*bounds, strict=True), strict=True)
+            )
         if render:
             self._plotter.render()
 
-    def _add_component_preview_actors(self) -> None:
+    def _add_component_preview_actors(self) -> list[tuple[float, ...]]:
         import pyvista as pv
 
         assert self._plotter is not None and self._model is not None
         assert self._component_selection is not None
         selected, mode = self._component_selection
         chosen = set(selected)
+        bounds: list[tuple[float, ...]] = []
         for index, (vertices, faces) in enumerate(self._model.component_meshes, start=1):
             if faces.size == 0:
                 continue
             cells = np.column_stack([np.full(faces.shape[0], 3, dtype=np.int64), faces]).ravel()
             polydata = pv.PolyData(vertices, cells)
+            bounds.append(tuple(polydata.bounds))
             if index in chosen:
                 style: dict[str, Any] = {
                     "color": MODEL_COLOR,
@@ -890,6 +901,7 @@ class ModelViewer(QtWidgets.QWidget):
             vertical="bottom",
             panel=True,
         )
+        return bounds
 
     def _remove_actor(self, attribute: str) -> None:
         if self._plotter is None:

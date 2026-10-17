@@ -528,6 +528,13 @@ def _finalize_step_model(
     )
 
 
+# Preview meshes only need to read as shapes, so they use a much coarser tessellation.
+# On curved models the angular limit dominates; with smooth shading 0.5 rad still looks
+# round, at about a twentieth of the triangles of the default measurement mesh.
+PREVIEW_DEFLECTION_FACTOR = 10.0
+PREVIEW_ANGULAR_DEFLECTION = 0.5
+
+
 def _tessellate_step_components_for_display(
     prepared: PreparedStepInput,
     geometry: StepGeometry,
@@ -537,23 +544,21 @@ def _tessellate_step_components_for_display(
 ) -> tuple[tuple[tuple[FloatArray, IntArray], ...], float]:
     """Mesh every solid component separately so the GUI can preview selection changes.
 
-    Runs after all metrics are computed and uses the same tessellation parameters, so it
-    cannot change measured values.
+    Runs after all metrics are computed, on copies of the solids: faces shared with the
+    measured shape would otherwise reuse (and could receive) its triangulation.
     """
     if not options.component_preview_meshes or len(prepared.solids) <= 1:
         return (), 0.0
     start = perf_counter()
     meshes: list[tuple[FloatArray, IntArray]] = []
+    deflection = geometry.native_mesh_deflection * PREVIEW_DEFLECTION_FACTOR
+    angular = max(options.angular_deflection, PREVIEW_ANGULAR_DEFLECTION)
     for solid in prepared.solids:
-        ocp.BRepMesh_IncrementalMesh(
-            solid,
-            geometry.native_mesh_deflection,
-            False,
-            options.angular_deflection,
-            True,
-        )
+        # Copy geometry but not triangulation, so the coarse mesh is generated afresh.
+        copy = ocp.BRepBuilderAPI_Copy(solid, True, False).Shape()
+        ocp.BRepMesh_IncrementalMesh(copy, deflection, False, angular, True)
         vertices, faces, _ = _tessellate_ocp_shape_with_marked_faces(
-            solid,
+            copy,
             marked_faces=(),
             BRep_Tool=ocp.BRep_Tool,
             TopAbs_FACE=ocp.TopAbs_FACE,

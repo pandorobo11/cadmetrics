@@ -200,9 +200,10 @@ solid from subsequent calculations. Changes apply on the next `Run Sweep`; click
 Until then, the 3D view previews the pending selection without reloading: each component is drawn
 separately, checked components in the model colour, unchecked components as faint grey (or
 translucent red in `Subtract unchecked` mode), with a note at the bottom of the view. The overlay
-values still describe the applied selection. The preview meshes are tessellated once at load with
-the same settings as the model; they are never used for measurements, and their time is not
-included in `load_elapsed_sec`.
+values still describe the applied selection. The preview meshes are tessellated once at load from
+copies of the components, much more coarsely than the measurement mesh (about a twentieth of the
+triangles on curved parts), so they add little load time or memory. They are never used for
+measurements, and their time is not included in `load_elapsed_sec`.
 
 The filters operate on STEP solid geometry after loading and before boolean union. Keeping all
 components enabled preserves the default behavior. For multi-file STEP assemblies, components are
