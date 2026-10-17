@@ -94,7 +94,7 @@ class _Plotter(QtWidgets.QWidget):
     def add_text(self, text, **kwargs):
         return self._add("text", text)
 
-    def remove_actor(self, actor) -> None:
+    def remove_actor(self, actor, render=True) -> None:
         del self.actors[actor]
 
     def screenshot(self, path: str) -> None:

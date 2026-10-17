@@ -125,6 +125,7 @@ class ModelViewer(QtWidgets.QWidget):
         self._component_preview_actors: list[Any] = []
         self._component_preview_notice: Any | None = None
         self._component_preview_shown = False
+        self._component_preview_bounds: list[tuple[float, ...]] = []
         self._camera_direction: tuple[float, float, float] = DEFAULT_CAMERA_DIRECTION
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -265,7 +266,7 @@ class ModelViewer(QtWidgets.QWidget):
         if self._model is not None and self._model.vertex_count > 0:
             self._update_overlay()
         if self._component_preview_shown:
-            self._update_component_preview(render=False)
+            self._update_component_preview_notice()
         self._plotter.render()
 
     def _create_plotter(self, factory: PlotterFactory | None) -> QtWidgets.QWidget:
@@ -340,6 +341,7 @@ class ModelViewer(QtWidgets.QWidget):
         self._component_preview_actors = []
         self._component_preview_notice = None
         self._component_preview_shown = False
+        self._component_preview_bounds = []
 
     def _update_grid(self) -> None:
         if self._plotter is None:
@@ -360,6 +362,7 @@ class ModelViewer(QtWidgets.QWidget):
             n_ylabels=3,
             n_zlabels=3,
         )
+        self._sync_grid_bounds()
 
     def _configure_lighting(self) -> None:
         if self._plotter is None:
@@ -511,10 +514,7 @@ class ModelViewer(QtWidgets.QWidget):
             )
             self._set_camera(position, focal_point, view_up)
         self._update_overlay()
-        # PyVista refreshes grid bounds from every actor when overlays are added/removed.
-        # Keep projection arrows and highlight offsets out of the coordinate grid.
-        if self._grid_actor is not None and self._mesh_polydata is not None:
-            self._grid_actor.bounds = self._mesh_polydata.bounds
+        self._sync_grid_bounds()
         self._plotter.render()
 
     def _projection_direction(self) -> np.ndarray | None:
@@ -805,16 +805,32 @@ class ModelViewer(QtWidgets.QWidget):
         # The mode only changes the geometry when some component is unchecked.
         return mode != model.step_component_mode and len(loaded) < count
 
+    def _sync_grid_bounds(self) -> None:
+        # PyVista refits the grid to every actor (including the projection arrow and
+        # highlight offsets) when actors change; keep it on the geometry shown.
+        if self._grid_actor is None or self._mesh_polydata is None:
+            return
+        bounds = [tuple(self._mesh_polydata.bounds)]
+        if self._component_preview_shown:
+            bounds.extend(self._component_preview_bounds)
+        self._grid_actor.bounds = tuple(
+            function(values)
+            for function, values in zip((min, max) * 3, zip(*bounds, strict=True), strict=True)
+        )
+
     def _update_component_preview(self, *, render: bool) -> None:
         if self._plotter is None:
             return
+        # PyVista renders on every actor change by default; with hundreds of components
+        # that queues hundreds of full renders, so render at most once at the end.
         for actor in self._component_preview_actors:
             try:
-                self._plotter.remove_actor(actor)
+                self._plotter.remove_actor(actor, render=False)
             except Exception:
                 pass
         self._component_preview_actors = []
-        self._remove_actor("_component_preview_notice")
+        self._component_preview_bounds = []
+        self._remove_actor("_component_preview_notice", render=False)
         pending = self._component_preview_pending()
         if pending or self._component_preview_shown:
             # The loaded union and its highlights describe the applied selection only.
@@ -828,34 +844,26 @@ class ModelViewer(QtWidgets.QWidget):
                 if actor is not None:
                     actor.SetVisibility(not pending)
         self._component_preview_shown = pending
-        preview_bounds: list[tuple[float, ...]] = []
         if pending:
-            preview_bounds = self._add_component_preview_actors()
-        # PyVista refits the grid to every actor (including the projection arrow) when
-        # actors change; keep it on the geometry shown.
-        if self._grid_actor is not None and self._mesh_polydata is not None:
-            bounds = [tuple(self._mesh_polydata.bounds), *preview_bounds]
-            self._grid_actor.bounds = tuple(
-                function(values)
-                for function, values in zip((min, max) * 3, zip(*bounds, strict=True), strict=True)
-            )
+            self._add_component_preview_actors()
+            self._update_component_preview_notice()
+        self._sync_grid_bounds()
         if render:
             self._plotter.render()
 
-    def _add_component_preview_actors(self) -> list[tuple[float, ...]]:
+    def _add_component_preview_actors(self) -> None:
         import pyvista as pv
 
         assert self._plotter is not None and self._model is not None
         assert self._component_selection is not None
         selected, mode = self._component_selection
         chosen = set(selected)
-        bounds: list[tuple[float, ...]] = []
         for index, (vertices, faces) in enumerate(self._model.component_meshes, start=1):
             if faces.size == 0:
                 continue
             cells = np.column_stack([np.full(faces.shape[0], 3, dtype=np.int64), faces]).ravel()
             polydata = pv.PolyData(vertices, cells)
-            bounds.append(tuple(polydata.bounds))
+            self._component_preview_bounds.append(tuple(polydata.bounds))
             if index in chosen:
                 style: dict[str, Any] = {
                     "color": MODEL_COLOR,
@@ -880,9 +888,15 @@ class ModelViewer(QtWidgets.QWidget):
                     smooth_shading=True,
                     split_sharp_edges=True,
                     pickable=False,
+                    render=False,
                     **style,
                 )
             )
+
+    def _update_component_preview_notice(self) -> None:
+        if self._plotter is None:
+            return
+        self._remove_actor("_component_preview_notice", render=False)
         ratio = self._device_pixel_ratio()
         view_width, _ = self._view_size()
         actor = self._plotter.add_text(
@@ -891,6 +905,7 @@ class ModelViewer(QtWidgets.QWidget):
             font_size=OVERLAY_FONT_SIZE,
             color=_MUTED_TEXT_COLOR,
             shadow=False,
+            render=False,
         )
         self._component_preview_notice = actor
         self._style_text(
@@ -901,15 +916,14 @@ class ModelViewer(QtWidgets.QWidget):
             vertical="bottom",
             panel=True,
         )
-        return bounds
 
-    def _remove_actor(self, attribute: str) -> None:
+    def _remove_actor(self, attribute: str, *, render: bool = True) -> None:
         if self._plotter is None:
             return
         actor = getattr(self, attribute)
         if actor is not None:
             try:
-                self._plotter.remove_actor(actor)
+                self._plotter.remove_actor(actor, render=render)
             except Exception:
                 pass
             setattr(self, attribute, None)
