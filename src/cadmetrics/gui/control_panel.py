@@ -131,10 +131,7 @@ class ControlPanel(QtWidgets.QWidget):
         self.attitude_mode.addItem("Alpha / Beta", "alpha_beta")
         self.attitude_mode.addItem("Roll / Pitch", "roll_pitch")
         self.attitude_mode.addItem("Unit vector", "vector")
-        attitude_mode_row = QtWidgets.QFormLayout()
-        self._configure_form_layout(attitude_mode_row, margins=(0, 0, 0, 0))
-        self._add_row(attitude_mode_row, "Mode", self.attitude_mode)
-        attitude_layout.addLayout(attitude_mode_row)
+        attitude_layout.addLayout(self._labelled_row("Mode", self.attitude_mode))
         self.alpha_beta_group, self.alpha_fields, self.beta_fields = self._sweep_grid(
             "Alpha", "Beta"
         )
@@ -216,8 +213,6 @@ class ControlPanel(QtWidgets.QWidget):
         component_buttons.addWidget(self.component_none_button)
         component_buttons.addStretch(1)
         detail_layout.addLayout(component_buttons)
-        mode_row = QtWidgets.QFormLayout()
-        self._configure_form_layout(mode_row, margins=(0, 0, 0, 0))
         self.step_component_mode = PanelComboBox()
         self.step_component_mode.addItem("Exclude unchecked (default)", "filter")
         self.step_component_mode.addItem("Subtract unchecked", "subtract")
@@ -226,8 +221,7 @@ class ControlPanel(QtWidgets.QWidget):
             "Subtract: unchecked components are cut away from the checked ones, "
             "which can expose new surfaces."
         )
-        self._add_row(mode_row, "Mode", self.step_component_mode)
-        detail_layout.addLayout(mode_row)
+        detail_layout.addLayout(self._labelled_row("Mode", self.step_component_mode))
         components_layout.addWidget(self.component_detail)
         self.component_detail.setVisible(False)
 
@@ -925,6 +919,18 @@ class ControlPanel(QtWidgets.QWidget):
         label = self._field_label(text, LABEL_WIDTH)
         form.addRow(label, field)
         return label
+
+    @staticmethod
+    def _labelled_row(text: str, field: QtWidgets.QWidget) -> QtWidgets.QHBoxLayout:
+        """A single label/field row outside a form, aligned with the form columns."""
+        # A one-row QFormLayout inside a widget that starts hidden can lay its label
+        # column out at zero width on Windows; a plain row has no such special case.
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(FIELD_GAP)
+        row.addWidget(ControlPanel._field_label(text, LABEL_WIDTH))
+        row.addWidget(field, 1)
+        return row
 
     @staticmethod
     def _grid_label(text: str) -> QtWidgets.QLabel:
