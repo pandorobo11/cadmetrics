@@ -1,4 +1,5 @@
 import csv
+import dataclasses
 import re
 from pathlib import Path
 
@@ -9,8 +10,14 @@ pytest.importorskip("OCP")
 
 from OCP.BRep import BRep_Builder
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakePolygon
-from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeSphere
-from OCP.gp import gp_Pnt
+from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+from OCP.BRepPrimAPI import (
+    BRepPrimAPI_MakeBox,
+    BRepPrimAPI_MakeCylinder,
+    BRepPrimAPI_MakeSphere,
+    BRepPrimAPI_MakeTorus,
+)
+from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt
 from OCP.IFSelect import IFSelect_RetDone
 from OCP.Interface import Interface_Static
 from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
@@ -20,6 +27,7 @@ from OCP.TopoDS import TopoDS, TopoDS_Compound
 
 from cadmetrics.api import inspect_model, measure, measure_model, project, project_model
 from cadmetrics.cli import app
+import cadmetrics._ocp as ocp_module
 from cadmetrics._ocp import (
     _OcpShapeSet,
     _boolean_union_ocp_solids,
@@ -29,6 +37,7 @@ from cadmetrics._ocp import (
     _ocp_bounds,
     _ocp_shape_metric,
     _ocp_volume_metric_gk,
+    _ocp_union_matches_solids,
     _usable_step_component_name,
     load_ocp_bindings,
 )
@@ -533,6 +542,250 @@ def test_step_subtract_mode_cli_options_and_inspect_component_list(tmp_path: Pat
     assert inspected.exit_code == 0, inspected.output
     assert "component_list" in inspected.output
     assert "1: Component 1" in inspected.output
+
+
+def _bored_cylinder_and_tangent_torus():
+    # The torus' inner equator touches the cylinder's outer face along one line.
+    # Without a fuzzy value OpenCascade 7.9 fuses these into a valid solid of
+    # about 1599 mm^3 (the torus alone) instead of about 6024 mm^3.
+    outer = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), 10.0, 20.0)
+    bore = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(0, 0, -1), gp_Dir(0, 0, 1)), 5.0, 22.0)
+    cylinder = BRepAlgoAPI_Cut(outer.Shape(), bore.Shape()).Shape()
+    torus = BRepPrimAPI_MakeTorus(gp_Ax2(gp_Pnt(0, 16, 10), gp_Dir(0, 0, 1)), 9.0, 3.0).Shape()
+    return cylinder, torus
+
+
+def test_step_union_of_tangent_curved_solids_keeps_both_solids(tmp_path: Path) -> None:
+    step_path = tmp_path / "tangent_torus.step"
+    cylinder, torus = _bored_cylinder_and_tangent_torus()
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    builder.Add(compound, cylinder)
+    builder.Add(compound, torus)
+    _write_step_with_unit(step_path, compound, "MM")
+
+    measured = measure(step_path, output_unit="millimeters")
+
+    # Monte Carlo estimate of the union: 6021 +- 66 mm^3; parts sum to 6311 mm^3.
+    assert measured.volume == pytest.approx(6024.5, rel=1.0e-3)
+    assert not any("boolean-union" in warning for warning in measured.warnings)
+
+
+def _union_kwargs(ocp):
+    return dict(
+        BRepAlgoAPI_Fuse=ocp.BRepAlgoAPI_Fuse,
+        TopAbs_SOLID=ocp.TopAbs_SOLID,
+        TopExp_Explorer=ocp.TopExp_Explorer,
+        TopoDS=ocp.TopoDS,
+    )
+
+
+def _compound(shapes):
+    builder = BRep_Builder()
+    compound = TopoDS_Compound()
+    builder.MakeCompound(compound)
+    for shape in shapes:
+        builder.Add(compound, shape)
+    return compound
+
+
+def test_union_check_rejects_union_that_lost_a_solid() -> None:
+    kwargs = dict(ocp=load_ocp_bindings())
+    cylinder, torus = _bored_cylinder_and_tangent_torus()
+    separate = BRepPrimAPI_MakeBox(gp_Pnt(30, 30, 0), 5, 5, 5).Shape()
+
+    assert _ocp_union_matches_solids(_compound([torus, separate]), [torus, separate], **kwargs)
+    assert not _ocp_union_matches_solids(torus, [cylinder, torus], **kwargs)
+
+
+def test_union_check_samples_every_solid_of_a_sparse_assembly() -> None:
+    kwargs = dict(ocp=load_ocp_bindings())
+    near = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    far = BRepPrimAPI_MakeBox(gp_Pnt(100, 100, 100), 1.0, 1.0, 1.0).Shape()
+
+    # Almost all of the assembly's bounding box is empty space.
+    assert _ocp_union_matches_solids(_compound([near, far]), [near, far], **kwargs)
+    assert not _ocp_union_matches_solids(near, [near, far], **kwargs)
+
+
+def _thin_hollow_cylinder():
+    outer = BRepPrimAPI_MakeCylinder(10.0, 20.0).Shape()
+    inner = BRepPrimAPI_MakeCylinder(9.9, 20.0).Shape()
+    return ocp_module._extract_ocp_solids(
+        BRepAlgoAPI_Cut(outer, inner).Shape(),
+        TopAbs_SOLID=load_ocp_bindings().TopAbs_SOLID,
+        TopExp_Explorer=TopExp_Explorer,
+        TopoDS=TopoDS,
+    )[0]
+
+
+def test_union_check_finds_interior_points_of_thin_walled_solids() -> None:
+    ocp = load_ocp_bindings()
+    cylinder = _thin_hollow_cylinder()
+    cube = BRepPrimAPI_MakeBox(gp_Pnt(30, 0, 0), 1.0, 1.0, 1.0).Shape()
+
+    # Random points in the cylinder's bounding box almost never land in its 0.1 mm wall.
+    assert not _ocp_union_matches_solids(cube, [cylinder, cube], ocp=ocp)
+    fused, unioned = _boolean_union_ocp_solids(_compound([cylinder, cube]), **_union_kwargs(ocp))
+    assert unioned is True
+    assert _ocp_shape_metric(fused, ocp.GProp_GProps, ocp.BRepGProp, "VolumeProperties") == (
+        pytest.approx(1.0 + np.pi * (10.0**2 - 9.9**2) * 20.0)
+    )
+
+
+def test_union_check_accepts_nested_and_overlapping_solids_in_any_order() -> None:
+    ocp = load_ocp_bindings()
+    outer = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape()
+    nested = BRepPrimAPI_MakeBox(gp_Pnt(2, 2, 2), 3.0, 3.0, 3.0).Shape()
+    overlapping = BRepPrimAPI_MakeBox(gp_Pnt(8, 8, 8), 4.0, 4.0, 4.0).Shape()
+
+    for solids in ([outer, nested, overlapping], [overlapping, nested, outer]):
+        fused, unioned = _boolean_union_ocp_solids(_compound(solids), **_union_kwargs(ocp))
+        assert unioned is True
+        assert _ocp_shape_metric(fused, ocp.GProp_GProps, ocp.BRepGProp, "VolumeProperties") == (
+            pytest.approx(1000.0 + 64.0 - 8.0)
+        )
+    assert not _ocp_union_matches_solids(outer, [outer, overlapping], ocp=ocp)
+
+
+def test_union_check_without_interior_points_does_not_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ocp = load_ocp_bindings()
+    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    monkeypatch.setattr(ocp_module, "_ocp_points_inside_solid", lambda *a, **k: [])
+
+    assert not _ocp_union_matches_solids(box, [box], ocp=ocp)
+
+
+def test_union_check_that_cannot_run_does_not_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    ocp = load_ocp_bindings()
+    near = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
+    far = BRepPrimAPI_MakeBox(gp_Pnt(3, 0, 0), 1.0, 1.0, 1.0).Shape()
+    union = _compound([near, far])
+
+    def failing_intersector():
+        raise RuntimeError("no intersector")
+
+    class NotDoneIntersector:
+        def Load(self, shape, tolerance):
+            pass
+
+        def Perform(self, line, start, end):
+            pass
+
+        def IsDone(self):
+            return False
+
+        def NbPnt(self):
+            return 1
+
+    for intersector in (failing_intersector, NotDoneIntersector):
+        broken = dataclasses.replace(ocp, IntCurvesFace_ShapeIntersector=intersector)
+        assert not _ocp_union_matches_solids(union, [near, far], ocp=broken)
+
+    infinite = (float("-inf"), 0.0, 0.0, float("inf"), 1.0, 1.0)
+    monkeypatch.setattr(ocp_module, "_ocp_bounds", lambda shape, **_: infinite)
+    assert not _ocp_union_matches_solids(union, [near, far], ocp=ocp)
+
+
+def test_union_fuzzy_value_does_not_close_gaps_next_to_distant_parts() -> None:
+    ocp = load_ocp_bindings()
+    cubes = [
+        BRepPrimAPI_MakeBox(gp_Pnt(x, 0, 0), 1.0, 1.0, 1.0).Shape() for x in (0.0, 1.005, 100000.0)
+    ]
+
+    fused, unioned = _boolean_union_ocp_solids(_compound(cubes), **_union_kwargs(ocp))
+
+    assert unioned is True
+    assert _ocp_shape_metric(fused, ocp.GProp_GProps, ocp.BRepGProp, "VolumeProperties") == (
+        pytest.approx(3.0)
+    )
+    assert _ocp_shape_metric(fused, ocp.GProp_GProps, ocp.BRepGProp, "SurfaceProperties") == (
+        pytest.approx(18.0)
+    )
+
+
+def test_union_retries_with_larger_fuzzy_value_then_gives_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ocp = load_ocp_bindings()
+    boxes = [
+        BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape(),
+        BRepPrimAPI_MakeBox(gp_Pnt(0.5, 0, 0), 1.0, 1.0, 1.0).Shape(),
+    ]
+    compound = _compound(boxes)
+    fuzzy_values: list[float] = []
+    original_fuse = ocp_module._fuse_ocp_solids
+
+    def recording_fuse(solids, *, fuzzy_value, **kwargs):
+        fuzzy_values.append(fuzzy_value)
+        return original_fuse(solids, fuzzy_value=fuzzy_value, **kwargs)
+
+    monkeypatch.setattr(ocp_module, "_fuse_ocp_solids", recording_fuse)
+    verdicts = iter([False, True])
+    monkeypatch.setattr(ocp_module, "_ocp_union_matches_solids", lambda *a, **k: next(verdicts))
+    fused, unioned = _boolean_union_ocp_solids(compound, **_union_kwargs(ocp))
+    assert unioned is True
+    assert fuzzy_values == list(ocp_module._UNION_FUZZY_VALUES_MM)
+    assert _ocp_shape_metric(fused, ocp.GProp_GProps, ocp.BRepGProp, "VolumeProperties") == (
+        pytest.approx(1.5)
+    )
+
+    monkeypatch.setattr(ocp_module, "_ocp_union_matches_solids", lambda *a, **k: False)
+    fused, unioned = _boolean_union_ocp_solids(compound, **_union_kwargs(ocp))
+    assert unioned is None
+    assert fused is compound
+
+
+def test_union_retries_when_fuse_result_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    ocp = load_ocp_bindings()
+    boxes = [
+        BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape(),
+        BRepPrimAPI_MakeBox(gp_Pnt(0.5, 0, 0), 1.0, 1.0, 1.0).Shape(),
+    ]
+    validity = iter([False, True])
+    monkeypatch.setattr(ocp_module, "_ocp_shape_is_valid", lambda *a: next(validity))
+    checks: list[bool] = []
+    original_check = ocp_module._ocp_union_matches_solids
+
+    def recording_check(*args, **kwargs):
+        checks.append(True)
+        return original_check(*args, **kwargs)
+
+    monkeypatch.setattr(ocp_module, "_ocp_union_matches_solids", recording_check)
+    fused, unioned = _boolean_union_ocp_solids(_compound(boxes), **_union_kwargs(ocp))
+
+    assert unioned is True
+    assert len(checks) == 1
+    assert _ocp_shape_metric(fused, ocp.GProp_GProps, ocp.BRepGProp, "VolumeProperties") == (
+        pytest.approx(1.5)
+    )
+
+
+def test_rejected_union_warns_in_filter_mode_and_fails_subtraction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ocp_module, "_ocp_union_matches_solids", lambda *a, **k: False)
+    step_path = SAMPLES_DIR / "two_boxes_intersecting" / "two_boxes_intersecting.step"
+
+    measured = measure(step_path)
+    assert measured.volume == pytest.approx(2.0)
+    assert any("Could not boolean-union" in warning for warning in measured.warnings)
+
+    three_path = tmp_path / "three_boxes.step"
+    _write_step_compound(
+        three_path,
+        [
+            BRepPrimAPI_MakeBox(1000.0, 1000.0, 1000.0).Shape(),
+            BRepPrimAPI_MakeBox(gp_Pnt(500.0, 0.0, 0.0), 1000.0, 1000.0, 1000.0).Shape(),
+            BRepPrimAPI_MakeBox(gp_Pnt(0.0, 500.0, 0.0), 1000.0, 1000.0, 1000.0).Shape(),
+        ],
+    )
+    with pytest.raises(ValueError, match="Could not boolean-union enabled STEP components"):
+        measure(three_path, step_components=(1, 2), step_component_mode="subtract")
 
 
 def test_step_assembly_files_are_boolean_unioned_for_measurements(tmp_path: Path) -> None:
