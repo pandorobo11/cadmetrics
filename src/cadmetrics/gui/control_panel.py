@@ -79,6 +79,7 @@ class ControlPanel(QtWidgets.QWidget):
         self._section_toggles: dict[str, QtWidgets.QToolButton] = {}
         self._model_loaded = False
         self._advanced_dirty = False
+        self._bulk_component_change = False
         self._busy = False
         self.setMinimumWidth(430)
         self.setMaximumWidth(540)
@@ -567,6 +568,8 @@ class ControlPanel(QtWidgets.QWidget):
         return None
 
     def _refresh_validation(self, *_args: object) -> None:
+        if self._bulk_component_change:
+            return
         message = self.validation_message()
         self.validation_label.setText(message or "")
         self.validation_label.setVisible(message is not None)
@@ -683,9 +686,19 @@ class ControlPanel(QtWidgets.QWidget):
                     widget.deleteLater()
 
     def _set_all_components(self, checked: bool) -> None:
-        for checkbox in self._component_checkboxes:
-            checkbox.setChecked(checked)
+        changed = [box for box in self._component_checkboxes if box.isChecked() != checked]
+        # Report All/None as one change: per-checkbox updates would re-render the
+        # preview once for every component.
+        self._bulk_component_change = True
+        try:
+            for checkbox in changed:
+                checkbox.setChecked(checked)
+        finally:
+            self._bulk_component_change = False
         self._sync_component_summary()
+        if changed:
+            self._mark_advanced_dirty()
+            self._refresh_validation()
 
     def _sync_component_summary(self) -> None:
         total = len(self._component_checkboxes)
@@ -767,6 +780,8 @@ class ControlPanel(QtWidgets.QWidget):
         self.mesh_deflection_auto.toggled.connect(self._mark_advanced_dirty)
 
     def _mark_advanced_dirty(self, *_args: object) -> None:
+        if self._bulk_component_change:
+            return
         self._set_advanced_dirty(True)
         self._emit_preview_request()
 

@@ -356,3 +356,29 @@ def test_component_list_height_fits_short_lists(qtbot, tmp_path: Path) -> None:
     names = tuple(f"Part {index}" for index in range(30))
     panel.set_model(_model(tmp_path / "model.step", names))
     assert panel.component_scroll.height() == 200
+
+
+def test_all_and_none_report_one_component_change(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path, "model.step")
+    names = tuple(f"Part {index}" for index in range(50))
+    panel.set_model(_model(tmp_path / "model.step", names))
+    requests = []
+    panel.request_changed.connect(requests.append)
+
+    panel.component_none_button.setEnabled(True)
+    panel.component_none_button.click()
+    assert len(requests) == 1
+    assert panel.component_summary.text() == "0 of 50 components enabled."
+    assert panel.run_button.isEnabled() is False
+    assert "component" in panel.validation_label.text().lower()
+    assert panel._advanced_dirty is True
+
+    panel.component_all_button.click()
+    assert len(requests) == 2
+    assert requests[-1] is not None
+    assert requests[-1].step_components == tuple(range(1, 51))
+    assert panel.run_button.isEnabled() is True
+
+    # Nothing changes, so nothing is reported.
+    panel.component_all_button.click()
+    assert len(requests) == 2
