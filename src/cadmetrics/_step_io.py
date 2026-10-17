@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import isfinite
+from math import hypot, isfinite
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from cadmetrics._mesh_io import (
@@ -498,6 +499,12 @@ def _finalize_step_model(
         kernel_unit=prepared.kernel_unit,
         output_unit=options.output_unit,
     )
+    component_meshes, component_mesh_elapsed = _tessellate_step_components_for_display(
+        prepared,
+        geometry,
+        options=options,
+        ocp=ocp,
+    )
     warnings = _final_step_warnings(
         prepared,
         selected.warnings,
@@ -516,7 +523,82 @@ def _finalize_step_model(
         base_metric=base_metric,
         metrics=scaled_metrics,
         warnings=warnings,
+        component_meshes=component_meshes,
+        component_mesh_elapsed_sec=component_mesh_elapsed,
     )
+
+
+# Preview meshes only need to read as shapes, so they use a much coarser tessellation.
+# On curved models the angular limit dominates; with smooth shading 0.5 rad still looks
+# round, at about a twentieth of the triangles of the default measurement mesh.
+PREVIEW_DEFLECTION_FACTOR = 10.0
+PREVIEW_ANGULAR_DEFLECTION = 0.5
+
+
+def _tessellate_step_components_for_display(
+    prepared: PreparedStepInput,
+    geometry: StepGeometry,
+    *,
+    options: ModelLoadOptions,
+    ocp: OcpBindings,
+) -> tuple[tuple[tuple[FloatArray, IntArray], ...], float]:
+    """Mesh every solid component separately so the GUI can preview selection changes.
+
+    Runs after all metrics are computed, on copies of the solids: faces shared with the
+    measured shape would otherwise reuse (and could receive) its triangulation.
+    """
+    if not options.component_preview_meshes or len(prepared.solids) <= 1:
+        return (), 0.0
+    start = perf_counter()
+    meshes: list[tuple[FloatArray, IntArray]] = []
+    angular = max(options.angular_deflection, PREVIEW_ANGULAR_DEFLECTION)
+    for solid in prepared.solids:
+        # The model deflection follows the selected shape. A large unchecked component next
+        # to a small selection would be meshed far too finely, so never go below the
+        # automatic deflection of the component itself.
+        own_deflection = _resolve_mesh_deflection(
+            "auto",
+            native_diagonal=_loose_ocp_diagonal(solid, ocp=ocp),
+            scale=geometry.scale,
+        )
+        native_own_deflection = (
+            own_deflection / geometry.scale if geometry.scale != 0.0 else own_deflection
+        )
+        deflection = (
+            max(geometry.native_mesh_deflection, native_own_deflection) * PREVIEW_DEFLECTION_FACTOR
+        )
+        # Copy geometry but not triangulation, so the coarse mesh is generated afresh.
+        copy = ocp.BRepBuilderAPI_Copy(solid, True, False).Shape()
+        ocp.BRepMesh_IncrementalMesh(copy, deflection, False, angular, True)
+        vertices, faces, _ = _tessellate_ocp_shape_with_marked_faces(
+            copy,
+            marked_faces=(),
+            BRep_Tool=ocp.BRep_Tool,
+            TopAbs_FACE=ocp.TopAbs_FACE,
+            TopAbs_REVERSED=ocp.TopAbs_REVERSED,
+            TopExp_Explorer=ocp.TopExp_Explorer,
+            TopLoc_Location=ocp.TopLoc_Location,
+            TopoDS=ocp.TopoDS,
+        )
+        meshes.append((vertices * geometry.scale, faces))
+    return tuple(meshes), perf_counter() - start
+
+
+def _loose_ocp_diagonal(shape: Any, *, ocp: OcpBindings) -> float:
+    """Fast bounding-box diagonal from control points; enough to size a preview mesh."""
+    box = ocp.Bnd_Box()
+    add = getattr(ocp.BRepBndLib, "Add_s", None) or getattr(ocp.BRepBndLib, "Add")
+    try:
+        add(shape, box, False)
+        minimum, maximum = box.CornerMin(), box.CornerMax()
+    except Exception:
+        return 1.0
+    diagonal = hypot(
+        maximum.X() - minimum.X(),
+        maximum.Y() - minimum.Y(),
+        maximum.Z() - minimum.Z(),
+    )
+    return diagonal if isfinite(diagonal) and diagonal > 0.0 else 1.0
 
 
 def _select_step_shape(
@@ -942,6 +1024,8 @@ def _build_step_model_data(
     base_metric: StepBaseMetric,
     metrics: ScaledStepMetrics,
     warnings: tuple[str, ...],
+    component_meshes: tuple[tuple[FloatArray, IntArray], ...] = (),
+    component_mesh_elapsed_sec: float = 0.0,
 ) -> ModelData:
     return ModelData(
         path=prepared.path,
@@ -966,6 +1050,8 @@ def _build_step_model_data(
         selected_components=selected.selected_components,
         bounds=geometry.bounds,
         warnings=warnings,
+        component_meshes=component_meshes,
+        component_mesh_elapsed_sec=component_mesh_elapsed_sec,
     )
 
 

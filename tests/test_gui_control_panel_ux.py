@@ -382,3 +382,24 @@ def test_all_and_none_report_one_component_change(qtbot, tmp_path: Path) -> None
     # Nothing changes, so nothing is reported.
     panel.component_all_button.click()
     assert len(requests) == 2
+
+
+def test_component_selection_is_reported_for_the_viewer(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path, "model.step")
+    selections = []
+    panel.component_selection_changed.connect(selections.append)
+    panel.set_model(_model(tmp_path / "model.step", ("A", "B", "C")))
+    assert selections[-1] == ((1, 2, 3), "filter")
+
+    panel._component_checkboxes[1].setChecked(False)
+    assert selections[-1] == ((1, 3), "filter")
+    panel.step_component_mode.setCurrentIndex(1)
+    assert selections[-1] == ((1, 3), "subtract")
+
+    count = len(selections)
+    panel.component_none_button.click()
+    assert len(selections) == count + 1
+    assert selections[-1] == ((), "subtract")
+
+    panel._clear_components()
+    assert selections[-1] is None
