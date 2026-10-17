@@ -25,6 +25,8 @@ class ModelLoadOptions:
     step_component_mode: StepComponentMode = "filter"
     base_tolerance: float = DEFAULT_BASE_TOLERANCE
     require_mesh: bool = True
+    # GUI only: also tessellate each STEP component for display. Never affects metrics.
+    component_preview_meshes: bool = False
 
     @classmethod
     def resolve(
@@ -40,6 +42,7 @@ class ModelLoadOptions:
         step_component_mode: str = "filter",
         base_tolerance: float = DEFAULT_BASE_TOLERANCE,
         require_mesh: bool = True,
+        component_preview_meshes: bool = False,
     ) -> ModelLoadOptions:
         input_text = input_unit.strip().lower()
         resolved_input_unit = "auto" if input_text == "auto" else normalize_unit(input_unit)
@@ -55,6 +58,7 @@ class ModelLoadOptions:
             step_component_mode=normalize_step_component_mode(step_component_mode),
             base_tolerance=resolve_base_tolerance(base_tolerance),
             require_mesh=bool(require_mesh),
+            component_preview_meshes=bool(component_preview_meshes),
         )
 
     @property
