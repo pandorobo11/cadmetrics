@@ -269,6 +269,7 @@ class ModelViewer(QtWidgets.QWidget):
             self._update_overlay()
         if self._component_preview_shown:
             self._update_component_preview_notice()
+        self._sync_grid_bounds()
         self._plotter.render()
 
     def _create_plotter(self, factory: PlotterFactory | None) -> QtWidgets.QWidget:

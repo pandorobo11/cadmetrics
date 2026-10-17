@@ -484,6 +484,7 @@ def test_resizing_during_a_component_preview_only_moves_the_notice(viewer, qtbot
     count = 40
     widget.show()
     widget.set_model(_many_component_model(count, tuple(range(1, count + 1))))
+    widget.set_request(CalculationRequest(file=Path("model.step")))
 
     def resize_render_requests(width: int) -> int:
         plotter.render_requests = 0
@@ -492,12 +493,15 @@ def test_resizing_during_a_component_preview_only_moves_the_notice(viewer, qtbot
         return plotter.render_requests
 
     without_preview = resize_render_requests(800)
+    assert tuple(widget._grid_actor.bounds) == tuple(widget._mesh_polydata.bounds)
     widget.set_component_selection((tuple(range(2, count + 1)), "filter"))
     previews = set(widget._component_preview_actors)
+    preview_bounds = tuple(widget._grid_actor.bounds)
 
     # The preview adds no render requests per component, and its actors are kept.
     assert resize_render_requests(700) == without_preview
     assert set(widget._component_preview_actors) == previews
+    assert tuple(widget._grid_actor.bounds) == preview_bounds
     texts = [entry[1] for entry in plotter.active("text").values()]
     assert sum("Component preview" in text for text in texts) == 1
 
