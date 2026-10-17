@@ -3,7 +3,7 @@ name = "cadmetrics"
 version = "0.13.0"
 description = "CLI and Python API for CAD volume, surface area, and projected area metrics."
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.15"
 license = { text = "MIT" }
 authors = [
   { name = "cadmetrics contributors" },

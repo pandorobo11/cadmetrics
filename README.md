@@ -58,7 +58,7 @@ From a local checkout with `uv`:
 uv sync --extra step --extra gui
 ```
 
-cadmetrics currently targets Python 3.12.
+cadmetrics targets Python 3.12–3.14.
 
 For the macOS development app, build with
 `.venv/bin/python scripts/create_macos_app.py` and launch `open dist/Cadmetrics.app` from the
