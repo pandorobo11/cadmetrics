@@ -300,11 +300,8 @@ def test_invalid_vector_preview_clears_arrow_and_reports_calculation_error(
     assert "Volume  1 m³" in next(iter(plotter.active("text").values()))
     assert errors == []
 
-    window.controls.run_button.click()
-
-    assert len(errors) == 1
-    assert "Vector magnitude must be greater than zero" in errors[0]
-    assert errors[0] in window.status.text()
+    assert window.controls.run_button.isEnabled() is False
+    assert "(0, 0, 0)" in window.controls.validation_label.text()
 
     window.controls.vector_fields[1].setValue(1.0)
 
@@ -358,7 +355,8 @@ def test_control_panel_errors_reach_main_window_handler(viewer_window, monkeypat
         QtWidgets.QMessageBox, "critical", lambda parent, title, message: errors.append(message)
     )
 
-    window.controls.run_button.click()
+    assert window.controls.run_button.isEnabled() is False
+    window.controls.error.emit("Select one or more model files.")
 
     assert len(errors) == 1
     assert "file" in errors[0].lower()
