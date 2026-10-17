@@ -19,6 +19,7 @@ from cadmetrics._mesh_io import (
 @dataclass(frozen=True)
 class OcpBindings:
     Bnd_Box: Any
+    BOPTools_AlgoTools3D: Any
     BRep_Builder: Any
     BRepBuilderAPI_Copy: Any
     BRepBuilderAPI_Transform: Any
@@ -27,13 +28,17 @@ class OcpBindings:
     BRepAlgoAPI_Fuse: Any
     BRepBndLib: Any
     BRepCheck_Analyzer: Any
+    BRepClass3d_SolidClassifier: Any
     BRepGProp: Any
     BRepMesh_IncrementalMesh: Any
     GProp_GProps: Any
     IFSelect_RetDone: Any
+    IntCurvesFace_ShapeIntersector: Any
+    IntTools_Context: Any
     STEPControl_Reader: Any
     TColStd_SequenceOfAsciiString: Any
     TopAbs_FACE: Any
+    TopAbs_IN: Any
     TopAbs_REVERSED: Any
     TopAbs_SHELL: Any
     TopAbs_SOLID: Any
@@ -43,7 +48,10 @@ class OcpBindings:
     TopoDS_Compound: Any
     TopTools_ListOfShape: Any
     TopTools_MapOfShape: Any
+    gp_Dir: Any
+    gp_Lin: Any
     gp_Pnt: Any
+    gp_Pnt2d: Any
     gp_Trsf: Any
 
 
@@ -51,15 +59,19 @@ class OcpBindings:
 def load_ocp_bindings() -> OcpBindings:
     try:
         from OCP.Bnd import Bnd_Box
+        from OCP.BOPTools import BOPTools_AlgoTools3D
         from OCP.BRep import BRep_Builder, BRep_Tool
         from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy, BRepBuilderAPI_Transform
         from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
         from OCP.BRepBndLib import BRepBndLib
         from OCP.BRepCheck import BRepCheck_Analyzer
+        from OCP.BRepClass3d import BRepClass3d_SolidClassifier
         from OCP.BRepGProp import BRepGProp
         from OCP.BRepMesh import BRepMesh_IncrementalMesh
         from OCP.GProp import GProp_GProps
         from OCP.IFSelect import IFSelect_RetDone
+        from OCP.IntCurvesFace import IntCurvesFace_ShapeIntersector
+        from OCP.IntTools import IntTools_Context
         from OCP.STEPControl import STEPControl_Reader
 
         try:
@@ -69,7 +81,13 @@ def load_ocp_bindings() -> OcpBindings:
             from OCP.collections import (
                 Sequence_TCollection_AsciiString as TColStd_SequenceOfAsciiString,
             )
-        from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED, TopAbs_SHELL, TopAbs_SOLID
+        from OCP.TopAbs import (
+            TopAbs_FACE,
+            TopAbs_IN,
+            TopAbs_REVERSED,
+            TopAbs_SHELL,
+            TopAbs_SOLID,
+        )
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS, TopoDS_Compound
@@ -82,7 +100,7 @@ def load_ocp_bindings() -> OcpBindings:
                 List_TopoDS_Shape as TopTools_ListOfShape,
                 Map_TopoDS_Shape_TopTools_ShapeMapHasher as TopTools_MapOfShape,
             )
-        from OCP.gp import gp_Pnt, gp_Trsf
+        from OCP.gp import gp_Dir, gp_Lin, gp_Pnt, gp_Pnt2d, gp_Trsf
     except ImportError as exc:
         if isinstance(exc, ModuleNotFoundError) and exc.name == "OCP":
             raise RuntimeError(
@@ -94,6 +112,7 @@ def load_ocp_bindings() -> OcpBindings:
 
     return OcpBindings(
         Bnd_Box=Bnd_Box,
+        BOPTools_AlgoTools3D=BOPTools_AlgoTools3D,
         BRep_Builder=BRep_Builder,
         BRepBuilderAPI_Copy=BRepBuilderAPI_Copy,
         BRepBuilderAPI_Transform=BRepBuilderAPI_Transform,
@@ -102,13 +121,17 @@ def load_ocp_bindings() -> OcpBindings:
         BRepAlgoAPI_Fuse=BRepAlgoAPI_Fuse,
         BRepBndLib=BRepBndLib,
         BRepCheck_Analyzer=BRepCheck_Analyzer,
+        BRepClass3d_SolidClassifier=BRepClass3d_SolidClassifier,
         BRepGProp=BRepGProp,
         BRepMesh_IncrementalMesh=BRepMesh_IncrementalMesh,
         GProp_GProps=GProp_GProps,
         IFSelect_RetDone=IFSelect_RetDone,
+        IntCurvesFace_ShapeIntersector=IntCurvesFace_ShapeIntersector,
+        IntTools_Context=IntTools_Context,
         STEPControl_Reader=STEPControl_Reader,
         TColStd_SequenceOfAsciiString=TColStd_SequenceOfAsciiString,
         TopAbs_FACE=TopAbs_FACE,
+        TopAbs_IN=TopAbs_IN,
         TopAbs_REVERSED=TopAbs_REVERSED,
         TopAbs_SHELL=TopAbs_SHELL,
         TopAbs_SOLID=TopAbs_SOLID,
@@ -118,7 +141,10 @@ def load_ocp_bindings() -> OcpBindings:
         TopoDS_Compound=TopoDS_Compound,
         TopTools_ListOfShape=TopTools_ListOfShape,
         TopTools_MapOfShape=TopTools_MapOfShape,
+        gp_Dir=gp_Dir,
+        gp_Lin=gp_Lin,
         gp_Pnt=gp_Pnt,
+        gp_Pnt2d=gp_Pnt2d,
         gp_Trsf=gp_Trsf,
     )
 
@@ -247,6 +273,23 @@ def _clean_bound(value: float) -> float:
     return 0.0 if abs(value) <= 1.0e-9 else value
 
 
+# OpenCascade's general fuse can misclassify faces where curved solids touch
+# tangentially (for example a torus resting on a cylinder) and still return a
+# valid shape whose volume is badly wrong. A fuzzy value slightly above the
+# modelling tolerance makes such near-coincidences robust; the result must then
+# pass BRepCheck and match the input solids at sample points before it is trusted.
+# The kernel always works in millimetres, so the fuzzy values are absolute: a
+# value scaled by the assembly size would merge real gaps between nearby parts
+# once a far-away part is added, changing the surface area.
+_UNION_FUZZY_VALUES_MM = (1.0e-5, 1.0e-4)
+_UNION_CHECK_SAMPLES_PER_SOLID = 4
+_UNION_CHECK_INTERIOR_POINTS_PER_SOLID = 2
+_UNION_CHECK_INTERIOR_FACES_PER_SOLID = 4
+_UNION_CHECK_MAX_MISMATCH_FRACTION = 0.01
+_UNION_CHECK_SEED = 0
+_UNION_CHECK_TOLERANCE = 1.0e-7
+
+
 def _boolean_union_ocp_solids(
     shape: Any,
     *,
@@ -255,39 +298,206 @@ def _boolean_union_ocp_solids(
     TopExp_Explorer: Any,
     TopoDS: Any,
 ) -> tuple[Any, bool | None]:
-    solids = []
-    explorer = TopExp_Explorer(shape, TopAbs_SOLID)
-    solid_method = getattr(TopoDS, "Solid_s", None) or getattr(TopoDS, "Solid")
-
-    while explorer.More():
-        solids.append(solid_method(explorer.Current()))
-        explorer.Next()
-
+    solids = _extract_ocp_solids(
+        shape,
+        TopAbs_SOLID=TopAbs_SOLID,
+        TopExp_Explorer=TopExp_Explorer,
+        TopoDS=TopoDS,
+    )
     if len(solids) <= 1:
         return shape, False
 
+    ocp = load_ocp_bindings()
+    for fuzzy_value in _UNION_FUZZY_VALUES_MM:
+        fused = _fuse_ocp_solids(
+            solids,
+            fuzzy_value=fuzzy_value,
+            BRepAlgoAPI_Fuse=BRepAlgoAPI_Fuse,
+            TopTools_ListOfShape=ocp.TopTools_ListOfShape,
+        )
+        if fused is None or not _ocp_shape_is_valid(fused, ocp.BRepCheck_Analyzer):
+            continue
+        if _ocp_union_matches_solids(fused, solids, ocp=ocp):
+            return fused, True
+
+    return shape, None
+
+
+def _ocp_shape_is_valid(shape: Any, BRepCheck_Analyzer: Any) -> bool:
+    try:
+        return bool(BRepCheck_Analyzer(shape).IsValid())
+    except Exception:
+        return False
+
+
+def _fuse_ocp_solids(
+    solids: Sequence[Any],
+    *,
+    fuzzy_value: float,
+    BRepAlgoAPI_Fuse: Any,
+    TopTools_ListOfShape: Any,
+) -> Any | None:
     # Fuse all solids in one General Fuse run: a pairwise loop re-intersects the growing
     # result against every remaining solid, which is quadratic in the solid count.
-    list_of_shape = load_ocp_bindings().TopTools_ListOfShape
-    arguments = list_of_shape()
+    arguments = TopTools_ListOfShape()
     arguments.Append(solids[0])
-    tools = list_of_shape()
+    tools = TopTools_ListOfShape()
     for solid in solids[1:]:
         tools.Append(solid)
 
     fuse = BRepAlgoAPI_Fuse()
     fuse.SetArguments(arguments)
     fuse.SetTools(tools)
+    fuse.SetFuzzyValue(fuzzy_value)
     if hasattr(fuse, "SetRunParallel"):
         fuse.SetRunParallel(True)
     fuse.Build()
     if not fuse.IsDone():
-        return shape, None
+        return None
     try:
         fuse.SimplifyResult(True, True, 1.0e-7)
     except Exception:
         pass
-    return fuse.Shape(), True
+    return fuse.Shape()
+
+
+def _ocp_union_matches_solids(union: Any, input_solids: Sequence[Any], *, ocp: OcpBindings) -> bool:
+    """Check that sample points inside the union are the points inside some input solid.
+
+    A volume bound such as max(part) <= union <= sum(parts) misses real failures
+    (a union collapsing onto its largest part, or an overlap that is kept twice),
+    whereas a misclassified region shows up as disagreeing sample points.
+
+    Every input solid contributes points that its own classifier puts inside it,
+    found along lines through points on its faces so thin walls are hit too; the
+    union fails when it loses all of them, or when no such point can be found.
+    Each solid also contributes random points in its bounding box, compared
+    against all inputs, to catch volume the union gained. Input solids are small,
+    so the exact solid classifier is cheap for them; the union can have thousands
+    of faces, so it is classified by ray-crossing parity. A check that cannot run
+    returns False: an unverified union is not trusted.
+    """
+    try:
+        input_bounds = np.array(
+            [
+                _ocp_bounds(solid, Bnd_Box=ocp.Bnd_Box, BRepBndLib=ocp.BRepBndLib)
+                for solid in input_solids
+            ]
+        )
+        if input_bounds.size == 0 or not np.all(np.isfinite(input_bounds)):
+            return False
+        union_intersector = ocp.IntCurvesFace_ShapeIntersector()
+        union_intersector.Load(union, _UNION_CHECK_TOLERANCE)
+        # A skewed direction avoids running rays along axis-aligned faces and edges.
+        ray_direction = ocp.gp_Dir(0.5873, 0.5703, 0.5803)
+        classifiers: dict[int, Any] = {}
+        rng = np.random.default_rng(_UNION_CHECK_SEED)
+
+        def classifier_for(index: int) -> Any:
+            classifier = classifiers.get(index)
+            if classifier is None:
+                classifier = ocp.BRepClass3d_SolidClassifier(input_solids[index])
+                classifiers[index] = classifier
+            return classifier
+
+        def inside_inputs(point: np.ndarray) -> bool:
+            ocp_point = ocp.gp_Pnt(*(float(value) for value in point))
+            candidates = np.flatnonzero(
+                np.all((input_bounds[:, :3] <= point) & (point <= input_bounds[:, 3:]), axis=1)
+            )
+            for index in candidates.tolist():
+                classifier = classifier_for(index)
+                classifier.Perform(ocp_point, _UNION_CHECK_TOLERANCE)
+                if classifier.State() == ocp.TopAbs_IN:
+                    return True
+            return False
+
+        def inside_union(point: np.ndarray) -> bool:
+            ocp_point = ocp.gp_Pnt(*(float(value) for value in point))
+            union_intersector.Perform(ocp.gp_Lin(ocp_point, ray_direction), 0.0, float("inf"))
+            if not union_intersector.IsDone():
+                raise RuntimeError("union ray intersection did not complete")
+            return union_intersector.NbPnt() % 2 == 1
+
+        tested = 0
+        mismatches = 0
+        for index, (solid, bounds) in enumerate(zip(input_solids, input_bounds)):
+            interior_points = _ocp_points_inside_solid(
+                solid,
+                classifier_for(index),
+                reach=2.0 * float(np.linalg.norm(bounds[3:] - bounds[:3])) + 1.0,
+                rng=rng,
+                ocp=ocp,
+            )
+            if not interior_points:
+                return False
+            lost = sum(not inside_union(point) for point in interior_points)
+            if lost == len(interior_points):
+                return False
+            tested += len(interior_points)
+            mismatches += lost
+            for _ in range(_UNION_CHECK_SAMPLES_PER_SOLID):
+                point = rng.uniform(bounds[:3], bounds[3:])
+                tested += 1
+                mismatches += inside_inputs(point) != inside_union(point)
+    except Exception:
+        return False
+    return mismatches <= _UNION_CHECK_MAX_MISMATCH_FRACTION * tested
+
+
+def _ocp_points_inside_solid(
+    solid: Any,
+    classifier: Any,
+    *,
+    reach: float,
+    rng: np.random.Generator,
+    ocp: OcpBindings,
+) -> list[np.ndarray]:
+    """Return points that ``classifier`` puts strictly inside ``solid``.
+
+    A line through a point on one of the solid's faces crosses its boundary there,
+    so a segment between neighbouring crossings lies in the material next to that
+    face, however thin the wall is. Random points in the bounding box would mostly
+    miss thin or hollow solids.
+    """
+    intersector = ocp.IntCurvesFace_ShapeIntersector()
+    intersector.Load(solid, _UNION_CHECK_TOLERANCE)
+    context = ocp.IntTools_Context()
+    # OCP 7 exposes static methods with an ``_s`` suffix; OCP 8 drops it.
+    point_in_face = getattr(ocp.BOPTools_AlgoTools3D, "PointInFace_s", None) or getattr(
+        ocp.BOPTools_AlgoTools3D, "PointInFace"
+    )
+    face_method = getattr(ocp.TopoDS, "Face_s", None) or getattr(ocp.TopoDS, "Face")
+    points: list[np.ndarray] = []
+    faces = _explore_ocp_subshapes(solid, ocp.TopAbs_FACE, ocp.TopExp_Explorer)
+    for face in faces[:_UNION_CHECK_INTERIOR_FACES_PER_SOLID]:
+        face_point = ocp.gp_Pnt()
+        if point_in_face(face_method(face), face_point, ocp.gp_Pnt2d(), context):
+            continue
+        origin = np.array([face_point.X(), face_point.Y(), face_point.Z()])
+        direction = rng.normal(size=3)
+        direction /= np.linalg.norm(direction)
+        intersector.Perform(
+            ocp.gp_Lin(face_point, ocp.gp_Dir(*(float(value) for value in direction))),
+            -reach,
+            reach,
+        )
+        if not intersector.IsDone():
+            raise RuntimeError("solid ray intersection did not complete")
+        parameters = sorted(intersector.WParameter(i) for i in range(1, intersector.NbPnt() + 1))
+        for start, end in zip(parameters, parameters[1:]):
+            if end - start <= 1.0e3 * _UNION_CHECK_TOLERANCE:
+                continue
+            point = origin + 0.5 * (start + end) * direction
+            classifier.Perform(
+                ocp.gp_Pnt(*(float(value) for value in point)), _UNION_CHECK_TOLERANCE
+            )
+            if classifier.State() == ocp.TopAbs_IN:
+                points.append(point)
+                break
+        if len(points) >= _UNION_CHECK_INTERIOR_POINTS_PER_SOLID:
+            break
+    return points
 
 
 def _ocp_shape_is_watertight(

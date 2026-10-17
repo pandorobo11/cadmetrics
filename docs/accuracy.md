@@ -89,6 +89,33 @@ cadmetrics treats multiple STEP solids as one geometric model by default. The se
 are boolean-unioned before B-Rep volume and surface-area measurement, so intersections between
 enabled solids are not double-counted when the union succeeds.
 
+### Boolean union checks
+
+OpenCascade's general fuse can return a shape that passes its own validity checks but has a
+badly wrong volume. This is known to happen where curved solids touch tangentially, for example
+a torus resting against a cylinder. cadmetrics guards the union in two ways:
+
+- The fuse runs with an absolute fuzzy tolerance of `1e-5` mm (in the kernel's millimetre units),
+  which handles these near-coincidences. Gaps and overlaps smaller than this between solids may be
+  treated as touching. The tolerance does not grow with the model size, so adding a distant part
+  does not close real gaps between nearby parts.
+- The result must pass OpenCascade's shape validity check and is then compared with the input
+  solids at a few points per solid. Each solid contributes up to two points that its own classifier
+  puts inside it. They are found along lines through points on its faces, so thin walls are
+  sampled too. The union is rejected if it loses all of a solid's interior points, or if no
+  interior point can be found for a solid. Each solid also contributes four random points in its
+  bounding box, compared against all inputs, and more than 1% disagreement overall rejects the
+  union. If either check fails or cannot run, the union is retried once with `1e-4` mm. If that
+  also fails, the solids are measured without the union, with a "Could not boolean-union" warning:
+  volume and surface area may then double-count overlaps. In `subtract` mode the load fails
+  instead.
+
+The check is probabilistic. Each solid is probed at only a few points, so the check reliably
+catches a solid that disappears from the union and large misclassified regions, but it cannot prove
+the union is exact. A solid that is only partly lost, small misclassified regions, or a
+surface-area-only change such as faces wrongly merged across a gap below the fuzzy tolerance can
+pass. It does not bound the measurement error.
+
 The GUI's component filters operate before that union step. Turning off a component removes it
 from display, volume, surface-area, and projected-area calculations. Component labels use
 STEP/XCAF names when available and otherwise fall back to solid order in the loaded STEP file.
