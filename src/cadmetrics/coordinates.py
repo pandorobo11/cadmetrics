@@ -27,28 +27,16 @@ def transform_model_axes(model: ModelData, axis_map: str) -> ModelData:
     if parsed == ((0, 1.0), (1, 1.0), (2, 1.0)):
         return model
 
-    vertices, faces = _transform_mesh(model.vertices, model.faces, parsed)
+    columns = [model.vertices[:, axis] * sign for axis, sign in parsed]
+    faces = model.faces
+    if _axis_map_determinant(parsed) < 0.0:
+        faces = faces[:, [0, 2, 1]]
     return replace(
         model,
-        vertices=vertices,
+        vertices=np.column_stack(columns) if columns else model.vertices,
         faces=faces,
-        component_meshes=tuple(
-            _transform_mesh(component_vertices, component_faces, parsed)
-            for component_vertices, component_faces in model.component_meshes
-        ),
         bounds=_transform_bounds(model.bounds, parsed),
     )
-
-
-def _transform_mesh(
-    vertices: np.ndarray,
-    faces: np.ndarray,
-    axis_map: tuple[tuple[int, float], ...],
-) -> tuple[np.ndarray, np.ndarray]:
-    columns = [vertices[:, axis] * sign for axis, sign in axis_map]
-    if _axis_map_determinant(axis_map) < 0.0:
-        faces = faces[:, [0, 2, 1]]
-    return (np.column_stack(columns) if columns else vertices), faces
 
 
 def _parse_axis(value: str) -> tuple[int, float]:

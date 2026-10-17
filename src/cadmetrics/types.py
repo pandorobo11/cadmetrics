@@ -40,10 +40,6 @@ class ModelData:
     selected_components: tuple[int, ...] = field(default_factory=tuple)
     bounds: tuple[float, float, float, float, float, float] | None = None
     load_elapsed_sec: float | None = None
-    # Display-only meshes for each STEP solid component, in component order. Empty unless
-    # requested; never used for metrics.
-    component_meshes: tuple[tuple[FloatArray, IntArray], ...] = field(default_factory=tuple)
-    component_mesh_elapsed_sec: float = 0.0
     cadmetrics_version: str = field(default_factory=cadmetrics_version)
     cadmetrics_hash: str = field(default_factory=cadmetrics_hash)
     warnings: tuple[str, ...] = field(default_factory=tuple)

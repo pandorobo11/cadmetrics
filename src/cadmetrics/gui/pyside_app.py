@@ -134,7 +134,6 @@ if QtWidgets is not None:
             self.controls.cancel_requested.connect(self.controller.cancel)
             self.controls.viewer_options_changed.connect(self.viewer.set_options)
             self.controls.request_changed.connect(self._preview_request)
-            self.controls.component_selection_changed.connect(self.viewer.set_component_selection)
             self.controls.error.connect(self._show_error)
             self.viewer.base_face_available.connect(self._set_base_face_available)
             self.viewer.newly_exposed_surface_available.connect(

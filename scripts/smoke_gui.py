@@ -26,9 +26,6 @@ class SmokeViewer(QtWidgets.QWidget):
     def set_model(self, model: Any) -> None:
         pass
 
-    def set_component_selection(self, selection: Any) -> None:
-        pass
-
     def set_result(
         self,
         row: Any,

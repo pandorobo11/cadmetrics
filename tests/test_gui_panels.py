@@ -39,9 +39,6 @@ class _FakeViewer(QtWidgets.QWidget):
     def set_model(self, model) -> None:
         pass
 
-    def set_component_selection(self, selection) -> None:
-        pass
-
     def set_result(self, row, request, *, align_camera=False) -> None:
         self.result_calls.append((row, request, align_camera))
 

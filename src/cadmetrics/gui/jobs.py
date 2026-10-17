@@ -62,7 +62,6 @@ class CalculationRequest:
             step_metric_source=self.step_metric_source,
             step_components=self.step_components,
             step_component_mode=self.step_component_mode,
-            component_preview_meshes=True,
         )
 
     def resolved_attitude(self) -> ResolvedSweepAttitude:
