@@ -768,6 +768,7 @@ class ControlPanel(QtWidgets.QWidget):
 
     def _mark_advanced_dirty(self, *_args: object) -> None:
         self._set_advanced_dirty(True)
+        self._emit_preview_request()
 
     def _set_advanced_dirty(self, dirty: bool) -> None:
         self._advanced_dirty = dirty and self._model_loaded

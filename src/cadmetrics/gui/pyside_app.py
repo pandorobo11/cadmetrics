@@ -225,6 +225,7 @@ if QtWidgets is not None:
         @QtCore.Slot(str)
         def _on_failed(self, message: str) -> None:
             self._calculation_running = False
+            self._sync_stale_results()
             self._show_error(message)
 
         @QtCore.Slot(object)
