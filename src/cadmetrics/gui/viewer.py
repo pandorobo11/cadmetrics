@@ -25,6 +25,21 @@ from cadmetrics.types import MeasurementRow, ModelData
 
 PlotterFactory = Callable[[QtWidgets.QWidget], Any]
 
+# (button label, tooltip, direction the camera looks from)
+CAMERA_VIEWS: tuple[tuple[str, str, tuple[float, float, float]], ...] = (
+    ("+X", "View from +X", (1.0, 0.0, 0.0)),
+    ("-X", "View from -X", (-1.0, 0.0, 0.0)),
+    ("+Y", "View from +Y", (0.0, 1.0, 0.0)),
+    ("-Y", "View from -Y", (0.0, -1.0, 0.0)),
+    ("+Z", "View from +Z", (0.0, 0.0, 1.0)),
+    ("-Z", "View from -Z", (0.0, 0.0, -1.0)),
+    ("ISO", "Isometric view from -X -Y +Z", (-1.0, -1.0, 1.0)),
+    ("ISO↓", "Isometric view from below (+X +Y -Z)", (1.0, 1.0, -1.0)),
+)
+DEFAULT_CAMERA_DIRECTION = (-1.0, -1.0, 1.0)
+# Keep the orientation triad in the lower-right corner, away from the upper-left overlay.
+AXES_VIEWPORT = (0.82, 0.0, 1.0, 0.18)
+
 EMPTY_STATE_TEXT = (
     "Open an STL or STEP file to begin\nChoose a file on the left or drag and drop it here"
 )
@@ -97,10 +112,14 @@ class ModelViewer(QtWidgets.QWidget):
         self._overlay_reserve = 0.0
         self._empty_state_actor: Any | None = None
         self._grid_actor: Any | None = None
+        self._camera_direction: tuple[float, float, float] = DEFAULT_CAMERA_DIRECTION
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self._build_toolbar())
         widget = self._create_plotter(plotter_factory)
-        layout.addWidget(widget)
+        layout.addWidget(widget, 1)
+        self._sync_toolbar()
         self._update_empty_state()
 
     @property
@@ -127,7 +146,7 @@ class ModelViewer(QtWidgets.QWidget):
         self._newly_exposed_surface_polydata = newly_exposed_surface_polydata(model, pv)
         self.newly_exposed_surface_available.emit(self._newly_exposed_surface_polydata is not None)
         self._configure_lighting()
-        self._plotter.add_axes()
+        self._plotter.add_axes(viewport=AXES_VIEWPORT)
         self._mesh_actor = self._plotter.add_mesh(
             self._mesh_polydata,
             color="#9fc8ef",
@@ -146,8 +165,9 @@ class ModelViewer(QtWidgets.QWidget):
         self._update_feature_edges(render=False)
         self._update_base_face(render=False)
         self._update_newly_exposed_surface(render=False)
-        self.set_camera(self._options.camera_direction)
+        self.set_camera(self._camera_direction)
         self._update_projection()
+        self._sync_toolbar()
 
     def set_request(self, request: CalculationRequest | None) -> None:
         self._request = request
@@ -166,7 +186,6 @@ class ModelViewer(QtWidgets.QWidget):
         self._update_projection(align_camera=align_camera)
 
     def set_options(self, options: ViewerOptions) -> None:
-        camera_changed = options.camera_direction != self._options.camera_direction
         grid_changed = options.show_grid != self._options.show_grid
         self._options = options
         if grid_changed:
@@ -175,8 +194,11 @@ class ModelViewer(QtWidgets.QWidget):
         self._update_base_face(render=False)
         self._update_newly_exposed_surface(render=False)
         self._update_projection()
-        if camera_changed:
-            self.set_camera(options.camera_direction)
+
+    def set_view_direction(self, direction: tuple[float, float, float]) -> None:
+        """Look from a preset direction and keep it for models loaded later."""
+        self._camera_direction = direction
+        self.set_camera(direction)
 
     def set_camera(self, direction: tuple[float, float, float]) -> None:
         if self._plotter is None or self._model is None or self._model.vertex_count == 0:
@@ -234,9 +256,49 @@ class ModelViewer(QtWidgets.QWidget):
         self._plotter = factory(self)
         self._plotter.set_background("white")
         self._configure_lighting()
-        self._plotter.add_axes()
+        self._plotter.add_axes(viewport=AXES_VIEWPORT)
         self._plotter.enable_parallel_projection()
         return self._plotter
+
+    def _build_toolbar(self) -> QtWidgets.QWidget:
+        toolbar = QtWidgets.QWidget()
+        toolbar.setObjectName("viewerToolbar")
+        row = QtWidgets.QHBoxLayout(toolbar)
+        row.setContentsMargins(8, 4, 8, 4)
+        row.setSpacing(4)
+        label = QtWidgets.QLabel("View")
+        label.setObjectName("viewerToolbarLabel")
+        row.addWidget(label)
+        self.view_buttons: list[QtWidgets.QToolButton] = []
+        for text, tooltip, direction in CAMERA_VIEWS:
+            button = QtWidgets.QToolButton()
+            button.setObjectName("viewButton")
+            button.setText(text)
+            button.setToolTip(tooltip)
+            # Keep labels whole on narrow windows; the stretch absorbs the spare width.
+            button.setSizePolicy(
+                QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Fixed
+            )
+            button.clicked.connect(
+                lambda _checked=False, direction=direction: self.set_view_direction(direction)
+            )
+            row.addWidget(button)
+            self.view_buttons.append(button)
+        row.addStretch(1)
+        self.save_image_button = QtWidgets.QPushButton("Save Image…")
+        self.save_image_button.setObjectName("viewerSaveButton")
+        self.save_image_button.setToolTip("Save the current 3D view as a PNG image.")
+        self.save_image_button.clicked.connect(self.choose_and_save_image)
+        row.addWidget(self.save_image_button)
+        return toolbar
+
+    def _sync_toolbar(self) -> None:
+        ready = (
+            self._plotter is not None and self._model is not None and self._model.vertex_count > 0
+        )
+        for button in self.view_buttons:
+            button.setEnabled(ready)
+        self.save_image_button.setEnabled(ready)
 
     def _reset_actors(self) -> None:
         self._mesh_actor = None
@@ -537,7 +599,7 @@ class ModelViewer(QtWidgets.QWidget):
             return
         ratio = self._device_pixel_ratio()
         font_size = self._text_font_size(OVERLAY_FONT_SIZE)
-        view_width = max(self.width(), 1)
+        view_width, view_height = self._view_size()
         max_chars = int(
             view_width * _OVERLAY_MAX_WIDTH_FRACTION / (OVERLAY_FONT_SIZE * _CHARACTER_WIDTH_RATIO)
         )
@@ -547,7 +609,7 @@ class ModelViewer(QtWidgets.QWidget):
         padded = "\n".join(f" {line} " for line in text.splitlines())
         actor = self._plotter.add_text(
             padded,
-            position=(margin, max(self.height(), 1) * ratio - margin),
+            position=(margin, view_height * ratio - margin),
             font_size=OVERLAY_FONT_SIZE,
             color=_TEXT_COLOR,
             shadow=False,
@@ -573,6 +635,11 @@ class ModelViewer(QtWidgets.QWidget):
             )
         )
 
+    def _view_size(self) -> tuple[int, int]:
+        """Size of the 3D render area in logical pixels, excluding the toolbar."""
+        view = self._plotter if isinstance(self._plotter, QtWidgets.QWidget) else self
+        return max(view.width(), 1), max(view.height(), 1)
+
     def _update_empty_state(self) -> None:
         if self._plotter is None:
             return
@@ -580,9 +647,10 @@ class ModelViewer(QtWidgets.QWidget):
         if self._model is not None:
             return
         ratio = self._device_pixel_ratio()
+        view_width, view_height = self._view_size()
         actor = self._plotter.add_text(
             EMPTY_STATE_TEXT,
-            position=(max(self.width(), 1) * ratio / 2, max(self.height(), 1) * ratio / 2),
+            position=(view_width * ratio / 2, view_height * ratio / 2),
             font_size=EMPTY_STATE_FONT_SIZE,
             color=_MUTED_TEXT_COLOR,
             shadow=False,

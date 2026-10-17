@@ -369,7 +369,7 @@ def test_file_menu_actions_and_shortcuts(window, monkeypatch) -> None:
     file_menu = window.menuBar().actions()[0]
     assert file_menu.text() == "File"
     texts = [action.text() for action in file_menu.menu().actions() if not action.isSeparator()]
-    assert texts == ["Open…", "Run Sweep", "Cancel", "Save CSV…"]
+    assert texts == ["Open…", "Run Sweep", "Cancel", "Save CSV…", "Save View Image…"]
     assert window.open_action.shortcut() == QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Open)
     assert window.run_action.shortcut() == QtGui.QKeySequence("Ctrl+R")
     assert window.save_csv_action.shortcut() == QtGui.QKeySequence(

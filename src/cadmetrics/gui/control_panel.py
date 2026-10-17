@@ -20,16 +20,6 @@ from cadmetrics.types import ModelData
 
 UNIT_OPTIONS = ["auto", "m", "mm", "cm", "in", "ft"]
 OUTPUT_UNIT_OPTIONS = ["m", "mm", "cm", "in", "ft"]
-CAMERA_DIRECTIONS = (
-    ("+X", (1.0, 0.0, 0.0)),
-    ("-X", (-1.0, 0.0, 0.0)),
-    ("+Y", (0.0, 1.0, 0.0)),
-    ("-Y", (0.0, -1.0, 0.0)),
-    ("+Z", (0.0, 0.0, 1.0)),
-    ("-Z", (0.0, 0.0, -1.0)),
-    ("-X-Y+Z (ISO)", (-1.0, -1.0, 1.0)),
-    ("+X+Y-Z (ISO)", (1.0, 1.0, -1.0)),
-)
 
 
 class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
@@ -233,12 +223,6 @@ class ControlPanel(QtWidgets.QWidget):
         self.detailed_overlay.setToolTip(
             "Show geometry bounds, calculation metadata, and diagnostic values in the 3D view."
         )
-        self.camera_direction = QtWidgets.QComboBox()
-        for label, direction in CAMERA_DIRECTIONS:
-            self.camera_direction.addItem(label, direction)
-        self.camera_direction.setCurrentIndex(6)
-        self.save_image_button = QtWidgets.QPushButton("Save Image")
-        self.save_image_button.setObjectName("secondaryButton")
         for widget in (
             self.transparent_shape,
             self.mesh_edges,
@@ -252,7 +236,6 @@ class ControlPanel(QtWidgets.QWidget):
             self.detailed_overlay,
         ):
             widget.toggled.connect(self._emit_viewer_options)
-        self.camera_direction.currentIndexChanged.connect(self._emit_viewer_options)
         display_layout.addWidget(self._subheading("Rendering"), 0, 0, 1, 3)
         display_layout.addWidget(self.transparent_shape, 1, 0)
         display_layout.addWidget(self.mesh_edges, 1, 1)
@@ -265,9 +248,6 @@ class ControlPanel(QtWidgets.QWidget):
         display_layout.addWidget(self.show_centroid, 5, 0)
         display_layout.addWidget(self.show_base_face, 5, 1, 1, 2)
         display_layout.addWidget(self.show_newly_exposed_surface, 6, 0, 1, 3)
-        display_layout.addWidget(QtWidgets.QLabel("Camera"), 7, 0)
-        display_layout.addWidget(self.camera_direction, 7, 1, 1, 2)
-        display_layout.addWidget(self.save_image_button, 8, 0, 1, 3)
 
         advanced = self._collapsible(layout, "Advanced")
         self.axis_x = self._axis_combo("x")
@@ -441,7 +421,6 @@ class ControlPanel(QtWidgets.QWidget):
             show_overlay=self.show_overlay.isChecked(),
             show_grid=self.show_grid.isChecked(),
             detailed_overlay=self.detailed_overlay.isChecked(),
-            camera_direction=tuple(self.camera_direction.currentData()),
         )
 
     def set_busy(self, state: OperationState) -> None:

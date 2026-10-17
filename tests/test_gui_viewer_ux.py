@@ -12,7 +12,7 @@ from PySide6 import QtWidgets
 
 from cadmetrics.gui.gui_types import ViewerOptions
 from cadmetrics.gui.jobs import CalculationRequest
-from cadmetrics.gui.viewer import EMPTY_STATE_TEXT, ModelViewer
+from cadmetrics.gui.viewer import EMPTY_STATE_TEXT, OVERLAY_MARGIN, ModelViewer
 from cadmetrics.gui.viewer_geometry import fit_overlay_text, overlay_reserved_fraction
 from cadmetrics.types import MeasurementRow, ModelData
 
@@ -308,3 +308,15 @@ def _row() -> MeasurementRow:
         projected_area=0.8,
         is_watertight=True,
     )
+
+
+def test_overlay_is_anchored_to_render_area_below_toolbar(viewer) -> None:
+    widget, plotter = viewer
+    widget.show()
+    widget.set_model(_model())
+    assert plotter.height() < widget.height()  # The view toolbar sits above the render area.
+
+    ((_, (_, _, kwargs)),) = plotter.active("text").items()
+    ratio = widget._device_pixel_ratio()
+    _, top = kwargs["position"]
+    assert top == pytest.approx(plotter.height() * ratio - OVERLAY_MARGIN * ratio)

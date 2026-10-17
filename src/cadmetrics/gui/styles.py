@@ -210,6 +210,16 @@ QLabel#resultsStaleLabel {
     color: #925c12; background: #fff4d8; border-radius: 5px; padding: 5px 7px;
 }
 QLabel#validationMessageLabel { color: #a23b32; font-size: 12px; }
+QWidget#viewerToolbar { background: #f7f9fb; border-bottom: 1px solid #d9dee4; }
+QLabel#viewerToolbarLabel { color: #4a5663; font-size: 12px; font-weight: 600; padding-right: 4px; }
+QToolButton#viewButton {
+    min-height: 24px; padding: 1px 6px; border: 1px solid #c7d0da;
+    border-radius: 5px; background: #ffffff; color: #1f2933; font-size: 12px;
+}
+QToolButton#viewButton:hover { background: #eef3f8; border-color: #99a8b8; }
+QToolButton#viewButton:pressed { background: #e2eaf2; }
+QToolButton#viewButton:disabled { background: #f1f4f7; border-color: #dbe1e7; color: #66707b; }
+QPushButton#viewerSaveButton { min-height: 24px; padding: 1px 10px; font-size: 12px; }
 QWidget#resultToolbar { background: #f7f9fb; border-top: 1px solid #d9dee4; }
 QLabel#resultCountLabel { color: #5f6872; font-weight: 500; }
 QLabel#emptyStateTitle { color: #344150; font-size: 16px; font-weight: 600; }

@@ -362,6 +362,75 @@ def test_control_panel_errors_reach_main_window_handler(viewer_window, monkeypat
     assert errors[0] in window.status.text()
 
 
+def _view_direction(plotter) -> np.ndarray:
+    position, focal_point, _ = plotter.camera_position
+    offset = np.asarray(position) - np.asarray(focal_point)
+    return offset / np.linalg.norm(offset)
+
+
+def test_viewer_toolbar_owns_camera_presets_and_image_export(viewer_window) -> None:
+    window, plotter = viewer_window
+    viewer = window.viewer
+    assert not hasattr(window.controls, "camera_direction")
+    assert not hasattr(window.controls, "save_image_button")
+    assert [button.text() for button in viewer.view_buttons][:6] == [
+        "+X",
+        "-X",
+        "+Y",
+        "-Y",
+        "+Z",
+        "-Z",
+    ]
+    assert not any(button.isEnabled() for button in viewer.view_buttons)
+    assert not viewer.save_image_button.isEnabled()
+
+    viewer.set_model(_model())
+    assert all(button.isEnabled() for button in viewer.view_buttons)
+    assert viewer.save_image_button.isEnabled()
+    assert _view_direction(plotter) == pytest.approx(np.array([-1.0, -1.0, 1.0]) / np.sqrt(3))
+
+    top = viewer.view_buttons[4]
+    top.click()
+    assert _view_direction(plotter) == pytest.approx((0.0, 0.0, 1.0))
+
+    # Clicking the same preset again re-applies it after the user has moved the camera.
+    plotter.camera_position = ((1.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 1.0))
+    top.click()
+    assert _view_direction(plotter) == pytest.approx((0.0, 0.0, 1.0))
+
+    # The chosen preset is kept for the next model.
+    viewer.set_model(_model())
+    assert _view_direction(plotter) == pytest.approx((0.0, 0.0, 1.0))
+
+
+def test_save_view_image_menu_action_follows_model_loading(viewer_window, monkeypatch) -> None:
+    window, _ = viewer_window
+    calls = []
+    monkeypatch.setattr(
+        QtWidgets.QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: calls.append(args) or ("", ""),
+    )
+    assert window.save_image_action.text() == "Save View Image…"
+    assert not window.save_image_action.isEnabled()
+
+    window.controls.set_file_paths((Path("model.stl"),))
+    window._on_model_loaded(_model())
+    assert window.save_image_action.isEnabled()
+    window.save_image_action.trigger()
+    window.viewer.save_image_button.click()
+    assert len(calls) == 2
+
+
+def test_result_headers_with_units_are_not_clipped(viewer_window) -> None:
+    window, _ = viewer_window
+    results = window.results
+    results.set_rows([_row()])
+    header = results.table.horizontalHeader()
+    for section in range(header.count()):
+        assert header.sectionSize(section) >= header.sectionSizeHint(section)
+
+
 def _model() -> ModelData:
     vertices = np.array(
         [

@@ -111,12 +111,17 @@ if QtWidgets is not None:
             self.cancel_action = QtGui.QAction("Cancel", self)
             self.cancel_action.setShortcut(QtGui.QKeySequence("Ctrl+."))
             self.cancel_action.triggered.connect(self.controller.cancel)
+            self.save_image_action = QtGui.QAction("Save View Image…", self)
+            self.save_image_action.setShortcut(QtGui.QKeySequence("Ctrl+Shift+S"))
+            self.save_image_action.triggered.connect(self.viewer.choose_and_save_image)
+            self.save_image_action.setEnabled(False)
             file_menu.addAction(self.open_action)
             file_menu.addSeparator()
             file_menu.addAction(self.run_action)
             file_menu.addAction(self.cancel_action)
             file_menu.addSeparator()
             file_menu.addAction(self.save_csv_action)
+            file_menu.addAction(self.save_image_action)
 
             help_menu = self.menuBar().addMenu("Help")
             documentation_action = QtGui.QAction("Documentation", self)
@@ -130,7 +135,6 @@ if QtWidgets is not None:
             self.controls.viewer_options_changed.connect(self.viewer.set_options)
             self.controls.request_changed.connect(self._preview_request)
             self.controls.error.connect(self._show_error)
-            self.controls.save_image_button.clicked.connect(self.viewer.choose_and_save_image)
             self.viewer.base_face_available.connect(self._set_base_face_available)
             self.viewer.newly_exposed_surface_available.connect(
                 self._set_newly_exposed_surface_available
@@ -179,6 +183,7 @@ if QtWidgets is not None:
             self.controls.set_model(model)
             self.viewer.set_model(model)
             self.viewer.set_request(self._request)
+            self.save_image_action.setEnabled(True)
             self.status.setText("Model loaded")
 
         @QtCore.Slot(list)

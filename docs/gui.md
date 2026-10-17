@@ -135,23 +135,28 @@ combinations still require real-screen validation.
 
 ![cadmetrics GUI showing a satellite STEP sweep](assets/gui-main.png)
 
-The screenshot shows the default workflow: a STEP sample loaded in the 3D view, the advanced
-axis/tessellation controls collapsed, an alpha sweep configured, and the results area below the
-viewer.
+The screenshot shows the default workflow: a STEP sample loaded in the 3D view, the view toolbar
+above it, the optional sections collapsed, an alpha/beta sweep configured, and the results area
+below the viewer.
 
 ## Basic Workflow
 
-1. Click `Browse` and choose one or more STL files, or one or more STEP files.
+1. Open one or more STL files, or one or more STEP files: click `Browse`, choose `File` >
+   `Open…` (⌘O / Ctrl+O), drag the files onto the window, or type a path and press Enter.
 2. Confirm input and output units.
-3. Adjust tessellation settings if needed.
+3. Adjust components or tessellation settings if needed.
 4. Choose the attitude input mode.
-5. Run `Run Sweep`.
+5. Run `Run Sweep` (⌘R / Ctrl+R).
 6. Select rows in the result table to update the camera and overlay.
-7. Save results with `Save CSV`.
+7. Save results with `Save CSV` (⌘S / Ctrl+S).
 
-The selected geometry is loaded and displayed immediately after browsing. When multiple files are
+The selected geometry is loaded and displayed immediately after opening. When multiple files are
 selected, the GUI treats them as one calculation model. STEP and STL files cannot be mixed in the
 same selection.
+
+`Run Sweep` is disabled while an input is invalid, for example when no file is selected, a file
+does not exist, a sweep `Step` is not usable, the unit vector is `(0, 0, 0)`, or no component is
+enabled. The reason is shown directly above the button.
 
 After a model is loaded, `Run Sweep` reuses the displayed geometry instead of loading the same
 file again. Changing Advanced settings that affect geometry still reloads the model when those
@@ -169,23 +174,28 @@ settings are applied.
 ## Advanced
 
 `Advanced` is collapsed by default because these settings are usually changed less often.
-Expand it when the loaded CAD axes, component selection, STEP metric source, or tessellation
-settings need adjustment. Changed controls are marked as not applied until you run the sweep or
-click `Reload Model with Settings`.
+Expand it when the loaded CAD axes, STEP metric source, or tessellation settings need adjustment.
+Changed controls are marked `Advanced · changes pending`. They apply on the next `Run Sweep`;
+click `Preview with Settings` to reload the displayed model with them first.
 
 ### Axis Map
 
 `Axis map` remaps the loaded model axes before calculation and display. Choose which input axis
 becomes cadmetrics `X`, `Y`, and `Z`. Use signs such as `-Z` when an axis is reversed. Changing
-the combo boxes does not reload the model immediately; click `Reload Model with Settings`, browse a file,
+the combo boxes does not reload the model immediately; click `Preview with Settings`, open a file,
 or run a calculation to use the new mapping.
 
-### Component Filters
+## Components
+
+`Components` is a separate section because it decides which geometry is calculated. It opens
+automatically when a multi-solid STEP model is loaded; for STL files and single-component STEP
+files it shows a one-line note instead of an empty list.
 
 For multi-solid STEP files, `Components` lists the loaded solid components. cadmetrics uses
 STEP/XCAF names when they are available and falls back to `Component 1`, `Component 2`, and so
 on when a useful name is not stored in the file. Clear a component checkbox to exclude that
-solid from the displayed model and subsequent calculations, then click `Reload Model with Settings`.
+solid from subsequent calculations. Changes apply on the next `Run Sweep`; click
+`Preview with Settings` under `Advanced` to update the displayed model first.
 
 The filters operate on STEP solid geometry after loading and before boolean union. Keeping all
 components enabled preserves the default behavior. For multi-file STEP assemblies, components are
@@ -195,17 +205,16 @@ supported.
 Saved CSV results include `step_components` and `step_component_names`, so calculations can be
 traced back to the component checkboxes that were enabled.
 
-`Component mode` controls what an unchecked component means:
+`Mode` controls what an unchecked component means:
 
-- `Filter OFF (default)` removes unchecked components before union and leaves enabled geometry
-  intact.
-- `Subtract OFF` creates `Union(enabled) - Union(disabled)`, so disabled components carve their
-  overlapping volume out of enabled geometry.
+- `Exclude unchecked components (default)` removes unchecked components before union and leaves
+  enabled geometry intact.
+- `Subtract unchecked components from the model` creates `Union(enabled) - Union(disabled)`, so
+  disabled components carve their overlapping volume out of enabled geometry.
 
 Subtraction-mode `surface_area` counts only surviving faces from the enabled union. Newly created
 surfaces newly exposed by subtraction are excluded and reported separately as
-`newly_exposed_surface_area`. Click `Reload Model with Settings` after
-changing the mode or component checkboxes.
+`newly_exposed_surface_area`.
 
 When subtraction creates new surfaces, the 3D viewer highlights them in orange. Use the
 `Newly exposed surface` checkbox under `Shape Display` to show or hide this overlay.
@@ -237,7 +246,13 @@ lie at the final model Xmax.
 
 ## Shape Display
 
-The 3D view supports:
+The toolbar above the 3D view sets the camera to `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`, `ISO`
+(from `-X -Y +Z`), or `ISO↓` (from below, `+X +Y -Z`). Clicking a button always re-applies that
+view, and the chosen view is kept for models loaded later. `Save Image…` in the same toolbar, or
+`File` > `Save View Image…` (⇧⌘S / Ctrl+Shift+S), exports the current view as PNG.
+
+`Shape Display` groups the remaining options into `Rendering` and `Annotations`. The 3D view
+supports:
 
 - transparent shape display
 - mesh-edge display
@@ -246,12 +261,12 @@ The 3D view supports:
 - projection-arrow display (enabled by default)
 - centroid-marker display (enabled by default)
 - optional yellow highlighting of the Xmax base face
-- camera direction selection from `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`, and two ISO views
 - compact overlay text with file, unit, surface area, base area, and volume
 - optional detailed overlay text with geometry bounds and calculation metadata
-- PNG export with `Save Image`
 
-The compact overlay is the default so it does not compete with the model. Before calculation it
+The overlay sits on a light panel in the upper-left corner and wraps long lines; the scene is
+shifted so the panel does not cover the model, and the orientation axes sit in the lower-right
+corner. The compact overlay is the default so it does not compete with the model. Before calculation it
 shows only model-level values. Selecting a result appends that row's attitude and projected area
 without moving or replacing the common model values. Unavailable base areas are shown as `n/a`.
 Expand `Shape Display` and enable `Detailed overlay` when diagnostic values are needed.
@@ -261,8 +276,11 @@ The setting is retained when loading another model or selecting a result, and ap
 exports. The small orientation axes remain visible. The grid follows the loaded model bounds
 and uses compact, explicitly sized text instead of the PyVista theme font.
 
-The viewer uses parallel projection. After a calculation, selecting a result row points the
-camera along that row's projection direction.
+The viewer uses parallel projection with a light that follows the camera, so projection-aligned
+views stay as bright as the ISO view. After a calculation, selecting a result row points the
+camera along that row's projection direction. Before a model is loaded, the view shows how to
+open one. While an input is invalid, the projection arrow is hidden instead of showing a
+default direction.
 
 ## Documentation Viewer
 
@@ -287,20 +305,29 @@ See [Attitude Definition](attitude.md) for the coordinate convention and formula
 
 ## Cancellation
 
-`Cancel` is available while a sweep is calculating. Cancellation is cooperative: cadmetrics
-finishes the current projection case and stops before adding another result. STEP loading,
+`Cancel` (⌘. / Ctrl+.) is available while a sweep is calculating. Cancellation is cooperative:
+cadmetrics finishes the current projection case and stops before adding another result. Rows
+already calculated stay in the table. STEP loading,
 boolean operations, tessellation, and a single projection are native geometry operations and
 cannot be interrupted safely; closing the window during one of these operations waits for it to
 finish before exiting.
 
-Changing files or calculation settings immediately clears previous result rows and disables CSV
-export, so results from an earlier model cannot be saved as if they belonged to the new model.
+Changing attitude or calculation settings keeps the previous rows visible but marks them
+`Results are out of date — Run Sweep to update.`, dims the table, and updates the status bar.
+Out-of-date rows can still be inspected and saved to CSV; each row keeps the settings it was
+calculated with. Loading a different model clears the previous rows.
 
 ## Results
 
 The result table starts with the attitude, projected-area, centroid, and geometry columns most
-useful for inspection; all CSV fields remain available by scrolling horizontally. Before a sweep,
-the result area shows an empty-state prompt instead of an empty table. Important fields include:
+useful for inspection; all CSV fields remain available by scrolling horizontally. Rows appear as
+each case finishes instead of only at the end of the sweep. Before a sweep, the result area shows
+an empty-state prompt instead of an empty table.
+
+The `File` column shows file names (the full path is in the tooltip). Numbers are right-aligned
+and shown with 6 significant digits; CSV export keeps full precision. Headers carry the output
+unit, for example `Projected area (m²)`. Click a header to sort, and press ⌘C / Ctrl+C to copy
+the selected row as tab-separated text. Important fields include:
 
 - `x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max`
 - `surface_area`

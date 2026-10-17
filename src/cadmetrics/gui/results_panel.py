@@ -15,6 +15,8 @@ from cadmetrics.types import MeasurementRow
 
 DEFAULT_COLUMN_WIDTH = 130
 FILE_COLUMN_WIDTH = 180
+# Room for the sort indicator, which sectionSizeHint does not include.
+SORT_INDICATOR_ALLOWANCE = 18
 STALE_MESSAGE = "Results are out of date — Run Sweep to update."
 
 
@@ -248,6 +250,14 @@ class ResultsPanel(QtWidgets.QWidget):
         except Exception as exc:
             self.error.emit(str(exc))
 
+    def _fit_header_widths(self) -> None:
+        """Widen columns whose header, which carries the output unit, would be clipped."""
+        header = self.table.horizontalHeader()
+        for section in range(header.count()):
+            needed = header.sectionSizeHint(section) + SORT_INDICATOR_ALLOWANCE
+            if header.sectionSize(section) < needed:
+                header.resizeSection(section, needed)
+
     def _sync_rows(self) -> None:
         rows = bool(self._rows)
         self.result_count.setText(f"Rows: {len(self._rows):,}")
@@ -262,6 +272,7 @@ class ResultsPanel(QtWidgets.QWidget):
             tooltip = "Save all result columns to CSV."
         self.save_button.setToolTip(tooltip)
         if rows:
+            self._fit_header_widths()
             self.stack.setCurrentWidget(self.table)
         else:
             if self._busy:
