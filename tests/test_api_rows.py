@@ -99,6 +99,7 @@ def test_model_calculations_preserve_explicit_elapsed_time(model, calculate, ela
     assert row.elapsed_sec == elapsed_sec
     assert row.load_elapsed_sec == 1.25
 
+
 def test_model_data_retains_legacy_positional_fields() -> None:
     # ModelData is exported from cadmetrics; preview-only fields must not shift the
     # previously published optional positional constructor parameters.
