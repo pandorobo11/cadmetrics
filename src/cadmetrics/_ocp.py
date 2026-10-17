@@ -72,6 +72,7 @@ def load_ocp_bindings() -> OcpBindings:
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS, TopoDS_Compound
+
         try:
             from OCP.TopTools import TopTools_ListOfShape, TopTools_MapOfShape
         except ImportError:
