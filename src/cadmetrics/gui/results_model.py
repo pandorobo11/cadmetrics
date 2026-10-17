@@ -46,7 +46,7 @@ def header_label(key: str, output_unit: str | None) -> str:
 
 
 def rows_to_tsv(rows: Iterable[MeasurementRow], output_unit: str | None) -> str:
-    """Serialize rows as tab-separated text with headers, keeping full numeric precision."""
+    """Serialize rows as tab-separated text with headers and 12 significant digits."""
     lines = ["\t".join(header_label(key, output_unit) for key in DISPLAY_FIELDS)]
     for row in rows:
         lines.append(
