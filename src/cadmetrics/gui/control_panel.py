@@ -20,12 +20,43 @@ from cadmetrics.types import ModelData
 
 UNIT_OPTIONS = ["auto", "m", "mm", "cm", "in", "ft"]
 OUTPUT_UNIT_OPTIONS = ["m", "mm", "cm", "in", "ft"]
+COMPONENT_LIST_MAX_HEIGHT = 200
 
 
 class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        # Wheel input must not grab focus, or scrolling the panel would edit values.
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+
     def textFromValue(self, value: float) -> str:  # noqa: N802
         text = f"{value:.{self.decimals()}f}".rstrip("0").rstrip(".")
         return text if "." in text else f"{text}.0"
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:  # noqa: N802
+        if not self.hasFocus():
+            event.ignore()  # Let the scroll area scroll instead of changing the value.
+            return
+        super().wheelEvent(event)
+
+    def hide_step_buttons(self) -> None:
+        """Use for values where a fixed increment is meaningless (tolerances)."""
+        self.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.setProperty("buttonless", True)
+
+
+class PanelComboBox(QtWidgets.QComboBox):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+        # A list view lets the stylesheet size and highlight popup items consistently.
+        self.setView(QtWidgets.QListView())
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:  # noqa: N802
+        if not self.hasFocus():
+            event.ignore()
+            return
+        super().wheelEvent(event)
 
 
 class ControlPanel(QtWidgets.QWidget):
@@ -81,10 +112,10 @@ class ControlPanel(QtWidgets.QWidget):
         file_row.addWidget(self.file_edit)
         file_row.addWidget(self.browse_button)
         setup.addRow("File", file_row)
-        self.input_unit = QtWidgets.QComboBox()
+        self.input_unit = PanelComboBox()
         self.input_unit.addItems(UNIT_OPTIONS)
         setup.addRow("Input unit", self.input_unit)
-        self.output_unit = QtWidgets.QComboBox()
+        self.output_unit = PanelComboBox()
         self.output_unit.addItems(OUTPUT_UNIT_OPTIONS)
         setup.addRow("Output unit", self.output_unit)
 
@@ -92,11 +123,14 @@ class ControlPanel(QtWidgets.QWidget):
         attitude_layout = QtWidgets.QVBoxLayout(self.attitude_box)
         attitude_layout.setContentsMargins(8, 6, 8, 8)
         attitude_layout.setSpacing(5)
-        self.attitude_mode = QtWidgets.QComboBox()
+        self.attitude_mode = PanelComboBox()
         self.attitude_mode.addItem("Alpha / Beta", "alpha_beta")
         self.attitude_mode.addItem("Roll / Pitch", "roll_pitch")
         self.attitude_mode.addItem("Unit vector", "vector")
-        attitude_layout.addWidget(self.attitude_mode)
+        attitude_mode_row = QtWidgets.QFormLayout()
+        self._configure_form_layout(attitude_mode_row, margins=(0, 0, 0, 2))
+        attitude_mode_row.addRow("Mode", self.attitude_mode)
+        attitude_layout.addLayout(attitude_mode_row)
         self.alpha_beta_group, self.alpha_fields, self.beta_fields = self._sweep_grid(
             "Alpha", "Beta"
         )
@@ -151,16 +185,18 @@ class ControlPanel(QtWidgets.QWidget):
         detail_layout.setContentsMargins(0, 0, 0, 0)
         detail_layout.setSpacing(6)
         component_list = QtWidgets.QWidget()
+        component_list.setObjectName("componentListContent")
+        self._component_list = component_list
         self.component_list_layout = QtWidgets.QVBoxLayout(component_list)
-        self.component_list_layout.setContentsMargins(0, 0, 0, 0)
+        self.component_list_layout.setContentsMargins(6, 4, 6, 4)
         self.component_list_layout.setSpacing(2)
         self.component_scroll = QtWidgets.QScrollArea()
+        self.component_scroll.setObjectName("componentList")
         self.component_scroll.setWidgetResizable(True)
         self.component_scroll.setHorizontalScrollBarPolicy(
             QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        self.component_scroll.setMinimumHeight(130)
-        self.component_scroll.setMaximumHeight(130)
+        self.component_scroll.setFixedHeight(COMPONENT_LIST_MAX_HEIGHT)
         self.component_scroll.setWidget(component_list)
         detail_layout.addWidget(self.component_scroll)
         component_buttons = QtWidgets.QHBoxLayout()
@@ -168,8 +204,8 @@ class ControlPanel(QtWidgets.QWidget):
         component_buttons.setSpacing(6)
         self.component_all_button = QtWidgets.QPushButton("All")
         self.component_none_button = QtWidgets.QPushButton("None")
-        self.component_all_button.setObjectName("secondaryButton")
-        self.component_none_button.setObjectName("secondaryButton")
+        self.component_all_button.setObjectName("compactButton")
+        self.component_none_button.setObjectName("compactButton")
         self.component_all_button.clicked.connect(lambda: self._set_all_components(True))
         self.component_none_button.clicked.connect(lambda: self._set_all_components(False))
         component_buttons.addWidget(self.component_all_button)
@@ -178,7 +214,7 @@ class ControlPanel(QtWidgets.QWidget):
         detail_layout.addLayout(component_buttons)
         mode_row = QtWidgets.QFormLayout()
         self._configure_form_layout(mode_row, margins=(0, 0, 0, 0))
-        self.step_component_mode = QtWidgets.QComboBox()
+        self.step_component_mode = PanelComboBox()
         self.step_component_mode.addItem("Exclude unchecked components (default)", "filter")
         self.step_component_mode.addItem("Subtract unchecked components from the model", "subtract")
         self.step_component_mode.setToolTip(
@@ -262,7 +298,7 @@ class ControlPanel(QtWidgets.QWidget):
         advanced.addRow(QtWidgets.QLabel("Axis map"))
         advanced.addRow(axis_row)
 
-        self.step_metrics = QtWidgets.QComboBox()
+        self.step_metrics = PanelComboBox()
         self.step_metrics.addItem("B-Rep (default)", "brep")
         self.step_metrics.addItem("Mesh", "mesh")
         advanced.addRow("STEP metrics", self.step_metrics)
@@ -270,6 +306,11 @@ class ControlPanel(QtWidgets.QWidget):
         self.mesh_deflection.setRange(1.0e-8, 1.0)
         self.mesh_deflection.setDecimals(8)
         self.mesh_deflection.setValue(1.0e-3)
+        self.mesh_deflection.hide_step_buttons()
+        self.mesh_deflection.setToolTip(
+            "Maximum distance between the STEP surface and its tessellation, "
+            "in the output length unit."
+        )
         self.mesh_deflection_auto = self._check("Auto", True)
         self.mesh_deflection_auto.toggled.connect(
             lambda checked: self.mesh_deflection.setEnabled(not checked)
@@ -283,11 +324,18 @@ class ControlPanel(QtWidgets.QWidget):
         self.angular_deflection = FlexibleDoubleSpinBox()
         self.angular_deflection.setRange(1.0e-6, 1.0)
         self.angular_deflection.setValue(0.1)
+        self.angular_deflection.hide_step_buttons()
+        self.angular_deflection.setToolTip("Maximum angle between tessellation facets, in radians.")
         advanced.addRow("Angular deflection", self.angular_deflection)
         self.base_tolerance = FlexibleDoubleSpinBox()
         self.base_tolerance.setRange(1.0e-12, 1.0)
         self.base_tolerance.setDecimals(12)
         self.base_tolerance.setValue(DEFAULT_BASE_TOLERANCE)
+        self.base_tolerance.hide_step_buttons()
+        self.base_tolerance.setToolTip(
+            "How close a face must be to Xmax to count as base area, relative to the "
+            "bounding-box diagonal."
+        )
         advanced.addRow("Base tolerance", self.base_tolerance)
         self.apply_advanced_button = QtWidgets.QPushButton("Preview with Settings")
         self.apply_advanced_button.clicked.connect(self._apply_advanced_settings)
@@ -573,7 +621,9 @@ class ControlPanel(QtWidgets.QWidget):
             model.component_names, grouped=model.is_assembly and model.source_format == "step"
         ):
             if group_name:
-                self.component_list_layout.addWidget(QtWidgets.QLabel(group_name))
+                group_label = QtWidgets.QLabel(group_name)
+                group_label.setObjectName("componentGroupLabel")
+                self.component_list_layout.addWidget(group_label)
             for index, name in components:
                 checkbox = QtWidgets.QCheckBox(f"{index}: {name}")
                 checkbox.setProperty("component_index", index)
@@ -584,6 +634,9 @@ class ControlPanel(QtWidgets.QWidget):
                 self.component_list_layout.addWidget(checkbox)
                 self._component_checkboxes.append(checkbox)
         self.component_list_layout.addStretch(1)
+        # Fit short lists exactly and scroll only long ones.
+        list_height = self._component_list.sizeHint().height() + 2
+        self.component_scroll.setFixedHeight(min(list_height, COMPONENT_LIST_MAX_HEIGHT))
         self._sync_component_summary()
         self._sync_component_controls(True)
 
@@ -799,6 +852,7 @@ class ControlPanel(QtWidgets.QWidget):
         grid.addWidget(row_label, row, 0)
         fields = (self._number(0.0), self._number(0.0), self._number(1.0))
         for column, field in enumerate(fields, start=1):
+            field.setSuffix("°")
             grid.addWidget(field, row, column)
             field.valueChanged.connect(self._emit_preview_request)
             field.valueChanged.connect(self._sync_sweep_inputs)
@@ -817,6 +871,7 @@ class ControlPanel(QtWidgets.QWidget):
         grid.setHorizontalSpacing(6)
         fields = (self._number(1.0), self._number(0.0), self._number(0.0))
         for column, (label, field) in enumerate(zip(("X", "Y", "Z"), fields, strict=True)):
+            field.setSingleStep(0.1)
             header = QtWidgets.QLabel(label)
             header.setStyleSheet("color: #5f6872;")
             header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -836,8 +891,8 @@ class ControlPanel(QtWidgets.QWidget):
         field.setMinimumWidth(70)
         return field
 
-    def _axis_combo(self, default: str) -> QtWidgets.QComboBox:
-        combo = QtWidgets.QComboBox()
+    def _axis_combo(self, default: str) -> PanelComboBox:
+        combo = PanelComboBox()
         combo.setMinimumWidth(84)
         combo.setMinimumContentsLength(3)
         combo.setSizeAdjustPolicy(

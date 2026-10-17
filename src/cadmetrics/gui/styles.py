@@ -7,19 +7,21 @@ from pathlib import Path
 def spinbox_arrow_image_urls() -> tuple[str, str, str, str]:
     asset_dir = Path(tempfile.gettempdir()) / "cadmetrics-gui-assets"
     asset_dir.mkdir(parents=True, exist_ok=True)
+    up, down = "M1.5 5 L5 1.5 L8.5 5", "M1.5 1 L5 4.5 L8.5 1"
     assets = (
-        ("spin-up.svg", "M1 4 L4 1 L7 4 Z", "#657383"),
-        ("spin-down.svg", "M1 1 L7 1 L4 4 Z", "#657383"),
-        ("spin-up-disabled.svg", "M1 4 L4 1 L7 4 Z", "#a9b2bc"),
-        ("spin-down-disabled.svg", "M1 1 L7 1 L4 4 Z", "#a9b2bc"),
+        ("chevron-up.svg", up, "#4f5d6b"),
+        ("chevron-down.svg", down, "#4f5d6b"),
+        ("chevron-up-disabled.svg", up, "#b3bcc6"),
+        ("chevron-down-disabled.svg", down, "#b3bcc6"),
     )
     urls: list[str] = []
     for filename, path, color in assets:
         asset = asset_dir / filename
         asset.write_text(
-            '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="5" '
-            'viewBox="0 0 8 5">'
-            f'<path d="{path}" fill="{color}"/></svg>',
+            '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" '
+            'viewBox="0 0 10 6">'
+            f'<path d="{path}" fill="none" stroke="{color}" stroke-width="1.5" '
+            'stroke-linecap="round" stroke-linejoin="round"/></svg>',
             encoding="utf-8",
         )
         urls.append(asset.as_posix())
@@ -83,43 +85,51 @@ def with_spinbox_assets(stylesheet: str) -> str:
 
 
 APPLICATION_STYLESHEET = """
-QWidget { color: #202832; font-size: 13px; }
+QWidget { color: #202832; font-size: 13px; font-weight: 400; }
 QWidget#controlPanel, QWidget#controlContent { background: #f3f6f9; }
 QLineEdit, QComboBox, QDoubleSpinBox {
     min-height: 28px; border: 1px solid #bcc6d0; border-radius: 6px;
     padding: 2px 7px; background: #ffffff; selection-background-color: #2f78c4;
 }
+QLineEdit:hover, QComboBox:hover, QDoubleSpinBox:hover { border-color: #93a2b2; }
 QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus {
     border: 2px solid #2f78c4; padding: 1px 6px;
 }
-QComboBox { padding-right: 29px; }
-QComboBox::drop-down {
-    subcontrol-origin: padding; subcontrol-position: top right;
-    width: 27px; border: 0; border-left: 1px solid #c7d0da;
-    border-top-right-radius: 5px; border-bottom-right-radius: 5px; background: #f7f9fb;
+QLineEdit:disabled, QComboBox:disabled, QDoubleSpinBox:disabled {
+    background: #f4f6f8; border-color: #d5dbe1; color: #7b8590;
 }
-QComboBox::drop-down:hover { background: #eef3f8; }
-QComboBox::drop-down:pressed { background: #e2eaf2; }
-QComboBox::drop-down:disabled { background: #f7f9fb; }
-QComboBox::down-arrow { image: url("__SPIN_DOWN_URL__"); width: 8px; height: 5px; }
+QComboBox { padding-right: 26px; }
+QComboBox::drop-down {
+    subcontrol-origin: padding; subcontrol-position: center right;
+    width: 24px; border: 0; background: transparent;
+}
+QComboBox::down-arrow { image: url("__SPIN_DOWN_URL__"); width: 10px; height: 6px; }
 QComboBox::down-arrow:disabled { image: url("__SPIN_DOWN_DISABLED_URL__"); }
-QDoubleSpinBox { padding-right: 28px; }
+QComboBox QAbstractItemView {
+    border: 1px solid #c7d0da; border-radius: 6px; padding: 4px; background: #ffffff;
+    outline: 0; selection-background-color: #e3eefb; selection-color: #10263d;
+}
+QComboBox QAbstractItemView::item { min-height: 26px; padding: 0 8px; border-radius: 4px; }
+QComboBox QAbstractItemView::item:hover { background: #eef3f8; }
+QComboBox QAbstractItemView::item:selected { background: #dcebfb; color: #10263d; }
+QDoubleSpinBox { padding-right: 22px; }
+QDoubleSpinBox[buttonless="true"] { padding-right: 7px; }
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
-    width: 27px; border: 0; border-left: 1px solid #c7d0da; background: #f7f9fb;
+    width: 20px; border: 0; background: transparent;
 }
 QDoubleSpinBox::up-button {
-    subcontrol-origin: padding; subcontrol-position: top right;
-    border-top-right-radius: 5px; border-bottom: 1px solid #d8dfe6; height: 14px;
+    subcontrol-origin: border; subcontrol-position: top right;
+    margin: 3px 3px 0 0; border-top-right-radius: 4px; height: 13px;
 }
 QDoubleSpinBox::down-button {
-    subcontrol-origin: padding; subcontrol-position: bottom right;
-    border-bottom-right-radius: 5px; height: 14px;
+    subcontrol-origin: border; subcontrol-position: bottom right;
+    margin: 0 3px 3px 0; border-bottom-right-radius: 4px; height: 13px;
 }
-QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { background: #eef3f8; }
-QDoubleSpinBox::up-button:pressed, QDoubleSpinBox::down-button:pressed { background: #e2eaf2; }
-QDoubleSpinBox::up-button:disabled, QDoubleSpinBox::down-button:disabled { background: #f7f9fb; }
-QDoubleSpinBox::up-arrow { image: url("__SPIN_UP_URL__"); width: 8px; height: 5px; }
-QDoubleSpinBox::down-arrow { image: url("__SPIN_DOWN_URL__"); width: 8px; height: 5px; }
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { background: #e9eff6; }
+QDoubleSpinBox::up-button:pressed, QDoubleSpinBox::down-button:pressed { background: #d9e4f0; }
+QDoubleSpinBox::up-button:disabled, QDoubleSpinBox::down-button:disabled { background: transparent; }
+QDoubleSpinBox::up-arrow { image: url("__SPIN_UP_URL__"); width: 10px; height: 6px; }
+QDoubleSpinBox::down-arrow { image: url("__SPIN_DOWN_URL__"); width: 10px; height: 6px; }
 QDoubleSpinBox::up-arrow:disabled { image: url("__SPIN_UP_DISABLED_URL__"); }
 QDoubleSpinBox::down-arrow:disabled { image: url("__SPIN_DOWN_DISABLED_URL__"); }
 QPushButton {
@@ -157,12 +167,12 @@ QCheckBox::indicator:checked:disabled {
     background: #dde3ea; border-color: #c3ccd6; image: url("__CHECK_ON_DISABLED_URL__");
 }
 QGroupBox {
-    border: 0; border-radius: 8px; margin-top: 10px;
-    padding: 11px 8px 8px 8px; background: #ffffff;
+    border: 0; border-radius: 8px; margin-top: 0;
+    padding: 30px 8px 8px 8px; background: #ffffff; font-weight: 600;
 }
 QGroupBox::title {
-    subcontrol-origin: margin; left: 8px; padding: 0 4px;
-    font-size: 14px; font-weight: 600; color: #17212b;
+    subcontrol-origin: padding; subcontrol-position: top left; left: 10px; top: 9px;
+    padding: 0; font-size: 13px; font-weight: 600; color: #17212b;
 }
 QGroupBox#sectionContent {
     margin-top: 0; padding: 0; border: 0; background: #ffffff;
@@ -175,8 +185,14 @@ QToolButton#sectionToggle {
 }
 QToolButton#sectionToggle:hover { background: #eaf0f6; }
 QToolButton#sectionToggle:checked {
-    background: #eaf0f6; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+    background: #ffffff; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
 }
+QToolButton#sectionToggle:checked:hover { background: #f3f7fa; }
+QScrollArea#componentList {
+    border: 1px solid #dbe1e7; border-radius: 6px; background: #ffffff;
+}
+QWidget#componentListContent { background: #ffffff; }
+QLabel#componentGroupLabel { color: #4a5663; font-size: 12px; font-weight: 600; }
 QProgressBar {
     min-height: 8px; max-height: 8px; border: 0; border-radius: 4px; background: #dce2e8;
 }
@@ -210,6 +226,10 @@ QLabel#resultsStaleLabel {
     color: #925c12; background: #fff4d8; border-radius: 5px; padding: 5px 7px;
 }
 QLabel#validationMessageLabel { color: #a23b32; font-size: 12px; }
+QPushButton#compactButton {
+    min-height: 22px; padding: 1px 10px; font-size: 12px; border-radius: 5px;
+}
+QLabel#fieldHint { color: #5f6b78; font-size: 12px; }
 QWidget#viewerToolbar { background: #f7f9fb; border-bottom: 1px solid #d9dee4; }
 QLabel#viewerToolbarLabel { color: #4a5663; font-size: 12px; font-weight: 600; padding-right: 4px; }
 QToolButton#viewButton {

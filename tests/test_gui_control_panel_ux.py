@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from cadmetrics.gui.control_panel import ControlPanel
 from cadmetrics.gui.gui_types import OperationState
@@ -143,7 +143,7 @@ def test_components_section_is_independent_and_opens_for_multiple(qtbot, tmp_pat
     panel.set_model(_model(tmp_path / "asm.step", ("A", "B")))
     assert toggle.isChecked() is True
     assert panel.component_detail.isHidden() is False
-    assert panel.component_scroll.maximumHeight() == 130
+    assert 0 < panel.component_scroll.maximumHeight() <= 200
 
 
 def test_single_component_shows_one_line_only(qtbot, tmp_path: Path) -> None:
@@ -197,3 +197,78 @@ def test_unavailable_checkboxes_have_tooltips(qtbot) -> None:
     assert panel.show_base_face.toolTip()
     assert panel.show_newly_exposed_surface.isEnabled() is False
     assert "Unavailable" in panel.show_newly_exposed_surface.toolTip()
+
+
+def _wheel(widget) -> QtGui.QWheelEvent:
+    center = QtCore.QPointF(widget.rect().center())
+    return QtGui.QWheelEvent(
+        center,
+        widget.mapToGlobal(center),
+        QtCore.QPoint(0, 0),
+        QtCore.QPoint(0, 120),
+        QtCore.Qt.MouseButton.NoButton,
+        QtCore.Qt.KeyboardModifier.NoModifier,
+        QtCore.Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+
+
+def test_wheel_over_unfocused_inputs_scrolls_instead_of_editing(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path)
+    spin = panel.alpha_fields[1]
+    combo = panel.output_unit
+    for widget in (spin, combo):
+        assert widget.focusPolicy() == QtCore.Qt.FocusPolicy.StrongFocus
+
+    event = _wheel(spin)
+    QtWidgets.QApplication.sendEvent(spin, event)
+    assert not event.isAccepted()
+    assert spin.value() == 0.0
+
+    event = _wheel(combo)
+    QtWidgets.QApplication.sendEvent(combo, event)
+    assert not event.isAccepted()
+    assert combo.currentText() == "m"
+
+
+def test_angle_fields_show_degrees_and_tolerances_have_no_step_buttons(
+    qtbot, tmp_path: Path
+) -> None:
+    panel = _panel(qtbot, tmp_path)
+    for field in (*panel.alpha_fields, *panel.beta_fields, *panel.roll_fields):
+        assert field.suffix() == "°"
+    panel.alpha_fields[1].setValue(90.0)
+    assert panel.alpha_fields[1].text() == "90.0°"
+    assert all(field.suffix() == "" for field in panel.vector_fields)
+
+    no_buttons = QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
+    for field in (panel.mesh_deflection, panel.angular_deflection, panel.base_tolerance):
+        assert field.buttonSymbols() == no_buttons
+        assert field.property("buttonless") is True
+        assert field.toolTip()
+    assert panel.alpha_fields[0].buttonSymbols() != no_buttons
+
+
+def test_combo_popups_use_styleable_list_views(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path)
+    for combo in (
+        panel.input_unit,
+        panel.output_unit,
+        panel.attitude_mode,
+        panel.step_component_mode,
+        panel.step_metrics,
+        panel.axis_x,
+    ):
+        assert isinstance(combo.view(), QtWidgets.QListView)
+
+
+def test_component_list_height_fits_short_lists(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path, "model.step")
+    panel.set_model(_model(tmp_path / "model.step", ("A", "B")))
+    short = panel.component_scroll.height()
+    content = panel.component_scroll.widget().sizeHint().height()
+    assert short == content + 2
+
+    names = tuple(f"Part {index}" for index in range(30))
+    panel.set_model(_model(tmp_path / "model.step", names))
+    assert panel.component_scroll.height() == 200

@@ -236,7 +236,9 @@ bounding-box diagonal * 1e-4
 The actual diagonal is used for sub-unit models as well; only the final output-unit deflection is
 floored at `1e-9`.
 
-`Angular deflection` controls STEP angular tessellation tolerance. Its default is `0.1`.
+`Angular deflection` controls STEP angular tessellation tolerance, in radians. Its default is
+`0.1`. The tolerance fields have no step arrows because a fixed increment is not meaningful for
+them; type the value instead.
 
 `Base tolerance` controls how close a face must be to cadmetrics-coordinate `Xmax` to count as
 `base_area`. It is relative to the loaded model size: cadmetrics uses
@@ -298,8 +300,11 @@ when `Start` and `End` are the same:
 - `Roll / Pitch`: sweeps roll and pitch
 - `Unit vector`: calculates one explicit projection direction
 
-Angle modes use separate `Start`, `End`, and `Step` fields. The sweep calculates every
-combination of the selected angle ranges. Unit-vector mode does not sweep.
+Angle modes use separate `Start`, `End`, and `Step` fields, shown in degrees. The sweep calculates
+every combination of the selected angle ranges. Unit-vector mode does not sweep.
+
+Scrolling over the left panel scrolls it; the mouse wheel changes a number or drop-down only after
+you click into that field.
 
 See [Attitude Definition](attitude.md) for the coordinate convention and formulas.
 
