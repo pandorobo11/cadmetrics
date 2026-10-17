@@ -45,6 +45,27 @@ def disclosure_arrow_image_urls() -> tuple[str, str]:
     return urls[0], urls[1]
 
 
+def checkbox_check_image_urls() -> tuple[str, str]:
+    asset_dir = Path(tempfile.gettempdir()) / "cadmetrics-gui-assets"
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    assets = (
+        ("check-on.svg", "#ffffff"),
+        ("check-on-disabled.svg", "#7d8895"),
+    )
+    urls: list[str] = []
+    for filename, color in assets:
+        asset = asset_dir / filename
+        asset.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" '
+            'viewBox="0 0 16 16"><path d="M4 8.5 L7 11.5 L12 5" fill="none" '
+            f'stroke="{color}" stroke-width="2" stroke-linecap="round" '
+            'stroke-linejoin="round"/></svg>',
+            encoding="utf-8",
+        )
+        urls.append(asset.as_posix())
+    return urls[0], urls[1]
+
+
 def with_spinbox_assets(stylesheet: str) -> str:
     up, down, up_disabled, down_disabled = spinbox_arrow_image_urls()
     replacements = {
@@ -53,6 +74,9 @@ def with_spinbox_assets(stylesheet: str) -> str:
         "__SPIN_UP_DISABLED_URL__": up_disabled,
         "__SPIN_DOWN_DISABLED_URL__": down_disabled,
     }
+    check_on, check_on_disabled = checkbox_check_image_urls()
+    replacements["__CHECK_ON_URL__"] = check_on
+    replacements["__CHECK_ON_DISABLED_URL__"] = check_on_disabled
     for placeholder, url in replacements.items():
         stylesheet = stylesheet.replace(placeholder, url)
     return stylesheet
@@ -105,18 +129,33 @@ QPushButton {
 QPushButton:hover { background: #eef3f8; border-color: #99a8b8; }
 QPushButton:pressed { background: #e3eaf2; border-color: #8798aa; }
 QPushButton:focus, QToolButton:focus { border: 2px solid #2f78c4; }
-QPushButton:disabled { background: #e9edf1; border-color: #cdd4dc; color: #77818c; }
+QPushButton:disabled { background: #e9edf1; border-color: #cdd4dc; color: #66707b; }
 QPushButton#primaryButton { background: #256fb4; border-color: #1e609e; color: white; }
 QPushButton#primaryButton:hover { background: #1f65a5; }
+QPushButton#primaryButton:pressed { background: #184f85; border-color: #143f6a; }
+QPushButton#primaryButton:focus { border: 2px solid #0f3d6b; }
+QPushButton#primaryButton:disabled {
+    background: #e9edf1; border-color: #cdd4dc; color: #66707b;
+}
 QPushButton#dangerButton { background: #fff7f5; border-color: #d8a59a; color: #9f3b2f; }
+QPushButton#dangerButton:hover { background: #ffece8; border-color: #c98a7d; }
+QPushButton#dangerButton:pressed { background: #fbdcd5; }
+QPushButton#dangerButton:disabled {
+    background: #e9edf1; border-color: #cdd4dc; color: #66707b;
+}
 QCheckBox { min-height: 28px; spacing: 8px; }
 QCheckBox:focus { color: #165f9f; }
 QCheckBox::indicator {
     width: 16px; height: 16px; border: 1px solid #98a6b4;
     border-radius: 4px; background: #ffffff;
 }
-QCheckBox::indicator:checked { background: #2f78c4; border-color: #2f78c4; }
+QCheckBox::indicator:checked {
+    background: #2f78c4; border-color: #2f78c4; image: url("__CHECK_ON_URL__");
+}
 QCheckBox::indicator:disabled { background: #edf0f3; border-color: #d5dbe1; }
+QCheckBox::indicator:checked:disabled {
+    background: #dde3ea; border-color: #c3ccd6; image: url("__CHECK_ON_DISABLED_URL__");
+}
 QGroupBox {
     border: 0; border-radius: 8px; margin-top: 10px;
     padding: 11px 8px 8px 8px; background: #ffffff;
@@ -126,23 +165,30 @@ QGroupBox::title {
     font-size: 14px; font-weight: 600; color: #17212b;
 }
 QGroupBox#sectionContent {
-    margin-top: 0; padding: 0; border: 0; border-radius: 8px; background: #ffffff;
+    margin-top: 0; padding: 0; border: 0; background: #ffffff;
+    border-top-left-radius: 0; border-top-right-radius: 0;
+    border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;
 }
 QToolButton#sectionToggle {
     min-height: 32px; border: 0; border-radius: 7px; background: #ffffff;
     font-weight: 600; padding: 5px 10px; text-align: left;
 }
 QToolButton#sectionToggle:hover { background: #eaf0f6; }
-QToolButton#sectionToggle:checked { background: #eaf0f6; }
+QToolButton#sectionToggle:checked {
+    background: #eaf0f6; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+}
 QProgressBar {
     min-height: 8px; max-height: 8px; border: 0; border-radius: 4px; background: #dce2e8;
 }
 QProgressBar::chunk { border-radius: 4px; background: #256fb4; }
 QTextEdit { border: 1px solid #c7d0d9; border-radius: 6px; background: white; padding: 7px; }
-QTableWidget {
-    gridline-color: #e2e7ec; selection-background-color: #dcecff;
-    alternate-background-color: #fafbfc; background: white; border: 0;
+QTableView {
+    gridline-color: #e2e7ec; selection-background-color: #bfdcfa;
+    selection-color: #10263d; alternate-background-color: #f6f8fa;
+    background: white; border: 0;
 }
+QTableView[stale="true"] { color: #8a949f; }
+QTableView[stale="true"]::item:selected { color: #5b6672; }
 QHeaderView::section {
     min-height: 24px; padding: 4px 8px; border: 0;
     border-right: 1px solid #d9dee4; border-bottom: 1px solid #d9dee4;
@@ -160,10 +206,14 @@ QLabel#caseCountLabel[invalid="true"] { color: #a23b32; }
 QLabel#dirtyStatusLabel {
     color: #925c12; background: #fff4d8; border-radius: 5px; padding: 5px 7px;
 }
+QLabel#resultsStaleLabel {
+    color: #925c12; background: #fff4d8; border-radius: 5px; padding: 5px 7px;
+}
+QLabel#validationMessageLabel { color: #a23b32; font-size: 12px; }
 QWidget#resultToolbar { background: #f7f9fb; border-top: 1px solid #d9dee4; }
 QLabel#resultCountLabel { color: #5f6872; font-weight: 500; }
 QLabel#emptyStateTitle { color: #344150; font-size: 16px; font-weight: 600; }
-QLabel#emptyStateMessage { color: #6b7682; font-size: 13px; }
+QLabel#emptyStateMessage { color: #58636f; font-size: 13px; }
 """
 
 
