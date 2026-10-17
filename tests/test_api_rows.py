@@ -1,8 +1,10 @@
 from dataclasses import replace
+from inspect import signature
 from pathlib import Path
 
 import pytest
 
+from cadmetrics import ModelData
 from cadmetrics.api import inspect_model, measure_model, project_model, sweep_model
 
 
@@ -96,3 +98,14 @@ def test_model_calculations_preserve_explicit_elapsed_time(model, calculate, ela
 
     assert row.elapsed_sec == elapsed_sec
     assert row.load_elapsed_sec == 1.25
+
+def test_model_data_retains_legacy_positional_fields() -> None:
+    # ModelData is exported from cadmetrics; preview-only fields must not shift the
+    # previously published optional positional constructor parameters.
+    parameters = tuple(signature(ModelData).parameters)
+    start = parameters.index("load_elapsed_sec") + 1
+    assert parameters[start : start + 3] == (
+        "cadmetrics_version",
+        "cadmetrics_hash",
+        "warnings",
+    )
