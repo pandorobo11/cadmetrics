@@ -87,8 +87,9 @@ def with_spinbox_assets(stylesheet: str) -> str:
 APPLICATION_STYLESHEET = """
 QWidget { color: #202832; font-size: 13px; font-weight: 400; }
 QWidget#controlPanel, QWidget#controlContent { background: #f3f6f9; }
+/* Controls share one 34px height: min-height + vertical padding + 1px borders. */
 QLineEdit, QComboBox, QDoubleSpinBox {
-    min-height: 28px; border: 1px solid #bcc6d0; border-radius: 6px;
+    min-height: 28px; max-height: 28px; border: 1px solid #bcc6d0; border-radius: 6px;
     padding: 2px 7px; background: #ffffff; selection-background-color: #2f78c4;
 }
 QLineEdit:hover, QComboBox:hover, QDoubleSpinBox:hover { border-color: #93a2b2; }
@@ -112,38 +113,21 @@ QComboBox QAbstractItemView {
 QComboBox QAbstractItemView::item { min-height: 26px; padding: 0 8px; border-radius: 4px; }
 QComboBox QAbstractItemView::item:hover { background: #eef3f8; }
 QComboBox QAbstractItemView::item:selected { background: #dcebfb; color: #10263d; }
-QDoubleSpinBox { padding-right: 22px; }
-QDoubleSpinBox[buttonless="true"] { padding-right: 7px; }
-QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
-    width: 20px; border: 0; background: transparent;
-}
-QDoubleSpinBox::up-button {
-    subcontrol-origin: border; subcontrol-position: top right;
-    margin: 3px 3px 0 0; border-top-right-radius: 4px; height: 13px;
-}
-QDoubleSpinBox::down-button {
-    subcontrol-origin: border; subcontrol-position: bottom right;
-    margin: 0 3px 3px 0; border-bottom-right-radius: 4px; height: 13px;
-}
-QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { background: #e9eff6; }
-QDoubleSpinBox::up-button:pressed, QDoubleSpinBox::down-button:pressed { background: #d9e4f0; }
-QDoubleSpinBox::up-button:disabled, QDoubleSpinBox::down-button:disabled { background: transparent; }
-QDoubleSpinBox::up-arrow { image: url("__SPIN_UP_URL__"); width: 10px; height: 6px; }
-QDoubleSpinBox::down-arrow { image: url("__SPIN_DOWN_URL__"); width: 10px; height: 6px; }
-QDoubleSpinBox::up-arrow:disabled { image: url("__SPIN_UP_DISABLED_URL__"); }
-QDoubleSpinBox::down-arrow:disabled { image: url("__SPIN_DOWN_DISABLED_URL__"); }
+QDoubleSpinBox { padding-right: 7px; }
 QPushButton {
-    min-height: 30px; border: 1px solid #aeb9c5; border-radius: 6px;
+    min-height: 24px; border: 1px solid #bcc6d0; border-radius: 6px;
     padding: 4px 14px; background: #f8fafc; color: #1f2933; font-weight: 500;
 }
-QPushButton:hover { background: #eef3f8; border-color: #99a8b8; }
+QPushButton:hover { background: #eef3f8; border-color: #93a2b2; }
 QPushButton:pressed { background: #e3eaf2; border-color: #8798aa; }
-QPushButton:focus, QToolButton:focus { border: 2px solid #2f78c4; }
+/* Thicker focus borders give up the same amount of padding so sizes stay fixed. */
+QPushButton:focus { border: 2px solid #2f78c4; padding: 3px 13px; }
+QToolButton:focus { border: 2px solid #2f78c4; }
 QPushButton:disabled { background: #e9edf1; border-color: #cdd4dc; color: #66707b; }
 QPushButton#primaryButton { background: #256fb4; border-color: #1e609e; color: white; }
 QPushButton#primaryButton:hover { background: #1f65a5; }
 QPushButton#primaryButton:pressed { background: #184f85; border-color: #143f6a; }
-QPushButton#primaryButton:focus { border: 2px solid #0f3d6b; }
+QPushButton#primaryButton:focus { border: 2px solid #0f3d6b; padding: 3px 13px; }
 QPushButton#primaryButton:disabled {
     background: #e9edf1; border-color: #cdd4dc; color: #66707b;
 }
@@ -185,7 +169,8 @@ QToolButton#sectionToggle {
 }
 QToolButton#sectionToggle:hover { background: #eaf0f6; }
 QToolButton#sectionToggle:checked {
-    background: #ffffff; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+    background: #ffffff; border-bottom: 1px solid #e6ebf0;
+    border-bottom-left-radius: 0; border-bottom-right-radius: 0;
 }
 QToolButton#sectionToggle:checked:hover { background: #f3f7fa; }
 QScrollArea#componentList {
@@ -226,9 +211,6 @@ QLabel#resultsStaleLabel {
     color: #925c12; background: #fff4d8; border-radius: 5px; padding: 5px 7px;
 }
 QLabel#validationMessageLabel { color: #a23b32; font-size: 12px; }
-QPushButton#compactButton {
-    min-height: 22px; padding: 1px 10px; font-size: 12px; border-radius: 5px;
-}
 QLabel#fieldHint { color: #5f6b78; font-size: 12px; }
 QWidget#viewerToolbar { background: #f7f9fb; border-bottom: 1px solid #d9dee4; }
 QLabel#viewerToolbarLabel { color: #4a5663; font-size: 12px; font-weight: 600; padding-right: 4px; }

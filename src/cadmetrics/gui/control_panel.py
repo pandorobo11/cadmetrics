@@ -26,6 +26,8 @@ COMPONENT_LIST_MAX_HEIGHT = 200
 class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
+        # Values are typed; Up/Down keys and the wheel still step a focused field.
+        self.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         # Wheel input must not grab focus, or scrolling the panel would edit values.
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
 
@@ -38,11 +40,6 @@ class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
             event.ignore()  # Let the scroll area scroll instead of changing the value.
             return
         super().wheelEvent(event)
-
-    def hide_step_buttons(self) -> None:
-        """Use for values where a fixed increment is meaningless (tolerances)."""
-        self.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.setProperty("buttonless", True)
 
 
 class PanelComboBox(QtWidgets.QComboBox):
@@ -204,8 +201,8 @@ class ControlPanel(QtWidgets.QWidget):
         component_buttons.setSpacing(6)
         self.component_all_button = QtWidgets.QPushButton("All")
         self.component_none_button = QtWidgets.QPushButton("None")
-        self.component_all_button.setObjectName("compactButton")
-        self.component_none_button.setObjectName("compactButton")
+        self.component_all_button.setObjectName("secondaryButton")
+        self.component_none_button.setObjectName("secondaryButton")
         self.component_all_button.clicked.connect(lambda: self._set_all_components(True))
         self.component_none_button.clicked.connect(lambda: self._set_all_components(False))
         component_buttons.addWidget(self.component_all_button)
@@ -306,7 +303,6 @@ class ControlPanel(QtWidgets.QWidget):
         self.mesh_deflection.setRange(1.0e-8, 1.0)
         self.mesh_deflection.setDecimals(8)
         self.mesh_deflection.setValue(1.0e-3)
-        self.mesh_deflection.hide_step_buttons()
         self.mesh_deflection.setToolTip(
             "Maximum distance between the STEP surface and its tessellation, "
             "in the output length unit."
@@ -324,14 +320,12 @@ class ControlPanel(QtWidgets.QWidget):
         self.angular_deflection = FlexibleDoubleSpinBox()
         self.angular_deflection.setRange(1.0e-6, 1.0)
         self.angular_deflection.setValue(0.1)
-        self.angular_deflection.hide_step_buttons()
         self.angular_deflection.setToolTip("Maximum angle between tessellation facets, in radians.")
         advanced.addRow("Angular deflection", self.angular_deflection)
         self.base_tolerance = FlexibleDoubleSpinBox()
         self.base_tolerance.setRange(1.0e-12, 1.0)
         self.base_tolerance.setDecimals(12)
         self.base_tolerance.setValue(DEFAULT_BASE_TOLERANCE)
-        self.base_tolerance.hide_step_buttons()
         self.base_tolerance.setToolTip(
             "How close a face must be to Xmax to count as base area, relative to the "
             "bounding-box diagonal."
@@ -634,11 +628,27 @@ class ControlPanel(QtWidgets.QWidget):
                 self.component_list_layout.addWidget(checkbox)
                 self._component_checkboxes.append(checkbox)
         self.component_list_layout.addStretch(1)
-        # Fit short lists exactly and scroll only long ones.
-        list_height = self._component_list.sizeHint().height() + 2
-        self.component_scroll.setFixedHeight(min(list_height, COMPONENT_LIST_MAX_HEIGHT))
+        self._fit_component_list()
         self._sync_component_summary()
         self._sync_component_controls(True)
+
+    def _fit_component_list(self) -> None:
+        """Fit short lists exactly and scroll only long ones."""
+        # New rows are not shown until the event loop runs, so the list's own size hint
+        # would ignore them; add up the rows' hints instead.
+        layout = self.component_list_layout
+        items = (layout.itemAt(index) for index in range(layout.count()))
+        rows = [item.widget() for item in items if item is not None]
+        heights = [row.sizeHint().height() for row in rows if row is not None]
+        margins = layout.contentsMargins()
+        content = (
+            margins.top()
+            + margins.bottom()
+            + sum(heights)
+            + layout.spacing() * max(len(heights) - 1, 0)
+        )
+        frame = self.component_scroll.frameWidth() * 2
+        self.component_scroll.setFixedHeight(min(content + frame, COMPONENT_LIST_MAX_HEIGHT))
 
     def _selected_components(self, paths: tuple[Path, ...]) -> tuple[int, ...] | None:
         if not self._component_checkboxes or paths != self._component_filter_path:
@@ -783,7 +793,7 @@ class ControlPanel(QtWidgets.QWidget):
         section.setObjectName("collapsibleSection")
         section_layout = QtWidgets.QVBoxLayout(section)
         section_layout.setContentsMargins(0, 0, 0, 0)
-        section_layout.setSpacing(3)
+        section_layout.setSpacing(0)
 
         toggle = QtWidgets.QToolButton(section)
         toggle.setText(title)

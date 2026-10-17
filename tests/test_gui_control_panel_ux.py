@@ -231,9 +231,7 @@ def test_wheel_over_unfocused_inputs_scrolls_instead_of_editing(qtbot, tmp_path:
     assert combo.currentText() == "m"
 
 
-def test_angle_fields_show_degrees_and_tolerances_have_no_step_buttons(
-    qtbot, tmp_path: Path
-) -> None:
+def test_angle_fields_show_degrees_and_no_field_has_step_buttons(qtbot, tmp_path: Path) -> None:
     panel = _panel(qtbot, tmp_path)
     for field in (*panel.alpha_fields, *panel.beta_fields, *panel.roll_fields):
         assert field.suffix() == "°"
@@ -242,11 +240,37 @@ def test_angle_fields_show_degrees_and_tolerances_have_no_step_buttons(
     assert all(field.suffix() == "" for field in panel.vector_fields)
 
     no_buttons = QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
+    spin_boxes = panel.findChildren(QtWidgets.QDoubleSpinBox)
+    assert len(spin_boxes) >= 18
+    assert all(field.buttonSymbols() == no_buttons for field in spin_boxes)
     for field in (panel.mesh_deflection, panel.angular_deflection, panel.base_tolerance):
-        assert field.buttonSymbols() == no_buttons
-        assert field.property("buttonless") is True
         assert field.toolTip()
-    assert panel.alpha_fields[0].buttonSymbols() != no_buttons
+
+    # Keyboard stepping still works once a field has focus.
+    field = panel.alpha_fields[2]
+    field.setFocus()
+    qtbot.keyClick(field, QtCore.Qt.Key.Key_Up)
+    assert field.value() == 2.0
+
+
+def test_buttons_match_input_height_and_open_sections_have_no_gap(qtbot, tmp_path: Path) -> None:
+    from cadmetrics.gui.styles import application_stylesheet
+
+    panel = _panel(qtbot, tmp_path)
+    panel.setStyleSheet(application_stylesheet())
+    panel.resize(440, 900)
+    panel.show()
+    qtbot.waitExposed(panel)
+    height = panel.file_edit.height()
+    for widget in (panel.browse_button, panel.input_unit, panel.alpha_fields[0], panel.run_button):
+        assert widget.height() == height == 34
+    # Hidden until a multi-component model loads, so compare its preferred height.
+    assert panel.component_all_button.sizeHint().height() == height
+
+    toggle = panel._section_toggles["Advanced"]
+    toggle.setChecked(True)
+    content = toggle.parentWidget().findChild(QtWidgets.QGroupBox, "sectionContent")
+    assert content.geometry().top() == toggle.geometry().bottom() + 1
 
 
 def test_combo_popups_use_styleable_list_views(qtbot, tmp_path: Path) -> None:
@@ -264,10 +288,15 @@ def test_combo_popups_use_styleable_list_views(qtbot, tmp_path: Path) -> None:
 
 def test_component_list_height_fits_short_lists(qtbot, tmp_path: Path) -> None:
     panel = _panel(qtbot, tmp_path, "model.step")
+    panel.resize(440, 900)
+    panel.show()
+    qtbot.waitExposed(panel)
     panel.set_model(_model(tmp_path / "model.step", ("A", "B")))
     short = panel.component_scroll.height()
+    qtbot.wait(10)  # Let Qt show the new rows before measuring the content.
     content = panel.component_scroll.widget().sizeHint().height()
-    assert short == content + 2
+    assert content + 2 * panel.component_scroll.frameWidth() <= short < 200
+    assert not panel.component_scroll.verticalScrollBar().isVisible()
 
     names = tuple(f"Part {index}" for index in range(30))
     panel.set_model(_model(tmp_path / "model.step", names))
