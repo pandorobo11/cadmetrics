@@ -108,5 +108,6 @@ Local compatibility validation on 2026-10-18 (macOS 27.0.1, Apple Silicon):
 After updating to main f6591c6, all three interpreters passed 340 tests, Ruff,
 and mypy. A Python 3.14 app bundle launched through Launch Services, loaded and
 rendered unit-cube STEP, and completed a one-row sweep through the native UI.
-Windows/Linux CI execution remains pending. The four-model numerical comparison
-and distribution-install checks above were performed before this main update.
+The four-model numerical/rendering comparison and all six wheel/sdist install
+checks were also repeated successfully after this main update. Windows/Linux
+results are tracked in the compatibility pull request CI.
