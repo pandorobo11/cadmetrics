@@ -186,6 +186,8 @@ class ModelViewer(QtWidgets.QWidget):
 
     def set_component_selection(self, selection: ComponentSelection | None) -> None:
         """Preview checked/unchecked STEP components before the model is reloaded."""
+        if selection == self._component_selection:
+            return
         self._component_selection = selection
         self._update_component_preview(render=True)
 

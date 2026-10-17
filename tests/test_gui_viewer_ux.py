@@ -457,6 +457,13 @@ def test_component_preview_updates_render_once_regardless_of_component_count(vie
     assert len(_meshes(plotter, widget)) == count + 1  # Hidden union plus every component.
     assert plotter.render_requests == 1
 
+    # Repopulating controls with the same selection must not rebuild all preview actors.
+    actors = tuple(widget._component_preview_actors)
+    plotter.render_requests = 0
+    widget.set_component_selection((tuple(range(2, count + 1)), "filter"))
+    assert tuple(widget._component_preview_actors) == actors
+    assert plotter.render_requests == 0
+
     plotter.render_requests = 0
     widget.set_component_selection((tuple(range(3, count + 1)), "subtract"))
     assert plotter.render_requests == 1
