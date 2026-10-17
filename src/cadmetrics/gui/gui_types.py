@@ -27,7 +27,6 @@ class ViewerOptions:
     show_overlay: bool = True
     detailed_overlay: bool = False
     show_grid: bool = True
-    camera_direction: tuple[float, float, float] = (-1.0, -1.0, 1.0)
 
 
 @dataclass(frozen=True)

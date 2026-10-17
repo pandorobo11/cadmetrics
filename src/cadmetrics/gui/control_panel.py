@@ -8,6 +8,7 @@ from cadmetrics.coordinates import AXIS_CHOICES
 from cadmetrics.gui.gui_formatters import (
     component_display_groups,
     format_file_selection,
+    format_model_file_label,
     model_info_text,
 )
 from cadmetrics.gui.gui_types import OperationState, ViewerOptions
@@ -19,22 +20,47 @@ from cadmetrics.types import ModelData
 
 UNIT_OPTIONS = ["auto", "m", "mm", "cm", "in", "ft"]
 OUTPUT_UNIT_OPTIONS = ["m", "mm", "cm", "in", "ft"]
-CAMERA_DIRECTIONS = (
-    ("+X", (1.0, 0.0, 0.0)),
-    ("-X", (-1.0, 0.0, 0.0)),
-    ("+Y", (0.0, 1.0, 0.0)),
-    ("-Y", (0.0, -1.0, 0.0)),
-    ("+Z", (0.0, 0.0, 1.0)),
-    ("-Z", (0.0, 0.0, -1.0)),
-    ("-X-Y+Z (ISO)", (-1.0, -1.0, 1.0)),
-    ("+X+Y-Z (ISO)", (1.0, 1.0, -1.0)),
-)
+COMPONENT_LIST_MAX_HEIGHT = 200
+# One label column for every form in the panel so all fields share a left edge.
+LABEL_WIDTH = 112
+FIELD_GAP = 10  # Between a label and its field.
+GRID_GAP = 6  # Between fields in a row.
+ROW_GAP = 6
+CARD_INSET = 12
+CONTROL_HEIGHT = 34  # Matches the stylesheet's input and button height.
 
 
 class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        # Values are typed; Up/Down keys and the wheel still step a focused field.
+        self.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        # Wheel input must not grab focus, or scrolling the panel would edit values.
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+
     def textFromValue(self, value: float) -> str:  # noqa: N802
         text = f"{value:.{self.decimals()}f}".rstrip("0").rstrip(".")
         return text if "." in text else f"{text}.0"
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:  # noqa: N802
+        if not self.hasFocus():
+            event.ignore()  # Let the scroll area scroll instead of changing the value.
+            return
+        super().wheelEvent(event)
+
+
+class PanelComboBox(QtWidgets.QComboBox):
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+        # A list view lets the stylesheet size and highlight popup items consistently.
+        self.setView(QtWidgets.QListView())
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:  # noqa: N802
+        if not self.hasFocus():
+            event.ignore()
+            return
+        super().wheelEvent(event)
 
 
 class ControlPanel(QtWidgets.QWidget):
@@ -53,12 +79,15 @@ class ControlPanel(QtWidgets.QWidget):
         self._section_toggles: dict[str, QtWidgets.QToolButton] = {}
         self._model_loaded = False
         self._advanced_dirty = False
+        self._bulk_component_change = False
+        self._busy = False
         self.setMinimumWidth(430)
         self.setMaximumWidth(540)
         self.setObjectName("controlPanel")
         self._build()
         self.set_busy(OperationState.IDLE)
         self._set_advanced_dirty(False)
+        self._refresh_validation()
 
     def _build(self) -> None:
         root_layout = QtWidgets.QVBoxLayout(self)
@@ -87,23 +116,23 @@ class ControlPanel(QtWidgets.QWidget):
         file_row.setSpacing(8)
         file_row.addWidget(self.file_edit)
         file_row.addWidget(self.browse_button)
-        setup.addRow("File", file_row)
-        self.input_unit = QtWidgets.QComboBox()
+        self._add_row(setup, "File", file_row)
+        self.input_unit = PanelComboBox()
         self.input_unit.addItems(UNIT_OPTIONS)
-        setup.addRow("Input unit", self.input_unit)
-        self.output_unit = QtWidgets.QComboBox()
+        self._add_row(setup, "Input unit", self.input_unit)
+        self.output_unit = PanelComboBox()
         self.output_unit.addItems(OUTPUT_UNIT_OPTIONS)
-        setup.addRow("Output unit", self.output_unit)
+        self._add_row(setup, "Output unit", self.output_unit)
 
         self.attitude_box = QtWidgets.QGroupBox("Attitude")
         attitude_layout = QtWidgets.QVBoxLayout(self.attitude_box)
-        attitude_layout.setContentsMargins(8, 6, 8, 8)
-        attitude_layout.setSpacing(5)
-        self.attitude_mode = QtWidgets.QComboBox()
+        attitude_layout.setContentsMargins(CARD_INSET, 2, CARD_INSET, CARD_INSET)
+        attitude_layout.setSpacing(ROW_GAP)
+        self.attitude_mode = PanelComboBox()
         self.attitude_mode.addItem("Alpha / Beta", "alpha_beta")
         self.attitude_mode.addItem("Roll / Pitch", "roll_pitch")
         self.attitude_mode.addItem("Unit vector", "vector")
-        attitude_layout.addWidget(self.attitude_mode)
+        attitude_layout.addLayout(self._labelled_row("Mode", self.attitude_mode))
         self.alpha_beta_group, self.alpha_fields, self.beta_fields = self._sweep_grid(
             "Alpha", "Beta"
         )
@@ -142,11 +171,66 @@ class ControlPanel(QtWidgets.QWidget):
         run_row.addWidget(self.run_button)
         run_row.addWidget(self.cancel_button)
 
+        components = self._collapsible_widget(layout, "Components")
+        components_layout = QtWidgets.QVBoxLayout(components)
+        components_layout.setContentsMargins(CARD_INSET, 10, CARD_INSET, CARD_INSET)
+        components_layout.setSpacing(6)
+        self.component_summary = QtWidgets.QLabel("Load a multi-solid STEP file.")
+        self.component_summary.setWordWrap(True)
+        self.component_status = QtWidgets.QLabel("Changes will apply on the next Run Sweep")
+        self.component_status.setObjectName("dirtyStatusLabel")
+        self.component_status.setVisible(False)
+        components_layout.addWidget(self.component_summary)
+        components_layout.addWidget(self.component_status)
+        self.component_detail = QtWidgets.QWidget()
+        detail_layout = QtWidgets.QVBoxLayout(self.component_detail)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+        detail_layout.setSpacing(6)
+        component_list = QtWidgets.QWidget()
+        component_list.setObjectName("componentListContent")
+        self._component_list = component_list
+        self.component_list_layout = QtWidgets.QVBoxLayout(component_list)
+        self.component_list_layout.setContentsMargins(6, 4, 6, 4)
+        self.component_list_layout.setSpacing(2)
+        self.component_scroll = QtWidgets.QScrollArea()
+        self.component_scroll.setObjectName("componentList")
+        self.component_scroll.setWidgetResizable(True)
+        self.component_scroll.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.component_scroll.setFixedHeight(COMPONENT_LIST_MAX_HEIGHT)
+        self.component_scroll.setWidget(component_list)
+        detail_layout.addWidget(self.component_scroll)
+        component_buttons = QtWidgets.QHBoxLayout()
+        component_buttons.setContentsMargins(0, 0, 0, 0)
+        component_buttons.setSpacing(6)
+        self.component_all_button = QtWidgets.QPushButton("All")
+        self.component_none_button = QtWidgets.QPushButton("None")
+        self.component_all_button.setObjectName("secondaryButton")
+        self.component_none_button.setObjectName("secondaryButton")
+        self.component_all_button.clicked.connect(lambda: self._set_all_components(True))
+        self.component_none_button.clicked.connect(lambda: self._set_all_components(False))
+        component_buttons.addWidget(self.component_all_button)
+        component_buttons.addWidget(self.component_none_button)
+        component_buttons.addStretch(1)
+        detail_layout.addLayout(component_buttons)
+        self.step_component_mode = PanelComboBox()
+        self.step_component_mode.addItem("Exclude unchecked (default)", "filter")
+        self.step_component_mode.addItem("Subtract unchecked", "subtract")
+        self.step_component_mode.setToolTip(
+            "Exclude: unchecked components are left out of the measurement.\n"
+            "Subtract: unchecked components are cut away from the checked ones, "
+            "which can expose new surfaces."
+        )
+        detail_layout.addLayout(self._labelled_row("Mode", self.step_component_mode))
+        components_layout.addWidget(self.component_detail)
+        self.component_detail.setVisible(False)
+
         display = self._collapsible_widget(layout, "Shape Display")
         display_layout = QtWidgets.QGridLayout(display)
-        display_layout.setContentsMargins(8, 6, 8, 6)
+        display_layout.setContentsMargins(CARD_INSET, 10, CARD_INSET, CARD_INSET)
         display_layout.setHorizontalSpacing(12)
-        display_layout.setVerticalSpacing(4)
+        display_layout.setVerticalSpacing(ROW_GAP)
         self.transparent_shape = self._check("Transparent", False)
         self.mesh_edges = self._check("Mesh edges", False)
         self.feature_edges = self._check("Feature edges", True)
@@ -159,21 +243,17 @@ class ControlPanel(QtWidgets.QWidget):
         self.show_centroid.setToolTip("Show the centroid marker for the selected result.")
         self.show_base_face = self._check("Base face", False)
         self.show_base_face.setEnabled(False)
+        self.show_base_face.setToolTip("Available when an Xmax base face is found.")
         self.show_newly_exposed_surface = self._check("Newly exposed surface", True)
         self.show_newly_exposed_surface.setEnabled(False)
         self.show_newly_exposed_surface.setToolTip(
-            "Available when component subtraction creates newly exposed surfaces."
+            "Unavailable: no newly exposed surfaces. Available when component subtraction "
+            "creates newly exposed surfaces."
         )
         self.detailed_overlay = self._check("Detailed overlay", False)
         self.detailed_overlay.setToolTip(
             "Show geometry bounds, calculation metadata, and diagnostic values in the 3D view."
         )
-        self.camera_direction = QtWidgets.QComboBox()
-        for label, direction in CAMERA_DIRECTIONS:
-            self.camera_direction.addItem(label, direction)
-        self.camera_direction.setCurrentIndex(6)
-        self.save_image_button = QtWidgets.QPushButton("Save Image")
-        self.save_image_button.setObjectName("secondaryButton")
         for widget in (
             self.transparent_shape,
             self.mesh_edges,
@@ -187,20 +267,18 @@ class ControlPanel(QtWidgets.QWidget):
             self.detailed_overlay,
         ):
             widget.toggled.connect(self._emit_viewer_options)
-        self.camera_direction.currentIndexChanged.connect(self._emit_viewer_options)
-        display_layout.addWidget(self.transparent_shape, 0, 0)
-        display_layout.addWidget(self.mesh_edges, 0, 1)
-        display_layout.addWidget(self.feature_edges, 1, 0)
-        display_layout.addWidget(self.show_overlay, 1, 1)
-        display_layout.addWidget(self.show_projection_arrow, 2, 0)
-        display_layout.addWidget(self.show_base_face, 2, 1)
-        display_layout.addWidget(self.show_centroid, 3, 0)
-        display_layout.addWidget(self.detailed_overlay, 3, 1)
+        display_layout.addWidget(self._subheading("Rendering"), 0, 0, 1, 3)
+        display_layout.addWidget(self.transparent_shape, 1, 0)
+        display_layout.addWidget(self.mesh_edges, 1, 1)
+        display_layout.addWidget(self.feature_edges, 1, 2)
+        display_layout.addWidget(self._subheading("Annotations"), 2, 0, 1, 3)
+        display_layout.addWidget(self.show_overlay, 3, 0)
+        display_layout.addWidget(self.detailed_overlay, 3, 1, 1, 2)
         display_layout.addWidget(self.show_grid, 4, 0)
-        display_layout.addWidget(self.show_newly_exposed_surface, 5, 0, 1, 2)
-        display_layout.addWidget(QtWidgets.QLabel("Camera"), 6, 0)
-        display_layout.addWidget(self.camera_direction, 6, 1)
-        display_layout.addWidget(self.save_image_button, 7, 0, 1, 2)
+        display_layout.addWidget(self.show_projection_arrow, 4, 1, 1, 2)
+        display_layout.addWidget(self.show_centroid, 5, 0)
+        display_layout.addWidget(self.show_base_face, 5, 1, 1, 2)
+        display_layout.addWidget(self.show_newly_exposed_surface, 6, 0, 1, 3)
 
         advanced = self._collapsible(layout, "Advanced")
         self.axis_x = self._axis_combo("x")
@@ -208,59 +286,34 @@ class ControlPanel(QtWidgets.QWidget):
         self.axis_z = self._axis_combo("z")
         axis_row = QtWidgets.QHBoxLayout()
         axis_row.setContentsMargins(0, 0, 0, 0)
-        axis_row.setSpacing(6)
-        for label, combo in (("X", self.axis_x), ("Y", self.axis_y), ("Z", self.axis_z)):
-            axis_row.addWidget(QtWidgets.QLabel(label))
-            axis_row.addWidget(combo)
-        advanced.addRow("Axis map", axis_row)
-
-        component_widget = QtWidgets.QWidget()
-        component_layout = QtWidgets.QVBoxLayout(component_widget)
-        component_layout.setContentsMargins(0, 0, 0, 0)
-        component_layout.setSpacing(6)
-        self.component_summary = QtWidgets.QLabel("Load a multi-solid STEP file.")
-        component_layout.addWidget(self.component_summary)
-        component_list = QtWidgets.QWidget()
-        self.component_list_layout = QtWidgets.QVBoxLayout(component_list)
-        self.component_list_layout.setContentsMargins(0, 0, 0, 0)
-        self.component_list_layout.setSpacing(2)
-        self.component_scroll = QtWidgets.QScrollArea()
-        self.component_scroll.setWidgetResizable(True)
-        self.component_scroll.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        axis_row.setSpacing(4)
+        for index, (label, combo) in enumerate(
+            (("X", self.axis_x), ("Y", self.axis_y), ("Z", self.axis_z))
+        ):
+            if index:
+                axis_row.addSpacing(GRID_GAP)
+            axis_label = QtWidgets.QLabel(label)
+            axis_label.setObjectName("subheadingLabel")
+            axis_row.addWidget(axis_label)
+            axis_row.addWidget(combo, 1)
+        axis_label_widget = self._add_row(advanced, "Axis map", axis_row)
+        axis_label_widget.setToolTip(
+            "Choose which model axis becomes cadmetrics X, Y, and Z. "
+            "Use a minus sign for a reversed axis."
         )
-        self.component_scroll.setMinimumHeight(130)
-        self.component_scroll.setMaximumHeight(130)
-        self.component_scroll.setWidget(component_list)
-        component_layout.addWidget(self.component_scroll)
-        component_buttons = QtWidgets.QHBoxLayout()
-        component_buttons.setContentsMargins(0, 0, 0, 0)
-        component_buttons.setSpacing(6)
-        self.component_all_button = QtWidgets.QPushButton("All")
-        self.component_none_button = QtWidgets.QPushButton("None")
-        self.component_all_button.setObjectName("secondaryButton")
-        self.component_none_button.setObjectName("secondaryButton")
-        self.component_all_button.clicked.connect(lambda: self._set_all_components(True))
-        self.component_none_button.clicked.connect(lambda: self._set_all_components(False))
-        component_buttons.addWidget(self.component_all_button)
-        component_buttons.addWidget(self.component_none_button)
-        component_buttons.addStretch(1)
-        component_layout.addLayout(component_buttons)
-        advanced.addRow("Components", component_widget)
 
-        self.step_component_mode = QtWidgets.QComboBox()
-        self.step_component_mode.addItem("Filter OFF (default)", "filter")
-        self.step_component_mode.addItem("Subtract OFF", "subtract")
-        advanced.addRow("Component mode", self.step_component_mode)
-
-        self.step_metrics = QtWidgets.QComboBox()
+        self.step_metrics = PanelComboBox()
         self.step_metrics.addItem("B-Rep (default)", "brep")
         self.step_metrics.addItem("Mesh", "mesh")
-        advanced.addRow("STEP metrics", self.step_metrics)
+        self._add_row(advanced, "STEP metrics", self.step_metrics)
         self.mesh_deflection = FlexibleDoubleSpinBox()
         self.mesh_deflection.setRange(1.0e-8, 1.0)
         self.mesh_deflection.setDecimals(8)
         self.mesh_deflection.setValue(1.0e-3)
+        self.mesh_deflection.setToolTip(
+            "Maximum distance between the STEP surface and its tessellation, "
+            "in the output length unit."
+        )
         self.mesh_deflection_auto = self._check("Auto", True)
         self.mesh_deflection_auto.toggled.connect(
             lambda checked: self.mesh_deflection.setEnabled(not checked)
@@ -270,19 +323,24 @@ class ControlPanel(QtWidgets.QWidget):
         mesh_row.setSpacing(8)
         mesh_row.addWidget(self.mesh_deflection)
         mesh_row.addWidget(self.mesh_deflection_auto)
-        advanced.addRow("Mesh deflection", mesh_row)
+        self._add_row(advanced, "Mesh deflection", mesh_row)
         self.angular_deflection = FlexibleDoubleSpinBox()
         self.angular_deflection.setRange(1.0e-6, 1.0)
         self.angular_deflection.setValue(0.1)
-        advanced.addRow("Angular deflection", self.angular_deflection)
+        self.angular_deflection.setToolTip("Maximum angle between tessellation facets, in radians.")
+        self._add_row(advanced, "Angular deflection", self.angular_deflection)
         self.base_tolerance = FlexibleDoubleSpinBox()
         self.base_tolerance.setRange(1.0e-12, 1.0)
         self.base_tolerance.setDecimals(12)
         self.base_tolerance.setValue(DEFAULT_BASE_TOLERANCE)
-        advanced.addRow("Base tolerance", self.base_tolerance)
-        self.apply_advanced_button = QtWidgets.QPushButton("Reload Model with Settings")
+        self.base_tolerance.setToolTip(
+            "How close a face must be to Xmax to count as base area, relative to the "
+            "bounding-box diagonal."
+        )
+        self._add_row(advanced, "Base tolerance", self.base_tolerance)
+        self.apply_advanced_button = QtWidgets.QPushButton("Preview with Settings")
         self.apply_advanced_button.clicked.connect(self._apply_advanced_settings)
-        self.advanced_status = QtWidgets.QLabel("Changes not applied")
+        self.advanced_status = QtWidgets.QLabel("Changes will apply on the next Run Sweep")
         self.advanced_status.setObjectName("dirtyStatusLabel")
         self.advanced_status.setVisible(False)
         advanced.addRow(self.advanced_status)
@@ -313,7 +371,12 @@ class ControlPanel(QtWidgets.QWidget):
         self.model_summary.setTextInteractionFlags(
             QtCore.Qt.TextInteractionFlag.TextSelectableByMouse
         )
+        self.validation_label = QtWidgets.QLabel()
+        self.validation_label.setObjectName("validationMessageLabel")
+        self.validation_label.setWordWrap(True)
+        self.validation_label.setVisible(False)
         action_layout.addWidget(self.operation_label)
+        action_layout.addWidget(self.validation_label)
         action_layout.addWidget(self.model_summary)
         action_layout.addLayout(run_row)
         root_layout.addWidget(action_bar)
@@ -331,6 +394,9 @@ class ControlPanel(QtWidgets.QWidget):
         self.mesh_deflection.setEnabled(False)
         self._sync_case_count()
         self.file_edit.textChanged.connect(self._emit_preview_request)
+        self.file_edit.textChanged.connect(self._refresh_validation)
+        self.file_edit.returnPressed.connect(self._reload_from_edit)
+        self.attitude_mode.currentIndexChanged.connect(self._refresh_validation)
         self.input_unit.currentIndexChanged.connect(self._emit_preview_request)
         self.output_unit.currentIndexChanged.connect(self._emit_preview_request)
 
@@ -404,11 +470,11 @@ class ControlPanel(QtWidgets.QWidget):
             show_overlay=self.show_overlay.isChecked(),
             show_grid=self.show_grid.isChecked(),
             detailed_overlay=self.detailed_overlay.isChecked(),
-            camera_direction=tuple(self.camera_direction.currentData()),
         )
 
     def set_busy(self, state: OperationState) -> None:
         busy = state is not OperationState.IDLE
+        self._busy = busy
         for widget in (
             self.file_edit,
             self.browse_button,
@@ -420,7 +486,7 @@ class ControlPanel(QtWidgets.QWidget):
             widget.setEnabled(not busy)
         for checkbox in self._component_checkboxes:
             checkbox.setEnabled(not busy)
-        self.run_button.setEnabled(not busy)
+        self._refresh_validation()
         self.apply_advanced_button.setEnabled(not busy and self._advanced_dirty)
         cancellable = state in (OperationState.CALCULATING, OperationState.CANCELLING)
         self.cancel_button.setVisible(cancellable)
@@ -443,11 +509,12 @@ class ControlPanel(QtWidgets.QWidget):
                 f" · {len(model.selected_components)}/{len(model.component_names)} components"
             )
         self.model_summary.setText(
-            f"{model.path.name} · {model.source_format.upper()}{component_text}"
+            f"{format_model_file_label(model.path)} · {model.source_format.upper()}{component_text}"
         )
         self.model_summary.setToolTip(str(model.path))
         self._populate_components(model)
         self._set_advanced_dirty(False)
+        self._refresh_validation()
 
     def set_operation_message(self, message: str) -> None:
         self.operation_label.setText(message)
@@ -463,6 +530,50 @@ class ControlPanel(QtWidgets.QWidget):
         self._clear_components()
         if self._emit_request(self.model_reload_requested):
             self._set_advanced_dirty(False)
+
+    def _reload_from_edit(self) -> None:
+        if self._busy or self.validation_message() is not None:
+            return
+        self._clear_components()
+        if self._emit_request(self.model_reload_requested):
+            self._set_advanced_dirty(False)
+
+    def validation_message(self) -> str | None:
+        """Return why the current inputs cannot be run, or None when valid."""
+        try:
+            paths = self.file_paths
+        except ValueError as exc:
+            return str(exc)
+        for path in paths:
+            if not path.exists():
+                return f"File does not exist: {path}"
+        mode = self.attitude_mode.currentData()
+        if mode == "vector":
+            if not any(field.value() for field in self.vector_fields):
+                return "Unit vector cannot be (0, 0, 0)."
+        else:
+            groups = (
+                (self.roll_fields, self.pitch_fields)
+                if mode == "roll_pitch"
+                else (self.alpha_fields, self.beta_fields)
+            )
+            for fields in groups:
+                try:
+                    SweepRange(*(field.value() for field in fields)).count
+                except ValueError:
+                    return "Check sweep values: Step must be positive for a Start–End range."
+        if self._component_checkboxes and paths == self._component_filter_path:
+            if not any(box.isChecked() for box in self._component_checkboxes):
+                return "Select at least one STEP component."
+        return None
+
+    def _refresh_validation(self, *_args: object) -> None:
+        if self._bulk_component_change:
+            return
+        message = self.validation_message()
+        self.validation_label.setText(message or "")
+        self.validation_label.setVisible(message is not None)
+        self.run_button.setEnabled(not self._busy and message is None)
 
     def _emit_request(self, signal: QtCore.SignalInstance) -> bool:
         try:
@@ -504,23 +615,47 @@ class ControlPanel(QtWidgets.QWidget):
             )
             self._sync_component_controls(False)
             return
+        self.component_detail.setVisible(True)
+        toggle = self._section_toggles.get("Components")
+        if toggle is not None:
+            toggle.setChecked(True)
         selected = set(model.selected_components) or current
         for group_name, components in component_display_groups(
             model.component_names, grouped=model.is_assembly and model.source_format == "step"
         ):
             if group_name:
-                self.component_list_layout.addWidget(QtWidgets.QLabel(group_name))
+                group_label = QtWidgets.QLabel(group_name)
+                group_label.setObjectName("subheadingLabel")
+                self.component_list_layout.addWidget(group_label)
             for index, name in components:
                 checkbox = QtWidgets.QCheckBox(f"{index}: {name}")
                 checkbox.setProperty("component_index", index)
                 checkbox.setChecked(index in selected)
                 checkbox.toggled.connect(self._sync_component_summary)
                 checkbox.toggled.connect(self._mark_advanced_dirty)
+                checkbox.toggled.connect(self._refresh_validation)
                 self.component_list_layout.addWidget(checkbox)
                 self._component_checkboxes.append(checkbox)
         self.component_list_layout.addStretch(1)
+        self._fit_component_list()
         self._sync_component_summary()
         self._sync_component_controls(True)
+
+    def _fit_component_list(self) -> None:
+        """Fit short lists exactly and scroll only long ones."""
+        # New rows stay hidden until the event loop runs, and the layout caches their
+        # unstyled size hints; show and polish them, then drop the cache before measuring.
+        layout = self.component_list_layout
+        for index in range(layout.count()):
+            item = layout.itemAt(index)
+            row = item.widget() if item is not None else None
+            if row is not None:
+                row.ensurePolished()
+                row.setVisible(True)
+        layout.invalidate()
+        content = self._component_list.sizeHint().height()
+        frame = self.component_scroll.frameWidth() * 2
+        self.component_scroll.setFixedHeight(min(content + frame, COMPONENT_LIST_MAX_HEIGHT))
 
     def _selected_components(self, paths: tuple[Path, ...]) -> tuple[int, ...] | None:
         if not self._component_checkboxes or paths != self._component_filter_path:
@@ -542,6 +677,7 @@ class ControlPanel(QtWidgets.QWidget):
 
     def _clear_component_widgets(self) -> None:
         self._component_checkboxes = []
+        self.component_detail.setVisible(False)
         while self.component_list_layout.count():
             item = self.component_list_layout.takeAt(0)
             if item is not None:
@@ -550,15 +686,26 @@ class ControlPanel(QtWidgets.QWidget):
                     widget.deleteLater()
 
     def _set_all_components(self, checked: bool) -> None:
-        for checkbox in self._component_checkboxes:
-            checkbox.setChecked(checked)
+        changed = [box for box in self._component_checkboxes if box.isChecked() != checked]
+        # Report All/None as one change: per-checkbox updates would re-render the
+        # preview once for every component.
+        self._bulk_component_change = True
+        try:
+            for checkbox in changed:
+                checkbox.setChecked(checked)
+        finally:
+            self._bulk_component_change = False
         self._sync_component_summary()
+        if changed:
+            self._mark_advanced_dirty()
+            self._refresh_validation()
 
     def _sync_component_summary(self) -> None:
         total = len(self._component_checkboxes)
         selected = sum(box.isChecked() for box in self._component_checkboxes)
         if total:
             self.component_summary.setText(f"{selected} of {total} components enabled.")
+        self._refresh_validation()
 
     def _sync_component_controls(self, enabled: bool) -> None:
         self.component_all_button.setEnabled(enabled)
@@ -633,25 +780,30 @@ class ControlPanel(QtWidgets.QWidget):
         self.mesh_deflection_auto.toggled.connect(self._mark_advanced_dirty)
 
     def _mark_advanced_dirty(self, *_args: object) -> None:
+        if self._bulk_component_change:
+            return
         self._set_advanced_dirty(True)
+        self._emit_preview_request()
 
     def _set_advanced_dirty(self, dirty: bool) -> None:
         self._advanced_dirty = dirty and self._model_loaded
         self.advanced_status.setVisible(self._advanced_dirty)
-        self.apply_advanced_button.setEnabled(self._advanced_dirty and self.run_button.isEnabled())
+        self.component_status.setVisible(self._advanced_dirty and bool(self._component_checkboxes))
+        self.apply_advanced_button.setEnabled(self._advanced_dirty and not self._busy)
         self.apply_advanced_button.setToolTip(
-            "Reload the model using the changed axis, component, and tessellation settings."
+            "Reload the model now to preview the changed axis, component, and tessellation "
+            "settings. Run Sweep also applies them."
             if self._model_loaded
             else "Load a model before reloading it with Advanced settings."
         )
         toggle = self._section_toggles.get("Advanced")
         if toggle is not None:
-            toggle.setText("Advanced · changes not applied" if self._advanced_dirty else "Advanced")
+            toggle.setText("Advanced · changes pending" if self._advanced_dirty else "Advanced")
 
     def _section(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:
         box = QtWidgets.QGroupBox(title)
         form = QtWidgets.QFormLayout(box)
-        self._configure_form_layout(form, margins=(8, 6, 8, 7))
+        self._configure_form_layout(form, margins=(CARD_INSET, 2, CARD_INSET, CARD_INSET))
         parent.addWidget(box)
         return form
 
@@ -661,7 +813,7 @@ class ControlPanel(QtWidgets.QWidget):
         section.setObjectName("collapsibleSection")
         section_layout = QtWidgets.QVBoxLayout(section)
         section_layout.setContentsMargins(0, 0, 0, 0)
-        section_layout.setSpacing(3)
+        section_layout.setSpacing(0)
 
         toggle = QtWidgets.QToolButton(section)
         toggle.setText(title)
@@ -694,7 +846,7 @@ class ControlPanel(QtWidgets.QWidget):
     def _collapsible(self, parent: QtWidgets.QVBoxLayout, title: str) -> QtWidgets.QFormLayout:
         content = self._collapsible_widget(parent, title)
         form = QtWidgets.QFormLayout(content)
-        self._configure_form_layout(form, margins=(8, 8, 8, 8))
+        self._configure_form_layout(form, margins=(CARD_INSET, 10, CARD_INSET, CARD_INSET))
         return form
 
     def _sweep_grid(
@@ -707,13 +859,10 @@ class ControlPanel(QtWidgets.QWidget):
         widget = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(widget)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(6)
-        grid.setVerticalSpacing(3)
+        grid.setHorizontalSpacing(GRID_GAP)
+        grid.setVerticalSpacing(ROW_GAP)
         for column, text in enumerate(("Start", "End", "Step"), start=1):
-            header = QtWidgets.QLabel(text)
-            header.setStyleSheet("color: #5f6872;")
-            header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            grid.addWidget(header, 0, column)
+            grid.addWidget(self._column_heading(text), 0, column)
         first = self._sweep_row(grid, 1, first_label)
         second = self._sweep_row(grid, 2, second_label)
         grid.setColumnStretch(0, 0)
@@ -724,15 +873,14 @@ class ControlPanel(QtWidgets.QWidget):
     def _sweep_row(
         self, grid: QtWidgets.QGridLayout, row: int, label: str
     ) -> tuple[FlexibleDoubleSpinBox, FlexibleDoubleSpinBox, FlexibleDoubleSpinBox]:
-        row_label = QtWidgets.QLabel(label)
-        row_label.setStyleSheet("color: #374151;")
-        row_label.setMinimumWidth(46)
-        grid.addWidget(row_label, row, 0)
+        grid.addWidget(self._grid_label(label), row, 0)
         fields = (self._number(0.0), self._number(0.0), self._number(1.0))
         for column, field in enumerate(fields, start=1):
+            field.setSuffix("°")
             grid.addWidget(field, row, column)
             field.valueChanged.connect(self._emit_preview_request)
             field.valueChanged.connect(self._sync_sweep_inputs)
+            field.valueChanged.connect(self._refresh_validation)
         return fields
 
     def _vector_inputs(
@@ -744,16 +892,17 @@ class ControlPanel(QtWidgets.QWidget):
         widget = QtWidgets.QWidget()
         grid = QtWidgets.QGridLayout(widget)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(6)
+        grid.setHorizontalSpacing(GRID_GAP)
+        grid.setVerticalSpacing(ROW_GAP)
+        grid.addWidget(self._grid_label("Direction"), 1, 0)
         fields = (self._number(1.0), self._number(0.0), self._number(0.0))
-        for column, (label, field) in enumerate(zip(("X", "Y", "Z"), fields, strict=True)):
-            header = QtWidgets.QLabel(label)
-            header.setStyleSheet("color: #5f6872;")
-            header.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            grid.addWidget(header, 0, column)
+        for column, (label, field) in enumerate(zip(("X", "Y", "Z"), fields, strict=True), start=1):
+            field.setSingleStep(0.1)
+            grid.addWidget(self._column_heading(label), 0, column)
             grid.addWidget(field, 1, column)
             grid.setColumnStretch(column, 1)
             field.valueChanged.connect(self._emit_preview_request)
+            field.valueChanged.connect(self._refresh_validation)
         return widget, fields
 
     def _number(self, value: float) -> FlexibleDoubleSpinBox:
@@ -762,16 +911,70 @@ class ControlPanel(QtWidgets.QWidget):
         field.setDecimals(6)
         field.setSingleStep(1.0)
         field.setValue(value)
-        field.setMinimumWidth(70)
+        field.setMinimumWidth(60)
         return field
 
-    def _axis_combo(self, default: str) -> QtWidgets.QComboBox:
-        combo = QtWidgets.QComboBox()
-        combo.setMinimumWidth(62)
+    def _axis_combo(self, default: str) -> PanelComboBox:
+        combo = PanelComboBox()
+        combo.setMinimumWidth(56)
+        combo.setMinimumContentsLength(2)
+        combo.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
         for axis in AXIS_CHOICES:
             combo.addItem(axis.upper(), axis)
         combo.setCurrentIndex(combo.findData(default))
         return combo
+
+    def _add_row(
+        self,
+        form: QtWidgets.QFormLayout,
+        text: str,
+        field: QtWidgets.QWidget | QtWidgets.QLayout,
+    ) -> QtWidgets.QLabel:
+        label = self._field_label(text, LABEL_WIDTH)
+        form.addRow(label, field)
+        return label
+
+    @staticmethod
+    def _labelled_row(text: str, field: QtWidgets.QWidget) -> QtWidgets.QHBoxLayout:
+        """A single label/field row outside a form, aligned with the form columns."""
+        # A one-row QFormLayout inside a widget that starts hidden can lay its label
+        # column out at zero width on Windows; a plain row has no such special case.
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(FIELD_GAP)
+        row.addWidget(ControlPanel._field_label(text, LABEL_WIDTH))
+        row.addWidget(field, 1)
+        return row
+
+    @staticmethod
+    def _grid_label(text: str) -> QtWidgets.QLabel:
+        """Row label for grids, sized so its fields line up with form fields."""
+        return ControlPanel._field_label(text, LABEL_WIDTH + FIELD_GAP - GRID_GAP)
+
+    @staticmethod
+    def _field_label(text: str, width: int) -> QtWidgets.QLabel:
+        label = QtWidgets.QLabel(text)
+        label.setObjectName("fieldLabel")
+        label.setFixedWidth(width)
+        # Span the control height so the text centres on the field beside it.
+        label.setMinimumHeight(CONTROL_HEIGHT)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        return label
+
+    @staticmethod
+    def _column_heading(text: str) -> QtWidgets.QLabel:
+        label = QtWidgets.QLabel(text)
+        label.setObjectName("subheadingLabel")
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        return label
+
+    @staticmethod
+    def _subheading(text: str) -> QtWidgets.QLabel:
+        label = QtWidgets.QLabel(text)
+        label.setObjectName("subheadingLabel")
+        return label
 
     def _check(self, text: str, checked: bool) -> QtWidgets.QCheckBox:
         checkbox = QtWidgets.QCheckBox(text)
@@ -785,8 +988,10 @@ class ControlPanel(QtWidgets.QWidget):
         margins: tuple[int, int, int, int],
     ) -> None:
         form.setFieldGrowthPolicy(QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        form.setLabelAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
         form.setRowWrapPolicy(QtWidgets.QFormLayout.RowWrapPolicy.DontWrapRows)
-        form.setVerticalSpacing(6)
-        form.setHorizontalSpacing(10)
+        form.setVerticalSpacing(ROW_GAP)
+        form.setHorizontalSpacing(FIELD_GAP)
         form.setContentsMargins(*margins)

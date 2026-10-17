@@ -7,10 +7,12 @@ from cadmetrics.types import MeasurementRow, ModelData
 
 
 def format_cell(value: object) -> str:
+    """Format a result-table cell; floats use 6 significant digits (CSV keeps full precision)."""
     if value is None:
         return ""
     if isinstance(value, float):
-        return f"{value:.12g}"
+        # Adding 0.0 turns -0.0 into 0.0 so the table does not show "-0".
+        return f"{value + 0.0:.6g}"
     return str(value)
 
 

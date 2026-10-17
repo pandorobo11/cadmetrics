@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import textwrap
 from typing import Any
 
 import numpy as np
@@ -140,3 +141,27 @@ def camera_geometry(
     view_up = up_hint - view_direction * float(np.dot(up_hint, view_direction))
     view_up = view_up / np.linalg.norm(view_up)
     return position, center, view_up
+
+
+def fit_overlay_text(text: str, max_chars: int, *, max_lines_per_entry: int = 3) -> str:
+    """Wrap long overlay lines and elide entries that would still run on."""
+    width = max(max_chars, 8)
+    fitted: list[str] = []
+    for line in text.splitlines():
+        if len(line) <= width:
+            fitted.append(line)
+            continue
+        wrapped = textwrap.wrap(line, width=width, subsequent_indent="  ")
+        if len(wrapped) > max_lines_per_entry:
+            wrapped = wrapped[:max_lines_per_entry]
+            last = wrapped[-1]
+            wrapped[-1] = (last[: width - 1] if len(last) >= width else last) + "…"
+        fitted.extend(wrapped)
+    return "\n".join(fitted)
+
+
+def overlay_reserved_fraction(overlay_width: float, view_width: float, *, limit: float) -> float:
+    """Return the share of the view width the upper-left overlay keeps free of geometry."""
+    if overlay_width <= 0.0 or view_width <= 0.0:
+        return 0.0
+    return min(max(overlay_width / view_width, 0.0), limit)
