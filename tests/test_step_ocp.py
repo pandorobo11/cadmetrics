@@ -864,3 +864,36 @@ def test_component_preview_meshes_are_coarser_than_the_measurement_mesh(tmp_path
     np.testing.assert_array_equal(preview.faces, plain.faces)
     assert preview.volume == plain.volume
     assert preview.surface_area == plain.surface_area
+
+
+def test_component_preview_meshes_follow_each_component_size(tmp_path: Path) -> None:
+    from cadmetrics.api import _inspect_model_with_options
+    from cadmetrics.load_options import ModelLoadOptions
+
+    # Selecting only the small sphere makes the automatic model deflection tiny; the
+    # unchecked large sphere must still get a coarse preview mesh.
+    path = tmp_path / "small_and_large_spheres.step"
+    _write_step_compound(
+        path,
+        [
+            BRepPrimAPI_MakeSphere(gp_Pnt(0.0, 0.0, 0.0), 1.0).Shape(),
+            BRepPrimAPI_MakeSphere(gp_Pnt(150.0, 0.0, 0.0), 50.0).Shape(),
+        ],
+    )
+    plain = _inspect_model_with_options(path, ModelLoadOptions.resolve(step_components=(1,)))
+    preview = _inspect_model_with_options(
+        path, ModelLoadOptions.resolve(step_components=(1,), component_preview_meshes=True)
+    )
+    everything = _inspect_model_with_options(
+        path, ModelLoadOptions.resolve(component_preview_meshes=True)
+    )
+    small, large = (faces.shape[0] for _, faces in preview.component_meshes)
+    # Same shape, so the large sphere needs no more triangles than the small one.
+    assert 0 < large <= small * 2
+    # Without the fix the large sphere had about 145,000 triangles.
+    assert large < 20_000
+    assert large <= everything.component_meshes[1][1].shape[0] * 2
+    np.testing.assert_array_equal(preview.vertices, plain.vertices)
+    np.testing.assert_array_equal(preview.faces, plain.faces)
+    assert preview.volume == plain.volume
+    assert preview.surface_area == plain.surface_area
