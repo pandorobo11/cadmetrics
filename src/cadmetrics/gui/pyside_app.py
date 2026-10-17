@@ -49,11 +49,17 @@ if QtWidgets is not None:
     from cadmetrics.gui.viewer import ModelViewer
     from cadmetrics.types import MeasurementRow, ModelData
 
+    MODEL_FILE_SUFFIXES = frozenset({".stl", ".step", ".stp"})
+
     class MainWindow(QtWidgets.QMainWindow):
         def __init__(self) -> None:
             super().__init__()
             self.setWindowTitle("cadmetrics")
+            self.setAcceptDrops(True)
+            # Current inputs, and the inputs that produced the rows in the results panel.
             self._request: CalculationRequest | None = None
+            self._results_request: CalculationRequest | None = None
+            self._calculation_running = False
             self._close_when_idle = False
             self._documentation_resources = ExitStack()
             self._documentation_tempdir: tempfile.TemporaryDirectory[str] | None = None
@@ -91,6 +97,27 @@ if QtWidgets is not None:
             self.setStatusBar(status_bar)
 
         def _build_menu(self) -> None:
+            file_menu = self.menuBar().addMenu("File")
+            self.open_action = QtGui.QAction("Open…", self)
+            self.open_action.setShortcut(QtGui.QKeySequence.StandardKey.Open)
+            self.open_action.triggered.connect(self._open_file)
+            self.run_action = QtGui.QAction("Run Sweep", self)
+            # Qt maps Ctrl to Command on macOS.
+            self.run_action.setShortcut(QtGui.QKeySequence("Ctrl+R"))
+            self.run_action.triggered.connect(self._run_sweep)
+            self.save_csv_action = QtGui.QAction("Save CSV…", self)
+            self.save_csv_action.setShortcut(QtGui.QKeySequence.StandardKey.Save)
+            self.save_csv_action.triggered.connect(self._save_csv)
+            self.cancel_action = QtGui.QAction("Cancel", self)
+            self.cancel_action.setShortcut(QtGui.QKeySequence("Ctrl+."))
+            self.cancel_action.triggered.connect(self.controller.cancel)
+            file_menu.addAction(self.open_action)
+            file_menu.addSeparator()
+            file_menu.addAction(self.run_action)
+            file_menu.addAction(self.cancel_action)
+            file_menu.addSeparator()
+            file_menu.addAction(self.save_csv_action)
+
             help_menu = self.menuBar().addMenu("Help")
             documentation_action = QtGui.QAction("Documentation", self)
             documentation_action.triggered.connect(self._show_documentation)
@@ -111,13 +138,15 @@ if QtWidgets is not None:
             self.viewer.error.connect(self._show_error)
             self.viewer.message.connect(self.status.setText)
             self.results.selected_row_changed.connect(self._show_result)
+            self.results.rows_changed.connect(self._sync_actions)
             self.results.error.connect(self._show_error)
             self.controller.model_loaded.connect(self._on_model_loaded)
+            self.controller.rows_appended.connect(self._on_rows_appended)
             self.controller.results_ready.connect(self._on_results_ready)
             self.controller.progress.connect(self._on_progress)
             self.controller.state_changed.connect(self._on_state_changed)
-            self.controller.failed.connect(self._show_error)
-            self.controller.cancelled.connect(lambda: self.status.setText("Cancelled"))
+            self.controller.failed.connect(self._on_failed)
+            self.controller.cancelled.connect(self._on_cancelled)
             self.controller.message.connect(self.status.setText)
             self.controller.shutdown_ready.connect(self._finish_close)
 
@@ -125,7 +154,10 @@ if QtWidgets is not None:
         def _calculate(self, request: CalculationRequest) -> None:
             self._request = request
             self._invalidate_results()
+            self._results_request = request
+            self.results.set_protected_paths(_request_paths(request))
             self.viewer.set_request(request)
+            self._calculation_running = True
             self.controller.calculate(request)
 
         @QtCore.Slot(object)
@@ -139,7 +171,7 @@ if QtWidgets is not None:
         def _preview_request(self, request: CalculationRequest | None) -> None:
             if request != self._request:
                 self._request = request
-                self._invalidate_results()
+                self._sync_stale_results()
             self.viewer.set_request(request)
 
         @QtCore.Slot(object)
@@ -150,34 +182,65 @@ if QtWidgets is not None:
             self.status.setText("Model loaded")
 
         @QtCore.Slot(list)
+        def _on_rows_appended(self, rows: list[MeasurementRow]) -> None:
+            self.results.append_rows(rows)
+
+        @QtCore.Slot(list)
         def _on_results_ready(self, rows: list[MeasurementRow]) -> None:
-            protected_paths: tuple[Path, ...] = ()
-            if self._request is not None:
-                request_files = self._request.file
-                protected_paths = (
-                    request_files if isinstance(request_files, tuple) else (request_files,)
-                )
-            self.results.set_rows(rows, protected_paths=protected_paths)
-            self.results.select_last_row()
+            self._calculation_running = False
+            if self._results_request is None:
+                self._results_request = self._request
+            protected_paths = (
+                _request_paths(self._results_request) if self._results_request is not None else ()
+            )
+            streamed = self.results.rows
+            if len(streamed) != len(rows) or any(
+                left is not right for left, right in zip(streamed, rows, strict=True)
+            ):
+                self.results.set_rows(rows, protected_paths=protected_paths)
+            else:
+                self.results.set_protected_paths(protected_paths)
+            if not self.results.has_selection():
+                self.results.select_last_row()
             self.progress_bar.setRange(0, max(len(rows), 1))
             self.progress_bar.setValue(len(rows))
-            self.status.setText(f"Done: {len(rows)} row(s)")
+            self.status.setText(f"Done: {len(rows):,} row(s)")
+            # Inputs edited while the sweep was running make the new rows stale at once.
+            self._sync_stale_results()
+
+        @QtCore.Slot()
+        def _on_cancelled(self) -> None:
+            self._calculation_running = False
+            count = len(self.results.rows)
+            self.status.setText(
+                f"Cancelled: kept {count:,} completed row(s)" if count else "Cancelled"
+            )
+            self._sync_stale_results()
+
+        @QtCore.Slot(str)
+        def _on_failed(self, message: str) -> None:
+            self._calculation_running = False
+            self._show_error(message)
 
         @QtCore.Slot(object)
         def _show_result(self, row: MeasurementRow) -> None:
-            self.viewer.set_result(row, self._request, align_camera=True)
+            # Rows always render with the request that produced them, even when stale.
+            self.viewer.set_result(row, self._results_request, align_camera=True)
 
         @QtCore.Slot(int, int, str)
         def _on_progress(self, index: int, total: int, description: str) -> None:
+            # Progress text lives next to Cancel in the action bar; the status bar keeps
+            # only the progress bar so the same message is not shown twice.
             self.progress_bar.setRange(0, total)
             self.progress_bar.setValue(index)
-            self.status.setText(f"Sweep {index}/{total}: {description}")
             self.controls.set_operation_message(f"Sweep {index:,} of {total:,} · {description}")
 
         @QtCore.Slot(object)
         def _on_state_changed(self, state: OperationState) -> None:
             self.controls.set_busy(state)
-            self.results.set_busy(state is not OperationState.IDLE)
+            busy = state is not OperationState.IDLE
+            loading_only = state is OperationState.LOADING and not self._calculation_running
+            self.results.set_busy(busy, title="Loading model…" if loading_only else "Calculating…")
             if state is OperationState.LOADING:
                 self.progress_bar.setRange(0, 0)
                 self.status.setText("Loading model")
@@ -186,9 +249,63 @@ if QtWidgets is not None:
                 self.status.setText("Calculating")
             elif state is OperationState.CANCELLING:
                 self.status.setText("Finishing the current geometry operation")
-            elif state is OperationState.IDLE and self.progress_bar.maximum() == 0:
-                self.progress_bar.setRange(0, 1)
-                self.progress_bar.setValue(0)
+            elif state is OperationState.IDLE:
+                self._calculation_running = False
+                if self.progress_bar.maximum() == 0:
+                    self.progress_bar.setRange(0, 1)
+                    self.progress_bar.setValue(0)
+            self._sync_actions()
+
+        @QtCore.Slot()
+        def _sync_actions(self) -> None:
+            idle = self.controller.state is OperationState.IDLE
+            self.open_action.setEnabled(idle)
+            self.run_action.setEnabled(idle)
+            self.cancel_action.setEnabled(self.controller.state is OperationState.CALCULATING)
+            self.save_csv_action.setEnabled(self.results.can_save)
+
+        def _open_file(self) -> None:
+            if self.controls.browse_button.isEnabled():
+                self.controls.browse_button.click()
+
+        def _run_sweep(self) -> None:
+            if self.controls.run_button.isEnabled():
+                self.controls.run_button.click()
+
+        def _save_csv(self) -> None:
+            if self.results.can_save:
+                self.results.choose_csv_path()
+
+        def load_dropped_files(self, paths: tuple[Path, ...]) -> bool:
+            if not paths or self.controller.state is not OperationState.IDLE:
+                return False
+            self.controls.set_file_paths(paths)
+            # ControlPanel has no public "load these files" API, and control_panel.py is
+            # owned elsewhere. Reuse the exact steps of its Browse handler: reset the
+            # component filter for the new files, then emit model_reload_requested.
+            self.controls._clear_components()
+            self.controls._apply_advanced_settings()
+            return True
+
+        def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:  # noqa: N802
+            self._accept_model_drag(event)
+
+        def dragMoveEvent(self, event: QtGui.QDragMoveEvent) -> None:  # noqa: N802
+            self._accept_model_drag(event)
+
+        def _accept_model_drag(self, event: QtGui.QDragMoveEvent) -> None:
+            if _dropped_model_paths(event.mimeData()) and (
+                self.controller.state is OperationState.IDLE
+            ):
+                event.acceptProposedAction()
+            else:
+                event.ignore()
+
+        def dropEvent(self, event: QtGui.QDropEvent) -> None:  # noqa: N802
+            if self.load_dropped_files(_dropped_model_paths(event.mimeData())):
+                event.acceptProposedAction()
+            else:
+                event.ignore()
 
         @QtCore.Slot(bool)
         def _set_base_face_available(self, available: bool) -> None:
@@ -228,9 +345,24 @@ if QtWidgets is not None:
 
         def _invalidate_results(self) -> None:
             self.results.clear()
+            self._results_request = None
             self.viewer.set_result(None, self._request)
             self.progress_bar.setRange(0, 1)
             self.progress_bar.setValue(0)
+
+        def _sync_stale_results(self) -> None:
+            if self._calculation_running or not self.results.rows:
+                return
+            stale = self._request != self._results_request
+            was_stale = self.results.is_stale
+            self.results.mark_stale(stale)
+            if stale and not was_stale:
+                # The preview follows the edited inputs; stale rows re-render with their
+                # own request only when the user selects one.
+                self.viewer.set_result(None, self._request)
+                self.status.setText("Inputs changed: results are out of date")
+            elif was_stale and not stale:
+                self.status.setText(f"Inputs match the results: {len(self.results.rows):,} row(s)")
 
         def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
             if self.controller.state is not OperationState.IDLE:
@@ -254,6 +386,16 @@ if QtWidgets is not None:
                 self._close_when_idle = False
                 self.close()
 
+    def _request_paths(request: CalculationRequest) -> tuple[Path, ...]:
+        return request.file if isinstance(request.file, tuple) else (request.file,)
+
+    def _dropped_model_paths(mime_data: QtCore.QMimeData | None) -> tuple[Path, ...]:
+        if mime_data is None or not mime_data.hasUrls():
+            return ()
+        paths = tuple(Path(url.toLocalFile()) for url in mime_data.urls() if url.isLocalFile())
+        if not paths or any(path.suffix.lower() not in MODEL_FILE_SUFFIXES for path in paths):
+            return ()
+        return paths
 
 else:
     MainWindow = object  # type: ignore[misc,assignment]
