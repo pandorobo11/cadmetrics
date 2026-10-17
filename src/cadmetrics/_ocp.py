@@ -72,7 +72,14 @@ def load_ocp_bindings() -> OcpBindings:
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS, TopoDS_Compound
-        from OCP.TopTools import TopTools_ListOfShape, TopTools_MapOfShape
+        try:
+            from OCP.TopTools import TopTools_ListOfShape, TopTools_MapOfShape
+        except ImportError:
+            # OCP 8 exports these NCollection specializations from collections.
+            from OCP.collections import (
+                List_TopoDS_Shape as TopTools_ListOfShape,
+                Map_TopoDS_Shape_TopTools_ShapeMapHasher as TopTools_MapOfShape,
+            )
         from OCP.gp import gp_Pnt, gp_Trsf
     except ImportError as exc:
         if isinstance(exc, ModuleNotFoundError) and exc.name == "OCP":
