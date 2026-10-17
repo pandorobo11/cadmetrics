@@ -909,3 +909,90 @@ def _union_signature(shape) -> tuple[float, float, int, int, bool]:
         len(_explore_ocp_subshapes(shape, ocp.TopAbs_SOLID, ocp.TopExp_Explorer)),
         bool(ocp.BRepCheck_Analyzer(shape).IsValid()),
     )
+
+
+def test_component_preview_meshes_are_display_only() -> None:
+    from cadmetrics.api import _inspect_model_with_options
+    from cadmetrics.load_options import ModelLoadOptions
+
+    paths = (
+        SAMPLES_DIR / "multi_file_step_components" / "box_pair_a.step",
+        SAMPLES_DIR / "multi_file_step_components" / "box_pair_b.step",
+    )
+    plain = _inspect_model_with_options(
+        paths, ModelLoadOptions.resolve(axis_map="y,-x,z", step_components=(1, 3))
+    )
+    preview = _inspect_model_with_options(
+        paths,
+        ModelLoadOptions.resolve(
+            axis_map="y,-x,z", step_components=(1, 3), component_preview_meshes=True
+        ),
+    )
+    assert plain.component_meshes == ()
+    assert len(preview.component_meshes) == len(preview.component_names) == 4
+    for field_name in ("volume", "surface_area", "base_area", "bounds", "selected_components"):
+        assert getattr(preview, field_name) == getattr(plain, field_name)
+    np.testing.assert_array_equal(preview.vertices, plain.vertices)
+    # Component meshes share the model's output units and axis map.
+    selected = np.vstack([preview.component_meshes[index - 1][0] for index in (1, 3)])
+    np.testing.assert_allclose(selected.min(axis=0), preview.vertices.min(axis=0))
+    np.testing.assert_allclose(selected.max(axis=0), preview.vertices.max(axis=0))
+    assert preview.component_mesh_elapsed_sec > 0.0
+
+
+def test_component_preview_meshes_are_coarser_than_the_measurement_mesh(tmp_path: Path) -> None:
+    from cadmetrics.api import _inspect_model_with_options
+    from cadmetrics.load_options import ModelLoadOptions
+
+    path = tmp_path / "spheres.step"
+    _write_step_compound(
+        path,
+        [
+            BRepPrimAPI_MakeSphere(gp_Pnt(0.0, 0.0, 0.0), 1.0).Shape(),
+            BRepPrimAPI_MakeSphere(gp_Pnt(5.0, 0.0, 0.0), 1.0).Shape(),
+        ],
+    )
+    plain = _inspect_model_with_options(path, ModelLoadOptions.resolve())
+    preview = _inspect_model_with_options(
+        path, ModelLoadOptions.resolve(component_preview_meshes=True)
+    )
+    preview_triangles = sum(faces.shape[0] for _, faces in preview.component_meshes)
+    assert 0 < preview_triangles * 5 < preview.faces.shape[0]
+    # Meshing the copies must not touch the measured mesh or metrics.
+    np.testing.assert_array_equal(preview.vertices, plain.vertices)
+    np.testing.assert_array_equal(preview.faces, plain.faces)
+    assert preview.volume == plain.volume
+    assert preview.surface_area == plain.surface_area
+
+
+def test_component_preview_meshes_follow_each_component_size(tmp_path: Path) -> None:
+    from cadmetrics.api import _inspect_model_with_options
+    from cadmetrics.load_options import ModelLoadOptions
+
+    # Selecting only the small sphere makes the automatic model deflection tiny; the
+    # unchecked large sphere must still get a coarse preview mesh.
+    path = tmp_path / "small_and_large_spheres.step"
+    _write_step_compound(
+        path,
+        [
+            BRepPrimAPI_MakeSphere(gp_Pnt(0.0, 0.0, 0.0), 1.0).Shape(),
+            BRepPrimAPI_MakeSphere(gp_Pnt(150.0, 0.0, 0.0), 50.0).Shape(),
+        ],
+    )
+    plain = _inspect_model_with_options(path, ModelLoadOptions.resolve(step_components=(1,)))
+    preview = _inspect_model_with_options(
+        path, ModelLoadOptions.resolve(step_components=(1,), component_preview_meshes=True)
+    )
+    everything = _inspect_model_with_options(
+        path, ModelLoadOptions.resolve(component_preview_meshes=True)
+    )
+    small, large = (faces.shape[0] for _, faces in preview.component_meshes)
+    # Same shape, so the large sphere needs no more triangles than the small one.
+    assert 0 < large <= small * 2
+    # Without the fix the large sphere had about 145,000 triangles.
+    assert large < 20_000
+    assert large <= everything.component_meshes[1][1].shape[0] * 2
+    np.testing.assert_array_equal(preview.vertices, plain.vertices)
+    np.testing.assert_array_equal(preview.faces, plain.faces)
+    assert preview.volume == plain.volume
+    assert preview.surface_area == plain.surface_area
