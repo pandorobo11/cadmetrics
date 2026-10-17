@@ -197,6 +197,13 @@ on when a useful name is not stored in the file. Clear a component checkbox to e
 solid from subsequent calculations. Changes apply on the next `Run Sweep`; click
 `Preview with Settings` under `Advanced` to update the displayed model first.
 
+Until then, the 3D view previews the pending selection without reloading: each component is drawn
+separately, checked components in the model colour, unchecked components as faint grey (or
+translucent red in `Subtract unchecked` mode), with a note at the bottom of the view. The overlay
+values still describe the applied selection. The preview meshes are tessellated once at load with
+the same settings as the model; they are never used for measurements, and their time is not
+included in `load_elapsed_sec`.
+
 The filters operate on STEP solid geometry after loading and before boolean union. Keeping all
 components enabled preserves the default behavior. For multi-file STEP assemblies, components are
 grouped by file name and share one global index sequence. STL component filtering is not

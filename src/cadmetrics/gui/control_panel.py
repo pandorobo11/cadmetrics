@@ -69,6 +69,8 @@ class ControlPanel(QtWidgets.QWidget):
     cancel_requested = QtCore.Signal()
     viewer_options_changed = QtCore.Signal(object)
     request_changed = QtCore.Signal(object)
+    # (checked component indexes, component mode), or None when there is nothing to pick.
+    component_selection_changed = QtCore.Signal(object)
     error = QtCore.Signal(str)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
@@ -614,6 +616,7 @@ class ControlPanel(QtWidgets.QWidget):
                 else "Component filters are available for STEP files."
             )
             self._sync_component_controls(False)
+            self._emit_component_selection()
             return
         self.component_detail.setVisible(True)
         toggle = self._section_toggles.get("Components")
@@ -634,10 +637,12 @@ class ControlPanel(QtWidgets.QWidget):
                 checkbox.toggled.connect(self._sync_component_summary)
                 checkbox.toggled.connect(self._mark_advanced_dirty)
                 checkbox.toggled.connect(self._refresh_validation)
+                checkbox.toggled.connect(self._emit_component_selection)
                 self.component_list_layout.addWidget(checkbox)
                 self._component_checkboxes.append(checkbox)
         self.component_list_layout.addStretch(1)
         self._fit_component_list()
+        self._emit_component_selection()
         self._sync_component_summary()
         self._sync_component_controls(True)
 
@@ -674,6 +679,7 @@ class ControlPanel(QtWidgets.QWidget):
         self._clear_component_widgets()
         self.component_summary.setText("Load a multi-solid STEP file.")
         self._sync_component_controls(False)
+        self._emit_component_selection()
 
     def _clear_component_widgets(self) -> None:
         self._component_checkboxes = []
@@ -684,6 +690,19 @@ class ControlPanel(QtWidgets.QWidget):
                 widget = item.widget()
                 if widget is not None:
                     widget.deleteLater()
+
+    def _emit_component_selection(self, *_args: object) -> None:
+        if self._bulk_component_change:
+            return
+        if not self._component_checkboxes:
+            self.component_selection_changed.emit(None)
+            return
+        selected = tuple(
+            int(box.property("component_index"))
+            for box in self._component_checkboxes
+            if box.isChecked()
+        )
+        self.component_selection_changed.emit((selected, self.step_component_mode.currentData()))
 
     def _set_all_components(self, checked: bool) -> None:
         changed = [box for box in self._component_checkboxes if box.isChecked() != checked]
@@ -699,6 +718,7 @@ class ControlPanel(QtWidgets.QWidget):
         if changed:
             self._mark_advanced_dirty()
             self._refresh_validation()
+            self._emit_component_selection()
 
     def _sync_component_summary(self) -> None:
         total = len(self._component_checkboxes)
@@ -771,6 +791,7 @@ class ControlPanel(QtWidgets.QWidget):
             self.step_metrics,
         ):
             combo.currentIndexChanged.connect(self._mark_advanced_dirty)
+        self.step_component_mode.currentIndexChanged.connect(self._emit_component_selection)
         for field in (
             self.mesh_deflection,
             self.angular_deflection,

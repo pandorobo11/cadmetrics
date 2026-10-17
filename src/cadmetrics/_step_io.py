@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from cadmetrics._mesh_io import (
@@ -498,6 +499,12 @@ def _finalize_step_model(
         kernel_unit=prepared.kernel_unit,
         output_unit=options.output_unit,
     )
+    component_meshes, component_mesh_elapsed = _tessellate_step_components_for_display(
+        prepared,
+        geometry,
+        options=options,
+        ocp=ocp,
+    )
     warnings = _final_step_warnings(
         prepared,
         selected.warnings,
@@ -516,7 +523,47 @@ def _finalize_step_model(
         base_metric=base_metric,
         metrics=scaled_metrics,
         warnings=warnings,
+        component_meshes=component_meshes,
+        component_mesh_elapsed_sec=component_mesh_elapsed,
     )
+
+
+def _tessellate_step_components_for_display(
+    prepared: PreparedStepInput,
+    geometry: StepGeometry,
+    *,
+    options: ModelLoadOptions,
+    ocp: OcpBindings,
+) -> tuple[tuple[tuple[FloatArray, IntArray], ...], float]:
+    """Mesh every solid component separately so the GUI can preview selection changes.
+
+    Runs after all metrics are computed and uses the same tessellation parameters, so it
+    cannot change measured values.
+    """
+    if not options.component_preview_meshes or len(prepared.solids) <= 1:
+        return (), 0.0
+    start = perf_counter()
+    meshes: list[tuple[FloatArray, IntArray]] = []
+    for solid in prepared.solids:
+        ocp.BRepMesh_IncrementalMesh(
+            solid,
+            geometry.native_mesh_deflection,
+            False,
+            options.angular_deflection,
+            True,
+        )
+        vertices, faces, _ = _tessellate_ocp_shape_with_marked_faces(
+            solid,
+            marked_faces=(),
+            BRep_Tool=ocp.BRep_Tool,
+            TopAbs_FACE=ocp.TopAbs_FACE,
+            TopAbs_REVERSED=ocp.TopAbs_REVERSED,
+            TopExp_Explorer=ocp.TopExp_Explorer,
+            TopLoc_Location=ocp.TopLoc_Location,
+            TopoDS=ocp.TopoDS,
+        )
+        meshes.append((vertices * geometry.scale, faces))
+    return tuple(meshes), perf_counter() - start
 
 
 def _select_step_shape(
@@ -942,6 +989,8 @@ def _build_step_model_data(
     base_metric: StepBaseMetric,
     metrics: ScaledStepMetrics,
     warnings: tuple[str, ...],
+    component_meshes: tuple[tuple[FloatArray, IntArray], ...] = (),
+    component_mesh_elapsed_sec: float = 0.0,
 ) -> ModelData:
     return ModelData(
         path=prepared.path,
@@ -966,6 +1015,8 @@ def _build_step_model_data(
         selected_components=selected.selected_components,
         bounds=geometry.bounds,
         warnings=warnings,
+        component_meshes=component_meshes,
+        component_mesh_elapsed_sec=component_mesh_elapsed_sec,
     )
 
 

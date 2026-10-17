@@ -28,9 +28,13 @@ class _TextProperty:
 class _Actor:
     def __init__(self) -> None:
         self.prop = _TextProperty()
+        self.visible = True
 
     def GetProperty(self):
         return self.prop
+
+    def SetVisibility(self, visible) -> None:
+        self.visible = bool(visible)
 
 
 class _Camera:
@@ -320,3 +324,86 @@ def test_overlay_is_anchored_to_render_area_below_toolbar(viewer) -> None:
     ratio = widget._device_pixel_ratio()
     _, top = kwargs["position"]
     assert top == pytest.approx(plotter.height() * ratio - OVERLAY_MARGIN * ratio)
+
+
+def _component_model(selected: tuple[int, ...], mode: str = "filter") -> ModelData:
+    base = _model()
+    cube = (base.vertices, base.faces)
+    shifted = (base.vertices + np.array([2.0, 0.0, 0.0]), base.faces)
+    return replace(
+        base,
+        component_names=("A", "B"),
+        selected_components=selected,
+        step_component_mode=mode,
+        component_meshes=(cube, shifted),
+    )
+
+
+def _meshes(plotter, widget=None) -> list[tuple[object, dict]]:
+    """Model surfaces only: feature edges are drawn as a separate line mesh."""
+    edges = None if widget is None else widget._feature_edges_actor
+    return [
+        (actor, entry[2]) for actor, entry in plotter.active("mesh").items() if actor is not edges
+    ]
+
+
+def test_unapplied_component_changes_preview_per_component(viewer) -> None:
+    widget, plotter = viewer
+    model = _component_model((1, 2))
+    widget.set_model(model)
+    widget.set_component_selection(((1, 2), "filter"))
+    union = widget._mesh_actor
+    assert widget.component_preview_active is False
+    assert union.visible is True
+    assert len(_meshes(plotter, widget)) == 1
+
+    widget.set_component_selection(((1,), "filter"))
+    assert widget.component_preview_active is True
+    assert union.visible is False
+    assert widget._feature_edges_actor.visible is False
+    previews = [kwargs for actor, kwargs in _meshes(plotter, widget) if actor is not union]
+    assert [kwargs["color"] for kwargs in previews] == ["#9fc8ef", "#9aa5b1"]
+    assert previews[1]["opacity"] < 0.5
+    texts = [entry[1] for entry in plotter.active("text").values()]
+    assert any("Component preview" in text for text in texts)
+
+    widget.set_component_selection(((1,), "subtract"))
+    previews = [kwargs for actor, kwargs in _meshes(plotter, widget) if actor is not union]
+    assert previews[1]["color"] == "#e0735f"
+
+    # Back to the loaded selection: the union returns and preview actors are removed.
+    widget.set_component_selection(((1, 2), "subtract"))
+    assert widget.component_preview_active is False
+    assert union.visible is True
+    assert len(_meshes(plotter, widget)) == 1
+    assert not any("Component preview" in entry[1] for entry in plotter.active("text").values())
+
+
+def test_loading_a_model_with_the_new_selection_ends_the_preview(viewer) -> None:
+    widget, plotter = viewer
+    widget.set_model(_component_model((1, 2)))
+    widget.set_component_selection(((2,), "filter"))
+    assert widget.component_preview_active is True
+
+    widget.set_model(_component_model((2,)))
+    assert widget.component_preview_active is False
+    assert len(_meshes(plotter, widget)) == 1
+    assert widget._mesh_actor.visible is True
+
+
+def test_mode_change_alone_previews_only_when_a_component_is_unchecked(viewer) -> None:
+    widget, _ = viewer
+    widget.set_model(_component_model((1, 2), mode="filter"))
+    widget.set_component_selection(((1, 2), "subtract"))
+    assert widget.component_preview_active is False
+
+    widget.set_model(_component_model((1,), mode="filter"))
+    widget.set_component_selection(((1,), "subtract"))
+    assert widget.component_preview_active is True
+
+
+def test_models_without_component_meshes_never_preview(viewer) -> None:
+    widget, _ = viewer
+    widget.set_model(_model())
+    widget.set_component_selection(((1,), "filter"))
+    assert widget.component_preview_active is False

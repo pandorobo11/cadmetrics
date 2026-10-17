@@ -40,6 +40,15 @@ DEFAULT_CAMERA_DIRECTION = (-1.0, -1.0, 1.0)
 # Keep the orientation triad in the lower-right corner, away from the upper-left overlay.
 AXES_VIEWPORT = (0.82, 0.0, 1.0, 0.18)
 
+MODEL_COLOR = "#9fc8ef"
+# Unapplied component selection preview: excluded parts fade out, subtracted parts go red.
+EXCLUDED_COMPONENT_COLOR = "#9aa5b1"
+EXCLUDED_COMPONENT_OPACITY = 0.22
+SUBTRACTED_COMPONENT_COLOR = "#e0735f"
+SUBTRACTED_COMPONENT_OPACITY = 0.35
+COMPONENT_PREVIEW_TEXT = "Component preview: changes apply on the next Run Sweep"
+ComponentSelection = tuple[tuple[int, ...], str]
+
 EMPTY_STATE_TEXT = (
     "Open an STL or STEP file to begin\nChoose a file on the left or drag and drop it here"
 )
@@ -112,6 +121,10 @@ class ModelViewer(QtWidgets.QWidget):
         self._overlay_reserve = 0.0
         self._empty_state_actor: Any | None = None
         self._grid_actor: Any | None = None
+        self._component_selection: ComponentSelection | None = None
+        self._component_preview_actors: list[Any] = []
+        self._component_preview_notice: Any | None = None
+        self._component_preview_shown = False
         self._camera_direction: tuple[float, float, float] = DEFAULT_CAMERA_DIRECTION
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -149,7 +162,7 @@ class ModelViewer(QtWidgets.QWidget):
         self._plotter.add_axes(viewport=AXES_VIEWPORT)
         self._mesh_actor = self._plotter.add_mesh(
             self._mesh_polydata,
-            color="#9fc8ef",
+            color=MODEL_COLOR,
             show_edges=self._options.mesh_edges,
             edge_color="#111111",
             opacity=self._shape_opacity(),
@@ -167,7 +180,17 @@ class ModelViewer(QtWidgets.QWidget):
         self._update_newly_exposed_surface(render=False)
         self.set_camera(self._camera_direction)
         self._update_projection()
+        self._update_component_preview(render=True)
         self._sync_toolbar()
+
+    def set_component_selection(self, selection: ComponentSelection | None) -> None:
+        """Preview checked/unchecked STEP components before the model is reloaded."""
+        self._component_selection = selection
+        self._update_component_preview(render=True)
+
+    @property
+    def component_preview_active(self) -> bool:
+        return self._component_preview_shown
 
     def set_request(self, request: CalculationRequest | None) -> None:
         self._request = request
@@ -194,6 +217,8 @@ class ModelViewer(QtWidgets.QWidget):
         self._update_base_face(render=False)
         self._update_newly_exposed_surface(render=False)
         self._update_projection()
+        # Re-created overlays must stay hidden while a component preview is shown.
+        self._update_component_preview(render=True)
 
     def set_view_direction(self, direction: tuple[float, float, float]) -> None:
         """Look from a preset direction and keep it for models loaded later."""
@@ -239,6 +264,8 @@ class ModelViewer(QtWidgets.QWidget):
         self._update_empty_state()
         if self._model is not None and self._model.vertex_count > 0:
             self._update_overlay()
+        if self._component_preview_shown:
+            self._update_component_preview(render=False)
         self._plotter.render()
 
     def _create_plotter(self, factory: PlotterFactory | None) -> QtWidgets.QWidget:
@@ -310,6 +337,9 @@ class ModelViewer(QtWidgets.QWidget):
         self._overlay_actor = None
         self._empty_state_actor = None
         self._grid_actor = None
+        self._component_preview_actors = []
+        self._component_preview_notice = None
+        self._component_preview_shown = False
 
     def _update_grid(self) -> None:
         if self._plotter is None:
@@ -762,6 +792,104 @@ class ModelViewer(QtWidgets.QWidget):
             self._plotter.reset_camera_clipping_range()
         except AttributeError:
             pass
+
+    def _component_preview_pending(self) -> bool:
+        model = self._model
+        if model is None or self._component_selection is None or not model.component_meshes:
+            return False
+        selected, mode = self._component_selection
+        count = len(model.component_meshes)
+        loaded = set(model.selected_components) or set(range(1, count + 1))
+        if set(selected) != loaded:
+            return True
+        # The mode only changes the geometry when some component is unchecked.
+        return mode != model.step_component_mode and len(loaded) < count
+
+    def _update_component_preview(self, *, render: bool) -> None:
+        if self._plotter is None:
+            return
+        for actor in self._component_preview_actors:
+            try:
+                self._plotter.remove_actor(actor)
+            except Exception:
+                pass
+        self._component_preview_actors = []
+        self._remove_actor("_component_preview_notice")
+        pending = self._component_preview_pending()
+        if pending or self._component_preview_shown:
+            # The loaded union and its highlights describe the applied selection only.
+            for attribute in (
+                "_mesh_actor",
+                "_feature_edges_actor",
+                "_base_face_actor",
+                "_newly_exposed_surface_actor",
+            ):
+                actor = getattr(self, attribute)
+                if actor is not None:
+                    actor.SetVisibility(not pending)
+        self._component_preview_shown = pending
+        if pending:
+            self._add_component_preview_actors()
+        if render:
+            self._plotter.render()
+
+    def _add_component_preview_actors(self) -> None:
+        import pyvista as pv
+
+        assert self._plotter is not None and self._model is not None
+        assert self._component_selection is not None
+        selected, mode = self._component_selection
+        chosen = set(selected)
+        for index, (vertices, faces) in enumerate(self._model.component_meshes, start=1):
+            if faces.size == 0:
+                continue
+            cells = np.column_stack([np.full(faces.shape[0], 3, dtype=np.int64), faces]).ravel()
+            polydata = pv.PolyData(vertices, cells)
+            if index in chosen:
+                style: dict[str, Any] = {
+                    "color": MODEL_COLOR,
+                    "opacity": self._shape_opacity(),
+                    "show_edges": self._options.mesh_edges,
+                    "edge_color": "#111111",
+                    "ambient": 0.35,
+                    "diffuse": 0.72,
+                    "specular": 0.18,
+                    "specular_power": 24,
+                }
+            elif mode == "subtract":
+                style = {
+                    "color": SUBTRACTED_COMPONENT_COLOR,
+                    "opacity": SUBTRACTED_COMPONENT_OPACITY,
+                }
+            else:
+                style = {"color": EXCLUDED_COMPONENT_COLOR, "opacity": EXCLUDED_COMPONENT_OPACITY}
+            self._component_preview_actors.append(
+                self._plotter.add_mesh(
+                    polydata,
+                    smooth_shading=True,
+                    split_sharp_edges=True,
+                    pickable=False,
+                    **style,
+                )
+            )
+        ratio = self._device_pixel_ratio()
+        view_width, _ = self._view_size()
+        actor = self._plotter.add_text(
+            COMPONENT_PREVIEW_TEXT,
+            position=(view_width * ratio / 2, OVERLAY_MARGIN * ratio),
+            font_size=OVERLAY_FONT_SIZE,
+            color=_MUTED_TEXT_COLOR,
+            shadow=False,
+        )
+        self._component_preview_notice = actor
+        self._style_text(
+            actor,
+            font_size=self._text_font_size(OVERLAY_FONT_SIZE),
+            color=_MUTED_TEXT_COLOR,
+            horizontal="center",
+            vertical="bottom",
+            panel=True,
+        )
 
     def _remove_actor(self, attribute: str) -> None:
         if self._plotter is None:
