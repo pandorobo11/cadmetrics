@@ -70,7 +70,9 @@ def _inspect_model_with_options(
     start = perf_counter()
     model = _load_model_with_options(path, options)
     transformed = transform_model_axes(model, options.axis_map)
-    return replace(transformed, load_elapsed_sec=perf_counter() - start)
+    # Display-only component meshes are not part of model preparation.
+    elapsed = perf_counter() - start - model.component_mesh_elapsed_sec
+    return replace(transformed, load_elapsed_sec=elapsed)
 
 
 def measure(

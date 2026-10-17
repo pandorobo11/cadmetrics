@@ -20,6 +20,7 @@ from cadmetrics._mesh_io import (
 class OcpBindings:
     Bnd_Box: Any
     BRep_Builder: Any
+    BRepBuilderAPI_Copy: Any
     BRepBuilderAPI_Transform: Any
     BRep_Tool: Any
     BRepAlgoAPI_Cut: Any
@@ -49,7 +50,7 @@ def load_ocp_bindings() -> OcpBindings:
     try:
         from OCP.Bnd import Bnd_Box
         from OCP.BRep import BRep_Builder, BRep_Tool
-        from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy, BRepBuilderAPI_Transform
         from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
         from OCP.BRepBndLib import BRepBndLib
         from OCP.BRepCheck import BRepCheck_Analyzer
@@ -83,6 +84,7 @@ def load_ocp_bindings() -> OcpBindings:
     return OcpBindings(
         Bnd_Box=Bnd_Box,
         BRep_Builder=BRep_Builder,
+        BRepBuilderAPI_Copy=BRepBuilderAPI_Copy,
         BRepBuilderAPI_Transform=BRepBuilderAPI_Transform,
         BRep_Tool=BRep_Tool,
         BRepAlgoAPI_Cut=BRepAlgoAPI_Cut,

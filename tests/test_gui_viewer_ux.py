@@ -28,9 +28,16 @@ class _TextProperty:
 class _Actor:
     def __init__(self) -> None:
         self.prop = _TextProperty()
+        self.visible = True
 
     def GetProperty(self):
         return self.prop
+
+    def SetVisibility(self, visible) -> None:
+        self.visible = bool(visible)
+
+
+REFIT_GRID_BOUNDS = (-9.0, 9.0, -9.0, 9.0, -9.0, 9.0)
 
 
 class _Camera:
@@ -54,6 +61,8 @@ class _Plotter(QtWidgets.QWidget):
         self.lights: list = []
         self.camera = _Camera()
         self.camera_position = None
+        # Like PyVista, actor changes request a render unless render=False is passed.
+        self.render_requests = 0
 
     def __getattr__(self, name):
         if name in {
@@ -68,7 +77,7 @@ class _Plotter(QtWidgets.QWidget):
         raise AttributeError(name)
 
     def render(self) -> None:
-        pass
+        self.render_requests += 1
 
     def remove_all_lights(self) -> None:
         self.lights.clear()
@@ -81,11 +90,16 @@ class _Plotter(QtWidgets.QWidget):
 
     def _add(self, kind, data, kwargs):
         actor = _Actor()
+        # PyVista refits the grid to every actor whenever actors change.
+        for grid in self.active("grid"):
+            grid.bounds = REFIT_GRID_BOUNDS
         self.actors[actor] = (kind, data, kwargs)
+        if kwargs.get("render", True):
+            self.render()
         return actor
 
     def show_grid(self, **kwargs):
-        return self._add("grid", None, kwargs)
+        return self._add("grid", None, {**kwargs, "render": False})
 
     def add_mesh(self, mesh, **kwargs):
         return self._add("mesh", mesh, kwargs)
@@ -96,8 +110,10 @@ class _Plotter(QtWidgets.QWidget):
     def add_text(self, text, **kwargs):
         return self._add("text", text, kwargs)
 
-    def remove_actor(self, actor) -> None:
+    def remove_actor(self, actor, render=True) -> None:
         self.actors.pop(actor, None)
+        if render:
+            self.render()
 
     def active(self, kind):
         return {actor: entry for actor, entry in self.actors.items() if entry[0] == kind}
@@ -320,3 +336,191 @@ def test_overlay_is_anchored_to_render_area_below_toolbar(viewer) -> None:
     ratio = widget._device_pixel_ratio()
     _, top = kwargs["position"]
     assert top == pytest.approx(plotter.height() * ratio - OVERLAY_MARGIN * ratio)
+
+
+def _component_model(selected: tuple[int, ...], mode: str = "filter") -> ModelData:
+    base = _model()
+    cube = (base.vertices, base.faces)
+    shifted = (base.vertices + np.array([2.0, 0.0, 0.0]), base.faces)
+    return replace(
+        base,
+        component_names=("A", "B"),
+        selected_components=selected,
+        step_component_mode=mode,
+        component_meshes=(cube, shifted),
+    )
+
+
+def _meshes(plotter, widget=None) -> list[tuple[object, dict]]:
+    """Model surfaces only: feature edges are drawn as a separate line mesh."""
+    edges = None if widget is None else widget._feature_edges_actor
+    return [
+        (actor, entry[2]) for actor, entry in plotter.active("mesh").items() if actor is not edges
+    ]
+
+
+def test_unapplied_component_changes_preview_per_component(viewer) -> None:
+    widget, plotter = viewer
+    model = _component_model((1, 2))
+    widget.set_model(model)
+    widget.set_component_selection(((1, 2), "filter"))
+    union = widget._mesh_actor
+    assert widget.component_preview_active is False
+    assert union.visible is True
+    assert len(_meshes(plotter, widget)) == 1
+
+    widget.set_component_selection(((1,), "filter"))
+    assert widget.component_preview_active is True
+    assert union.visible is False
+    assert widget._feature_edges_actor.visible is False
+    previews = [kwargs for actor, kwargs in _meshes(plotter, widget) if actor is not union]
+    assert [kwargs["color"] for kwargs in previews] == ["#9fc8ef", "#9aa5b1"]
+    assert previews[1]["opacity"] < 0.5
+    texts = [entry[1] for entry in plotter.active("text").values()]
+    assert any("Component preview" in text for text in texts)
+
+    widget.set_component_selection(((1,), "subtract"))
+    previews = [kwargs for actor, kwargs in _meshes(plotter, widget) if actor is not union]
+    assert previews[1]["color"] == "#e0735f"
+
+    # Back to the loaded selection: the union returns and preview actors are removed.
+    widget.set_component_selection(((1, 2), "subtract"))
+    assert widget.component_preview_active is False
+    assert union.visible is True
+    assert len(_meshes(plotter, widget)) == 1
+    assert not any("Component preview" in entry[1] for entry in plotter.active("text").values())
+
+
+def test_loading_a_model_with_the_new_selection_ends_the_preview(viewer) -> None:
+    widget, plotter = viewer
+    widget.set_model(_component_model((1, 2)))
+    widget.set_component_selection(((2,), "filter"))
+    assert widget.component_preview_active is True
+
+    widget.set_model(_component_model((2,)))
+    assert widget.component_preview_active is False
+    assert len(_meshes(plotter, widget)) == 1
+    assert widget._mesh_actor.visible is True
+
+
+def test_mode_change_alone_previews_only_when_a_component_is_unchecked(viewer) -> None:
+    widget, _ = viewer
+    widget.set_model(_component_model((1, 2), mode="filter"))
+    widget.set_component_selection(((1, 2), "subtract"))
+    assert widget.component_preview_active is False
+
+    widget.set_model(_component_model((1,), mode="filter"))
+    widget.set_component_selection(((1,), "subtract"))
+    assert widget.component_preview_active is True
+
+
+def test_models_without_component_meshes_never_preview(viewer) -> None:
+    widget, _ = viewer
+    widget.set_model(_model())
+    widget.set_component_selection(((1,), "filter"))
+    assert widget.component_preview_active is False
+
+
+def test_component_preview_keeps_the_grid_on_the_shown_geometry(viewer) -> None:
+    widget, _ = viewer
+    widget.set_model(_component_model((1,)))
+    # Component 2 (x 2..3) is not in the loaded model; re-checking it widens the grid.
+    widget.set_component_selection(((1, 2), "filter"))
+    assert widget.component_preview_active is True
+    assert tuple(widget._grid_actor.bounds) == (0.0, 3.0, 0.0, 1.0, 0.0, 1.0)
+
+    widget.set_component_selection(((1,), "filter"))
+    assert tuple(widget._grid_actor.bounds) == (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
+
+
+def _many_component_model(count: int, selected: tuple[int, ...]) -> ModelData:
+    base = _model()
+    meshes = tuple(
+        (base.vertices + np.array([2.0 * index, 0.0, 0.0]), base.faces) for index in range(count)
+    )
+    return replace(
+        base,
+        component_names=tuple(f"C{index}" for index in range(1, count + 1)),
+        selected_components=selected,
+        component_meshes=meshes,
+    )
+
+
+def test_component_preview_updates_render_once_regardless_of_component_count(viewer) -> None:
+    widget, plotter = viewer
+    count = 40
+    widget.set_model(_many_component_model(count, tuple(range(1, count + 1))))
+
+    plotter.render_requests = 0
+    widget.set_component_selection((tuple(range(2, count + 1)), "filter"))
+    assert widget.component_preview_active is True
+    assert len(_meshes(plotter, widget)) == count + 1  # Hidden union plus every component.
+    assert plotter.render_requests == 1
+
+    # Repopulating controls with the same selection must not rebuild all preview actors.
+    actors = tuple(widget._component_preview_actors)
+    plotter.render_requests = 0
+    widget.set_component_selection((tuple(range(2, count + 1)), "filter"))
+    assert tuple(widget._component_preview_actors) == actors
+    assert plotter.render_requests == 0
+
+    plotter.render_requests = 0
+    widget.set_component_selection((tuple(range(3, count + 1)), "subtract"))
+    assert plotter.render_requests == 1
+
+    plotter.render_requests = 0
+    widget._update_component_preview(render=False)
+    assert plotter.render_requests == 0
+
+    # Back to the loaded selection: removing every preview actor still renders once.
+    plotter.render_requests = 0
+    widget.set_component_selection((tuple(range(1, count + 1)), "subtract"))
+    assert widget.component_preview_active is False
+    assert plotter.render_requests == 1
+
+
+def test_resizing_during_a_component_preview_only_moves_the_notice(viewer, qtbot) -> None:
+    widget, plotter = viewer
+    count = 40
+    widget.show()
+    widget.set_model(_many_component_model(count, tuple(range(1, count + 1))))
+    widget.set_request(CalculationRequest(file=Path("model.step")))
+
+    def resize_render_requests(width: int) -> int:
+        plotter.render_requests = 0
+        widget.resize(width, 500)
+        qtbot.waitUntil(lambda: plotter.render_requests > 0)
+        return plotter.render_requests
+
+    without_preview = resize_render_requests(800)
+    assert tuple(widget._grid_actor.bounds) == tuple(widget._mesh_polydata.bounds)
+    widget.set_component_selection((tuple(range(2, count + 1)), "filter"))
+    previews = set(widget._component_preview_actors)
+    preview_bounds = tuple(widget._grid_actor.bounds)
+
+    # The preview adds no render requests per component, and its actors are kept.
+    assert resize_render_requests(700) == without_preview
+    assert set(widget._component_preview_actors) == previews
+    assert tuple(widget._grid_actor.bounds) == preview_bounds
+    texts = [entry[1] for entry in plotter.active("text").values()]
+    assert sum("Component preview" in text for text in texts) == 1
+
+
+def test_projection_updates_keep_the_grid_on_the_component_preview(viewer) -> None:
+    widget, plotter = viewer
+    widget.set_model(_component_model((1,)))
+    widget.set_component_selection(((1, 2), "filter"))
+    preview_bounds = (0.0, 3.0, 0.0, 1.0, 0.0, 1.0)
+    assert tuple(widget._grid_actor.bounds) == preview_bounds
+
+    widget.set_request(CalculationRequest(file=Path("model.stl"), alpha_start=0.0))
+    assert len(plotter.active("arrow")) == 1  # The arrow refits the grid in PyVista.
+    assert tuple(widget._grid_actor.bounds) == preview_bounds
+
+    widget.set_result(_row(), None)
+    assert tuple(widget._grid_actor.bounds) == preview_bounds
+
+    widget.set_component_selection(((1,), "filter"))
+    assert tuple(widget._grid_actor.bounds) == (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
+    widget.set_request(CalculationRequest(file=Path("model.stl"), alpha_start=5.0))
+    assert tuple(widget._grid_actor.bounds) == (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
