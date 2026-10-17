@@ -215,16 +215,24 @@ def test_all_fields_share_one_left_and_right_edge(qtbot) -> None:
         left = widget.mapTo(content, QtCore.QPoint(0, 0)).x()
         return left, left + widget.width()
 
-    fields = (
-        panel.input_unit,
-        panel.output_unit,
-        panel.attitude_mode,
-        panel.step_component_mode,
-        panel.step_metrics,
-        panel.angular_deflection,
-        panel.base_tolerance,
-    )
-    assert len({edges(field) for field in fields}) == 1
+    fields = {
+        name: getattr(panel, name)
+        for name in (
+            "input_unit",
+            "output_unit",
+            "attitude_mode",
+            "step_component_mode",
+            "step_metrics",
+            "angular_deflection",
+            "base_tolerance",
+        )
+    }
+    field_edges = {name: edges(field) for name, field in fields.items()}
+    label_edges = {
+        label.text(): (edges(label), label.isVisible())
+        for label in content.findChildren(QtWidgets.QLabel, "fieldLabel")
+    }
+    assert len(set(field_edges.values())) == 1, (field_edges, label_edges)
     left, right = edges(panel.input_unit)
     assert edges(panel.file_edit)[0] == left
     assert edges(panel.browse_button)[1] == right
