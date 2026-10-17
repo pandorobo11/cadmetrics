@@ -16,6 +16,14 @@ def row_centroid_point(row: MeasurementRow | None) -> np.ndarray | None:
     return np.array([row.centroid_x, row.centroid_y, row.centroid_z], dtype=float)
 
 
+def model_scale(vertices: np.ndarray) -> float:
+    """Largest model extent; falls back to 1.0 only for empty or point-like models."""
+    if vertices.size == 0:
+        return 1.0
+    extent = float(np.ptp(vertices, axis=0).max())
+    return extent if np.isfinite(extent) and extent > 0.0 else 1.0
+
+
 def projection_arrow_geometry(
     vertices: np.ndarray,
     direction: np.ndarray,
@@ -24,8 +32,7 @@ def projection_arrow_geometry(
 ) -> tuple[np.ndarray, np.ndarray]:
     anchor = vertices.mean(axis=0) if through_point is None else through_point
     unit_direction = direction / np.linalg.norm(direction)
-    spans = np.ptp(vertices, axis=0)
-    scale = max(float(spans.max()), 1.0)
+    scale = model_scale(vertices)
     clearance = scale * 0.15
     projections = (vertices - anchor) @ unit_direction
     upstream_edge = float(projections.min())
@@ -110,8 +117,7 @@ def projection_camera_geometry(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     center = vertices.mean(axis=0)
     unit_direction = direction / np.linalg.norm(direction)
-    spans = np.ptp(vertices, axis=0)
-    scale = max(float(spans.max()), 1.0)
+    scale = model_scale(vertices)
     distance = scale * 3.0
     _, view_up = projection_basis(unit_direction)
     position = center - unit_direction * distance
@@ -128,8 +134,7 @@ def camera_geometry(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     center = vertices.mean(axis=0)
     from_direction = from_direction / np.linalg.norm(from_direction)
-    spans = np.ptp(vertices, axis=0)
-    scale = max(float(spans.max()), 1.0)
+    scale = model_scale(vertices)
     distance = scale * 3.0
     position = center + from_direction * distance
     view_direction = (center - position) / np.linalg.norm(center - position)

@@ -31,6 +31,36 @@ def test_projection_arrow_axis_stays_outside_model_and_passes_through_centroid()
             assert np.linalg.norm(np.cross(anchor - start, unit_vector)) == pytest.approx(0.0)
 
 
+def _box_vertices(size: float) -> np.ndarray:
+    return np.array([[-0.5, -0.25, -0.25], [0.5, 0.25, 0.25]]) * size
+
+
+@pytest.mark.parametrize("size", [0.07, 100.0])
+def test_projection_arrow_scales_with_model_size(size: float) -> None:
+    vertices = _box_vertices(size)
+    start, vector = _projection_arrow_geometry(vertices, np.array([1.0, 0.0, 0.0]))
+
+    assert np.linalg.norm(vector) / size == pytest.approx(0.35)
+    assert (vertices[:, 0].min() - (start + vector)[0]) / size == pytest.approx(0.15)
+
+
+@pytest.mark.parametrize("size", [0.07, 100.0])
+def test_projection_camera_distance_scales_with_model_size(size: float) -> None:
+    vertices = _box_vertices(size)
+    position, focal_point, _ = _projection_camera_geometry(vertices, np.array([1.0, 0.0, 0.0]))
+    assert np.linalg.norm(position - focal_point) / size == pytest.approx(3.0)
+    position, focal_point, _ = _camera_geometry(vertices, np.array([1.0, 0.0, 0.0]))
+    assert np.linalg.norm(position - focal_point) / size == pytest.approx(3.0)
+
+
+def test_projection_arrow_is_finite_and_nonzero_for_point_model() -> None:
+    vertices = np.zeros((3, 3))
+    start, vector = _projection_arrow_geometry(vertices, np.array([0.0, 0.0, 1.0]))
+
+    assert np.all(np.isfinite(start)) and np.all(np.isfinite(vector))
+    assert np.linalg.norm(vector) > 0.0
+
+
 def test_base_face_mask_respects_tolerance_and_excludes_new_surfaces() -> None:
     vertices = np.array(
         [
