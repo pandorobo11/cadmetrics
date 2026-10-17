@@ -215,7 +215,7 @@ def test_results_panel_displays_selects_and_exports_rows(qtbot, tmp_path: Path) 
     assert model.data(model.index(1, alpha_column)) == "15"
     assert model.data(model.index(1, area_column)) == "2.5"
     file_index = model.index(1, DISPLAY_FIELDS.index("file"))
-    assert model.data(file_index) == rows[-1].file
+    assert model.data(file_index) == "a-long-model-filename-that-needs-a-full-tooltip.stl"
     assert model.data(file_index, QtCore.Qt.ItemDataRole.ToolTipRole) == rows[-1].file
 
     output = tmp_path / "rows.csv"
@@ -226,7 +226,7 @@ def test_results_panel_displays_selects_and_exports_rows(qtbot, tmp_path: Path) 
     assert [float(row["alpha_deg"]) for row in saved_rows] == [5.0, 15.0]
 
 
-def test_main_window_invalidates_results_when_request_changes(
+def test_main_window_marks_results_stale_when_request_changes(
     qtbot, monkeypatch, tmp_path: Path
 ) -> None:
     source = tmp_path / "model.step"
@@ -241,16 +241,16 @@ def test_main_window_invalidates_results_when_request_changes(
 
     window.controls.alpha_fields[0].setValue(10.0)
 
-    assert window.results.rows == []
-    assert window.results.save_button.isEnabled() is False
+    assert window.results.rows
+    assert window.results.is_stale
+    assert window.results.save_button.isEnabled() is True
     assert window.viewer.result_calls[-1][0] is None
-    assert window.progress_bar.value() == 0
 
 
 @pytest.mark.parametrize(
     "change", ["input_unit", "output_unit", "existing_file", "missing_file", "empty_file"]
 )
-def test_main_window_invalidates_results_after_setup_edit(
+def test_main_window_marks_results_stale_after_setup_edit(
     qtbot, monkeypatch, tmp_path: Path, change: str
 ) -> None:
     source = tmp_path / "model.stl"
@@ -275,12 +275,12 @@ def test_main_window_invalidates_results_after_setup_edit(
     else:
         window.controls.file_edit.clear()
 
-    assert window.results.rows == []
-    assert window.results.save_button.isEnabled() is False
+    assert window.results.rows
+    assert window.results.is_stale
+    assert window.results.save_button.isEnabled() is True
     assert window.viewer.result_calls[-1][0] is None
-    assert window.progress_bar.value() == 0
-    with pytest.raises(ValueError, match="No calculation results to save"):
-        window.results.save_csv(tmp_path / "stale.csv")
+    window.results.save_csv(tmp_path / "stale.csv")
+    assert (tmp_path / "stale.csv").is_file()
 
 
 def test_main_window_setup_edits_are_applied_by_next_sweep(

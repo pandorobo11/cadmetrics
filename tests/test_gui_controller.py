@@ -31,7 +31,7 @@ def test_controller_reuses_model_until_geometry_changes_on_its_own_thread(
         models.append(model)
         return model
 
-    def fake_calculate(request, *, model, progress_callback, cancel_callback):
+    def fake_calculate(request, *, model, progress_callback, cancel_callback, row_callback):
         calculations.append((request, model))
         return [row]
 
@@ -119,7 +119,7 @@ def test_controller_rejects_overlap_and_waits_for_cancelled_worker_on_shutdown(
     release = Event()
     calculations = []
 
-    def fake_calculate(request, *, model, progress_callback, cancel_callback):
+    def fake_calculate(request, *, model, progress_callback, cancel_callback, row_callback):
         calculations.append(request)
         started.set()
         release.wait(timeout=2)

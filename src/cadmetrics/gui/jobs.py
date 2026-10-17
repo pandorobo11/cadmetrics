@@ -17,6 +17,7 @@ from cadmetrics.types import MeasurementRow, ModelData
 
 AttitudeInputMode = Literal["alpha_beta", "roll_pitch", "vector"]
 ProgressCallback = Callable[[int, int, str], None]
+RowCallback = Callable[[MeasurementRow], None]
 OrientationProgressCallback = Callable[[int, int, MeasurementRow], None]
 GuiModelPath = Path | tuple[Path, ...]
 
@@ -88,7 +89,9 @@ def run_calculation(
     model: ModelData | None = None,
     progress_callback: ProgressCallback | None = None,
     cancel_callback: Callable[[], None] | None = None,
+    row_callback: RowCallback | None = None,
 ) -> list[MeasurementRow]:
+    """Run one GUI request; ``row_callback`` receives each row as soon as it is computed."""
     attitude = request.resolved_attitude()
     if model is None:
         model = _inspect_model_with_options(request.file, request.load_options())
@@ -99,6 +102,8 @@ def run_calculation(
         row = project_model(model, attitude="vector", direction=attitude.direction)
         if cancel_callback is not None:
             cancel_callback()
+        if row_callback is not None:
+            row_callback(row)
         if progress_callback is not None:
             progress_callback(
                 1,
@@ -113,7 +118,7 @@ def run_calculation(
             attitude="roll-pitch",
             roll_deg=attitude.roll,
             pitch_deg=attitude.alpha,
-            progress_callback=_orientation_progress(progress_callback, "roll_pitch"),
+            progress_callback=_orientation_progress(progress_callback, row_callback, "roll_pitch"),
             cancel_callback=cancel_callback,
         )
     return sweep_model(
@@ -121,19 +126,24 @@ def run_calculation(
         attitude="alpha-beta",
         alpha_deg=attitude.alpha,
         beta_deg=attitude.beta,
-        progress_callback=_orientation_progress(progress_callback, "alpha_beta"),
+        progress_callback=_orientation_progress(progress_callback, row_callback, "alpha_beta"),
         cancel_callback=cancel_callback,
     )
 
 
 def _orientation_progress(
     progress_callback: ProgressCallback | None,
+    row_callback: RowCallback | None,
     mode: Literal["alpha_beta", "roll_pitch"],
 ) -> OrientationProgressCallback | None:
-    if progress_callback is None:
+    if progress_callback is None and row_callback is None:
         return None
 
     def on_progress(index: int, total: int, row: MeasurementRow) -> None:
+        if row_callback is not None:
+            row_callback(row)
+        if progress_callback is None:
+            return
         if mode == "roll_pitch":
             text = f"roll={row.roll_deg:g}, pitch={row.pitch_deg:g}"
         else:

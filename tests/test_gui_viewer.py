@@ -295,8 +295,7 @@ def test_invalid_vector_preview_clears_arrow_and_reports_calculation_error(
     window.controls.vector_fields[0].setValue(0.0)
 
     assert not plotter.active("arrow")
-    assert window.results.rows == []
-    assert not window.results.save_button.isEnabled()
+    assert window.results.is_stale
     assert "Volume  1 m³" in next(iter(plotter.active("text").values()))
     assert errors == []
 

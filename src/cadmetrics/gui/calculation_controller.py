@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from threading import Event
 
 from PySide6 import QtCore
@@ -7,7 +8,10 @@ from PySide6 import QtCore
 from cadmetrics.gui.gui_types import ModelLoadKey, OperationState
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
 from cadmetrics.gui.model_loading import load_model_for_request, model_load_key
-from cadmetrics.types import ModelData
+from cadmetrics.types import MeasurementRow, ModelData
+
+# Stream finished rows to the GUI in batches so large sweeps do not flood the event loop.
+ROW_BATCH_INTERVAL_SEC = 0.1
 
 
 class CancelledOperation(Exception):
@@ -17,6 +21,7 @@ class CancelledOperation(Exception):
 class _OperationWorker(QtCore.QObject):
     model_loaded = QtCore.Signal(object)
     calculating = QtCore.Signal()
+    rows_appended = QtCore.Signal(list)
     results_ready = QtCore.Signal(list)
     load_finished = QtCore.Signal()
     progress = QtCore.Signal(int, int, str)
@@ -36,6 +41,8 @@ class _OperationWorker(QtCore.QObject):
         self._model = model
         self._calculate = calculate
         self._cancel = cancel_event or Event()
+        self._pending_rows: list[MeasurementRow] = []
+        self._last_flush = 0.0
 
     @QtCore.Slot()
     def run(self) -> None:
@@ -52,17 +59,22 @@ class _OperationWorker(QtCore.QObject):
                 return
             self._raise_if_cancelled()
             self.calculating.emit()
+            self._last_flush = time.monotonic()
             rows = run_calculation(
                 self._request,
                 model=model,
                 progress_callback=self._on_progress,
                 cancel_callback=self._raise_if_cancelled,
+                row_callback=self._on_row,
             )
         except CancelledOperation:
+            self._flush_rows()
             self.cancelled.emit()
         except Exception as exc:
+            self._flush_rows()
             self.failed.emit(str(exc))
         else:
+            self._flush_rows()
             self.results_ready.emit(rows)
 
     def cancel(self) -> None:
@@ -75,6 +87,18 @@ class _OperationWorker(QtCore.QObject):
     def _on_progress(self, index: int, total: int, description: str) -> None:
         self._raise_if_cancelled()
         self.progress.emit(index, total, description)
+
+    def _on_row(self, row: MeasurementRow) -> None:
+        self._pending_rows.append(row)
+        if time.monotonic() - self._last_flush >= ROW_BATCH_INTERVAL_SEC:
+            self._flush_rows()
+
+    def _flush_rows(self) -> None:
+        self._last_flush = time.monotonic()
+        if not self._pending_rows:
+            return
+        rows, self._pending_rows = self._pending_rows, []
+        self.rows_appended.emit(rows)
 
 
 class _OperationContext(QtCore.QObject):
@@ -148,6 +172,7 @@ class _OperationContext(QtCore.QObject):
 
 class CalculationController(QtCore.QObject):
     model_loaded = QtCore.Signal(object)
+    rows_appended = QtCore.Signal(list)
     results_ready = QtCore.Signal(list)
     progress = QtCore.Signal(int, int, str)
     state_changed = QtCore.Signal(object)
@@ -231,6 +256,7 @@ class CalculationController(QtCore.QObject):
             self._on_calculating,
             QtCore.Qt.ConnectionType.QueuedConnection,
         )
+        operation.worker.rows_appended.connect(self.rows_appended)
         operation.worker.results_ready.connect(self.results_ready)
         operation.worker.progress.connect(self.progress)
         operation.worker.failed.connect(self.failed)
