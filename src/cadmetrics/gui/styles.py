@@ -131,6 +131,14 @@ QPushButton#primaryButton:focus { border: 2px solid #0f3d6b; padding: 3px 13px; 
 QPushButton#primaryButton:disabled {
     background: #e9edf1; border-color: #cdd4dc; color: #66707b;
 }
+/* Apply & Reload: highlighted while there are changes the 3D view does not show exactly. */
+QPushButton#applyButton[emphasis="true"] {
+    background: #e8f1fb; border-color: #2f78c4; color: #154f86; font-weight: 600;
+}
+QPushButton#applyButton[emphasis="true"]:hover { background: #dcebfa; }
+QPushButton#applyButton[emphasis="true"]:disabled {
+    background: #e9edf1; border-color: #cdd4dc; color: #66707b; font-weight: 500;
+}
 QPushButton#dangerButton { background: #fff7f5; border-color: #d8a59a; color: #9f3b2f; }
 QPushButton#dangerButton:hover { background: #ffece8; border-color: #c98a7d; }
 QPushButton#dangerButton:pressed { background: #fbdcd5; }
@@ -221,6 +229,7 @@ QToolButton#viewButton {
 }
 QToolButton#viewButton:hover { background: #eef3f8; border-color: #99a8b8; }
 QToolButton#viewButton:pressed { background: #e2eaf2; }
+QToolButton#viewButton:checked { background: #dcebfb; border-color: #2f78c4; color: #154f86; }
 QToolButton#viewButton:disabled { background: #f1f4f7; border-color: #dbe1e7; color: #66707b; }
 QPushButton#viewerSaveButton { min-height: 24px; padding: 1px 10px; font-size: 12px; }
 QWidget#resultToolbar { background: #f7f9fb; border-top: 1px solid #d9dee4; }
