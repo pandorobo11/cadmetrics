@@ -1012,6 +1012,7 @@ class ModelViewer(QtWidgets.QWidget):
             if front is not None:
                 self._plotter.remove_actor(actor, render=False)
                 front.AddActor(actor)
+        self._sync_grid_bounds()
         if render:
             self._plotter.render()
 
@@ -1046,6 +1047,16 @@ class ModelViewer(QtWidgets.QWidget):
 
         picker = vtkCellPicker()
         picker.SetTolerance(0.0005)
+        # Auxiliary actors, such as the projection arrow, are not components.
+        picker.PickFromListOn()
+        actors = (
+            self._component_preview_actors
+            if self._component_preview_shown
+            else [self._mesh_actor]
+        )
+        for candidate in actors:
+            if candidate is not None:
+                picker.AddPickList(candidate)
         if not picker.Pick(float(position[0]), float(position[1]), 0.0, self._plotter.renderer):
             return None
         actor = picker.GetActor()
@@ -1063,6 +1074,14 @@ class ModelViewer(QtWidgets.QWidget):
         best_distance = float("inf")
         candidates: list[tuple[float, int]] = []
         for index in range(1, len(self._model.component_meshes) + 1):
+            # An applied filter cannot show excluded components, even where their
+            # surfaces coincide. Subtraction retains cutters as possible cut surfaces.
+            if (
+                self._model.step_component_mode != "subtract"
+                and self._model.selected_components
+                and index not in self._model.selected_components
+            ):
+                continue
             vertices, faces = self._model.component_meshes[index - 1]
             if faces.size == 0 or len(vertices) == 0:
                 continue

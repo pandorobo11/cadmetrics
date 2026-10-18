@@ -570,3 +570,71 @@ def test_nearest_component_maps_a_surface_point(viewer) -> None:
     widget.set_model(_component_model((1, 2)))
     assert widget._nearest_component(np.array([0.5, 0.5, 1.0])) == 1
     assert widget._nearest_component(np.array([2.9, 0.5, 0.0])) == 2
+
+
+@pytest.mark.parametrize("pending", (False, True))
+def test_component_highlight_preserves_grid_bounds(viewer, pending: bool) -> None:
+    widget, _ = viewer
+    widget.set_model(_component_model((1,)))
+    if pending:
+        widget.set_component_selection(((1, 2), "filter"))
+    bounds = tuple(widget._grid_actor.bounds)
+
+    widget.set_highlighted_component(2)
+    assert tuple(widget._grid_actor.bounds) == bounds
+    widget.set_highlighted_component(None)
+    assert tuple(widget._grid_actor.bounds) == bounds
+
+
+def test_nearest_component_ignores_filtered_out_coincident_surfaces(viewer) -> None:
+    widget, _ = viewer
+    model = _component_model((2,))
+    cube = model.component_meshes[1]
+    widget.set_model(replace(model, vertices=cube[0], faces=cube[1], component_meshes=(cube, cube)))
+    assert widget._nearest_component(np.array([2.9, 0.5, 0.0])) == 2
+
+
+@pytest.mark.parametrize("pending", (False, True))
+def test_component_picker_only_targets_shown_model_actors(viewer, monkeypatch, pending) -> None:
+    from vtkmodules import vtkRenderingCore
+
+    widget, plotter = viewer
+    widget.set_model(_component_model((1, 2)))
+    if pending:
+        widget.set_component_selection(((1,), "filter"))
+    plotter.renderer = object()
+    expected = widget._component_preview_actors if pending else [widget._mesh_actor]
+    picked = expected[-1]
+    picker_actors = []
+
+    class Picker:
+        restricted = False
+
+        def SetTolerance(self, _tolerance):
+            pass
+
+        def PickFromListOn(self):
+            self.restricted = True
+
+        def AddPickList(self, actor):
+            picker_actors.append(actor)
+
+        def Pick(self, _x, _y, _z, _renderer):
+            assert self.restricted
+            assert picker_actors == expected
+            return 1
+
+        def GetActor(self):
+            return picked
+
+        def GetPickPosition(self):
+            return (0.5, 0.5, 1.0)
+
+    monkeypatch.setattr(vtkRenderingCore, "vtkCellPicker", Picker)
+    assert widget.component_at((10.0, 20.0)) == (2 if pending else 1)
+
+
+def test_nearest_component_keeps_subtraction_cutters_as_candidates(viewer) -> None:
+    widget, _ = viewer
+    widget.set_model(_component_model((1,), mode="subtract"))
+    assert widget._nearest_component(np.array([2.9, 0.5, 0.0])) == 2
