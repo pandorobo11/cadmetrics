@@ -1049,11 +1049,9 @@ class ModelViewer(QtWidgets.QWidget):
         picker.SetTolerance(0.0005)
         # Auxiliary actors, such as the projection arrow, are not components.
         picker.PickFromListOn()
-        actors = (
-            self._component_preview_actors
-            if self._component_preview_shown
-            else [self._mesh_actor]
-        )
+        actors = [self._mesh_actor]
+        if self._component_preview_shown:
+            actors = self._component_preview_actors
         for candidate in actors:
             if candidate is not None:
                 picker.AddPickList(candidate)
