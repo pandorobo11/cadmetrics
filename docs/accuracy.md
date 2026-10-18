@@ -223,9 +223,9 @@ cut inside the outline and projected area is underestimated. Around a curved hol
 into the opening instead, so the material's projected area is overestimated: for a 10 x 10 x 1 mm
 plate with a 4 mm radius through hole viewed along the hole axis, `auto` reported `+0.024%` and
 `auto-fast` `+0.24%` against the exact `100 - 16π` mm². A coarse mesh is therefore neither a lower
-nor an upper bound in general. Use `auto-fast` to explore attitudes, then rerun the attitudes that matter with `auto` or tighter
-settings. Volume and surface area in the default `--step-metrics brep` mode come from the CAD
-kernel and do not depend on the preset.
+nor an upper bound in general. Use `auto-fast` to explore attitudes, then rerun the attitudes that
+matter with `auto` or tighter settings. Volume and surface area in the default
+`--step-metrics brep` mode come from the CAD kernel and do not depend on the preset.
 
 ## Large STEP Performance Notes
 
