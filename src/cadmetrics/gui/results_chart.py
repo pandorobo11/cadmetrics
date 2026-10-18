@@ -111,21 +111,18 @@ def nice_ticks(low: float, high: float, target: int = 5) -> list[float]:
     """Round tick values covering [low, high]."""
     if not math.isfinite(low) or not math.isfinite(high):
         return [0.0]
-    if high <= low:
+    # Treat roundoff-sized variation like a constant range, not a microscopic axis.
+    if high <= low or math.isclose(low, high, rel_tol=1e-12, abs_tol=0.0):
         spread = abs(low) * 0.1 or 1.0
         low, high = low - spread, high + spread
     raw = (high - low) / max(target - 1, 1)
     magnitude = 10.0 ** math.floor(math.log10(raw))
     step = next(m * magnitude for m in (1, 2, 2.5, 5, 10) if m * magnitude >= raw)
-    start = math.floor(low / step) * step
-    ticks = []
-    value = start
-    while value < high + step * 0.5:
-        ticks.append(round(value, 12) + 0.0)
-        value += step
-    if ticks[-1] < high:
-        ticks.append(round(ticks[-1] + step, 12))
-    return ticks
+    start = math.floor(low / step)
+    stop = math.ceil(high / step)
+    # Integer indices guarantee progress. Keep the scale instead of rounding small
+    # areas to zero at a fixed number of decimal places.
+    return [index * step + 0.0 for index in range(start, stop + 1)]
 
 
 def _format_tick(value: float) -> str:

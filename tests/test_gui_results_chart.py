@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 
 import pytest
@@ -93,3 +94,22 @@ def test_chart_view_follows_rows_and_selection(qtbot) -> None:
 
     panel.table_view_button.click()
     assert panel.stack.currentWidget() is panel.table
+
+
+@pytest.mark.parametrize("scale", (1e-18, 1e-6, 1.0, 1e6, 1e18))
+def test_nice_ticks_cover_nearly_constant_ranges(scale: float) -> None:
+    high = math.nextafter(scale, math.inf)
+    ticks = nice_ticks(scale, high)
+    assert 2 <= len(ticks) <= 8
+    assert ticks[0] <= scale < high <= ticks[-1]
+    assert all(math.isfinite(tick) for tick in ticks)
+    assert all(left < right for left, right in zip(ticks, ticks[1:]))
+
+
+@pytest.mark.parametrize("low, high", ((1e-15, 3e-15), (0.0, 1e-15)))
+def test_nice_ticks_preserve_small_positive_areas(low: float, high: float) -> None:
+    ticks = nice_ticks(low, high)
+    assert 2 <= len(ticks) <= 8
+    assert ticks[0] <= low < high <= ticks[-1]
+    assert all(left < right for left, right in zip(ticks, ticks[1:]))
+    assert 0.0 < ticks[-1] < high * 2
