@@ -70,3 +70,44 @@ cadmetrics falls back to an embedded hash from the source distribution when one 
 The release workflow also archives `.hatch-build/cadmetrics-docs-site` as
 `cadmetrics-docs-<tag>.zip` and attaches it to the GitHub Release. After extracting the archive,
 open `index.html` in a browser to read the documentation offline.
+
+## Python compatibility
+
+The package targets Python 3.12, 3.13, and 3.14 (`>=3.12,<3.15`). The development
+interpreter in `.python-version` remains 3.12, as do the minimum syntax targets
+for Ruff and mypy. CI explicitly selects each matrix interpreter for both sync
+and execution; it tests all three versions on Linux, macOS, and Windows.
+The clean-install job additionally checks wheel and sdist installs on all three
+Python versions on Linux. These jobs must pass before merging compatibility changes.
+
+When widening the range, retain existing dependency versions where possible,
+regenerate `uv.lock`, and run `uv sync --locked --python VERSION --extra step
+--extra gui --group dev` in isolated environments. Verify the full test suite,
+lint, types, clean distribution installs, and native macOS launcher tests.
+The launcher test fixture must allow the same Python range as the package.
+The packaged GUI smoke uses a substitute viewer; separately exercise real VTK
+rendering, camera movement, zoom, component filtering, and image export, and
+compare representative STEP/STL measurements and attitude sweeps across Python
+versions. Local macOS success does not establish Windows or Linux runtime support.
+
+Local compatibility validation on 2026-10-18 (macOS 27.0.1, Apple Silicon):
+
+- CPython 3.12.12, 3.13.5, and 3.14.7 each passed all 340 tests, Ruff lint and
+  formatting checks, and mypy. The tests include native launcher process checks.
+- Lock regeneration retained every dependency version, including cadquery-ocp
+  7.9.3.1.1, PySide6 6.11.1, and VTK 9.6.2.
+- Each version passed real Qt/VTK viewer rendering, camera changes, zoom,
+  screenshot capture, component filtering, and viewer shutdown.
+- Unit-cube STEP, 1x2x3-box binary STL, cylinder STEP, and two-box STEP produced
+  exactly matching volume, surface area, projected area (alpha=15, beta=10),
+  and six-point sweeps (alpha=0,15,30; beta=0,10) across the three interpreters.
+- Wheel and sdist clean installs passed CLI help, STEP inspection, and packaged
+  GUI/documentation smoke on all three versions. These installs resolved
+  dependencies independently from the development lock.
+
+After updating to main f6591c6, all three interpreters passed 340 tests, Ruff,
+and mypy. A Python 3.14 app bundle launched through Launch Services, loaded and
+rendered unit-cube STEP, and completed a one-row sweep through the native UI.
+The four-model numerical/rendering comparison and all six wheel/sdist install
+checks were also repeated successfully after this main update. Windows/Linux
+results are tracked in the compatibility pull request CI.

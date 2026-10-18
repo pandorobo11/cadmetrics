@@ -142,7 +142,7 @@ def checkout(tmp_path):
     root = tmp_path / "checkout with spaces 日本語 'quote'"
     root.mkdir()
     (root / "pyproject.toml").write_text(
-        '[project]\nname="launcher-probe"\nversion="0.0.0"\nrequires-python=">=3.12,<3.13"\n'
+        '[project]\nname="launcher-probe"\nversion="0.0.0"\nrequires-python=">=3.12,<3.15"\n'
     )
     return root
 
