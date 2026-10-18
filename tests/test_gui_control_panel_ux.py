@@ -223,7 +223,7 @@ def test_all_fields_share_one_left_and_right_edge(qtbot) -> None:
             "attitude_mode",
             "step_component_mode",
             "step_metrics",
-            "angular_deflection",
+            "mesh_quality",
             "base_tolerance",
         )
     }

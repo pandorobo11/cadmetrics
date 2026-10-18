@@ -26,6 +26,7 @@ from OCP.TopExp import TopExp_Explorer
 from OCP.TopoDS import TopoDS, TopoDS_Compound
 
 from cadmetrics.api import inspect_model, measure, measure_model, project, project_model
+from cadmetrics.io import load_model
 from cadmetrics.cli import app
 import cadmetrics._ocp as ocp_module
 from cadmetrics._ocp import (
@@ -46,6 +47,7 @@ from typer.testing import CliRunner
 
 
 SAMPLES_DIR = Path(__file__).parents[1] / "samples"
+STL_CUBE = Path(__file__).parent / "data" / "unit_cube.stl"
 
 
 def test_ocp_bounds_and_diagonal_include_box_gap() -> None:
@@ -272,6 +274,47 @@ def test_auto_mesh_deflection_uses_actual_sub_unit_diagonal(tmp_path: Path) -> N
         3.141592653589793 * radius_mm**2,
         rel=1.0e-3,
     )
+
+
+def test_auto_fast_mesh_preset_records_effective_deflections(tmp_path: Path) -> None:
+    step_path = tmp_path / "sphere.step"
+    radius_mm = 10.0
+    shape = BRepPrimAPI_MakeSphere(radius_mm).Shape()
+    writer = STEPControl_Writer()
+    writer.Transfer(shape, STEPControl_AsIs)
+    assert writer.Write(str(step_path)) == IFSelect_RetDone
+    expected_diagonal = 2.0 * radius_mm * 3.0**0.5
+    exact_area = 3.141592653589793 * radius_mm**2
+
+    accurate = load_model(step_path, output_unit="mm")
+    fast = load_model(step_path, output_unit="mm", mesh_deflection="auto-fast")
+    fast_row = project(
+        step_path,
+        output_unit="mm",
+        mesh_deflection="auto-fast",
+        attitude="vector",
+        direction="1,0,0",
+    )
+
+    assert accurate.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-4)
+    assert accurate.angular_deflection == pytest.approx(0.1)
+    assert fast.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-3)
+    assert fast.angular_deflection == pytest.approx(0.3)
+    assert fast_row.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-3)
+    assert fast_row.angular_deflection == pytest.approx(0.3)
+    assert len(fast.faces) < len(accurate.faces) / 4
+    # Chords sit inside the true surface, so the coarse mesh can only underestimate.
+    assert fast_row.projected_area < exact_area
+    assert fast_row.projected_area == pytest.approx(exact_area, rel=2.0e-2)
+    # B-Rep metrics do not depend on the tessellation preset.
+    assert fast.volume == pytest.approx(accurate.volume)
+
+
+def test_auto_fast_mesh_preset_does_not_affect_stl() -> None:
+    row = project(STL_CUBE, mesh_deflection="auto-fast", angular_deflection="auto")
+
+    assert row.mesh_deflection is None
+    assert row.angular_deflection is None
 
 
 def test_step_inspect_can_skip_mesh_but_keep_bounds(

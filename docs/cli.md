@@ -96,12 +96,29 @@ Useful STEP options:
 cadmetrics measure model.step \
   --step-metrics brep \
   --mesh-deflection auto \
-  --angular-deflection 0.1 \
+  --angular-deflection auto \
   --base-tolerance 1e-6
 ```
 
 `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the selected
-output length unit.
+output length unit. `--mesh-deflection auto-fast` uses the diagonal times `1e-3` and is meant for
+quick projected-area sweeps.
+
+`--angular-deflection auto` (the default) is `0.1` rad, or `0.3` rad with
+`--mesh-deflection auto-fast`. Pass a number in radians to override it. On curved models the
+angular deflection dominates the triangle count and so the projected-area run time: on a 64-part
+curved assembly `auto-fast` was about 5 to 9 times faster per direction than `auto`, with a
+projected-area underestimate of 0.2% to 0.4%. See
+[Accuracy: Fast Preset](accuracy.md#fast-preset).
+
+```bash
+cadmetrics sweep model.step \
+  --mesh-deflection auto-fast \
+  --attitude alpha-beta \
+  --alpha 0:180:5 \
+  --beta 0:90:5 \
+  --out sweep_fast.csv
+```
 
 `--step-metrics brep` is the default and reports STEP volume/surface area from the CAD kernel.
 Use `--step-metrics mesh` when you want STEP volume/surface area to be calculated from the

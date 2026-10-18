@@ -381,3 +381,27 @@ def test_cli_rejects_roll_in_alpha_beta_mode(runner: CliRunner) -> None:
 
     assert result.exit_code != 0
     assert "--roll cannot be used" in Text.from_ansi(result.output).plain
+
+
+def test_project_cli_accepts_fast_mesh_preset(runner: CliRunner, tmp_path: Path) -> None:
+    output = tmp_path / "fast.csv"
+    sample = Path(__file__).parents[1] / "samples" / "box_1x2x3" / "box_1x2x3.step"
+    result = runner.invoke(
+        app,
+        ["project", str(sample), "--mesh-deflection", "auto-fast", "--out", str(output)],
+    )
+
+    assert result.exit_code == 0, result.output
+    row = _csv_rows(output.read_text(encoding="utf-8"))[0]
+    assert float(row["mesh_deflection"]) == pytest.approx(14.0**0.5 * 1.0e-3)
+    assert float(row["angular_deflection"]) == pytest.approx(0.3)
+
+
+def test_cli_rejects_negative_angular_deflection(runner: CliRunner) -> None:
+    result = runner.invoke(
+        app,
+        ["measure", str(DATA_DIR / "unit_cube.stl"), "--angular-deflection", "-1"],
+    )
+
+    assert result.exit_code != 0
+    assert "angular_deflection must not be negative" in result.output

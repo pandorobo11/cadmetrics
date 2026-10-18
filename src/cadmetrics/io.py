@@ -19,7 +19,7 @@ def load_model(
     input_unit: str = "auto",
     output_unit: str = "m",
     mesh_deflection: float | str = "auto",
-    angular_deflection: float = 0.1,
+    angular_deflection: float | str = "auto",
     step_metric_source: str = "brep",
     step_components: tuple[int, ...] | None = None,
     step_component_mode: str = "filter",
