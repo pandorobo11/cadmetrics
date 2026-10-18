@@ -46,7 +46,15 @@ EXCLUDED_COMPONENT_COLOR = "#9aa5b1"
 EXCLUDED_COMPONENT_OPACITY = 0.22
 SUBTRACTED_COMPONENT_COLOR = "#e0735f"
 SUBTRACTED_COMPONENT_OPACITY = 0.35
-COMPONENT_PREVIEW_TEXT = "Component preview: changes apply on the next Run Sweep"
+# The preview meshes are coarse stand-ins, so the notice says the shape is approximate.
+COMPONENT_PREVIEW_TEXT = "Approximate preview: Apply & Reload or Run Sweep to see the exact shape"
+COMPONENT_SUBTRACT_PREVIEW_TEXT = (
+    "Preview: red parts will be cut away. Apply & Reload to see the cut shape"
+)
+COMPONENT_PREVIEW_MESH_EDGES_TEXT = "Mesh edges show after applying"
+# Component under the pointer in the Components list.
+HIGHLIGHT_COMPONENT_COLOR = "#7c3aed"
+HIGHLIGHT_COMPONENT_OPACITY = 0.6
 ComponentSelection = tuple[tuple[int, ...], str]
 
 EMPTY_STATE_TEXT = (
@@ -94,6 +102,8 @@ class ModelViewer(QtWidgets.QWidget):
     message = QtCore.Signal(str)
     base_face_available = QtCore.Signal(bool)
     newly_exposed_surface_available = QtCore.Signal(bool)
+    # 1-based component index double-clicked in the view.
+    component_toggle_requested = QtCore.Signal(int)
 
     def __init__(
         self,
@@ -126,6 +136,10 @@ class ModelViewer(QtWidgets.QWidget):
         self._component_preview_notice: Any | None = None
         self._component_preview_shown = False
         self._component_preview_bounds: list[tuple[float, ...]] = []
+        self._component_preview_indexes: list[int] = []
+        self._component_polydata: dict[int, Any] = {}
+        self._highlighted_component: int | None = None
+        self._highlight_actor: Any | None = None
         self._camera_direction: tuple[float, float, float] = DEFAULT_CAMERA_DIRECTION
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -151,7 +165,9 @@ class ModelViewer(QtWidgets.QWidget):
             [np.full(model.faces.shape[0], 3, dtype=np.int64), model.faces]
         ).ravel()
         self._mesh_polydata = pv.PolyData(model.vertices, faces)
+        self._component_polydata = {}
         self._remove_centroid()
+        self._remove_highlight()
         self._plotter.clear()
         self._reset_actors()
         self._update_empty_state()
@@ -181,7 +197,8 @@ class ModelViewer(QtWidgets.QWidget):
         self._update_newly_exposed_surface(render=False)
         self.set_camera(self._camera_direction)
         self._update_projection()
-        self._update_component_preview(render=True)
+        self._update_component_preview(render=False)
+        self._update_highlight(render=True)
         self._sync_toolbar()
 
     def set_component_selection(self, selection: ComponentSelection | None) -> None:
@@ -194,6 +211,17 @@ class ModelViewer(QtWidgets.QWidget):
     @property
     def component_preview_active(self) -> bool:
         return self._component_preview_shown
+
+    def set_highlighted_component(self, index: int | None) -> None:
+        """Highlight one STEP component, for example the one pointed at in the list."""
+        if index == self._highlighted_component:
+            return
+        self._highlighted_component = index
+        self._update_highlight(render=True)
+
+    @property
+    def highlighted_component(self) -> int | None:
+        return self._highlighted_component if self._highlight_actor is not None else None
 
     def set_request(self, request: CalculationRequest | None) -> None:
         self._request = request
@@ -289,6 +317,12 @@ class ModelViewer(QtWidgets.QWidget):
         self._configure_lighting()
         self._plotter.add_axes(viewport=AXES_VIEWPORT)
         self._plotter.enable_parallel_projection()
+        try:
+            self._plotter.track_click_position(
+                callback=lambda _point: self._on_double_click(), side="left", double=True
+            )
+        except AttributeError:
+            pass
         return self._plotter
 
     def _build_toolbar(self) -> QtWidgets.QWidget:
@@ -345,6 +379,8 @@ class ModelViewer(QtWidgets.QWidget):
         self._component_preview_notice = None
         self._component_preview_shown = False
         self._component_preview_bounds = []
+        self._component_preview_indexes = []
+        self._highlight_actor = None
 
     def _update_grid(self) -> None:
         if self._plotter is None:
@@ -613,10 +649,10 @@ class ModelViewer(QtWidgets.QWidget):
         else:
             self._remove_actor("_centroid_actor")
 
-    def _update_overlay(self) -> None:
+    def _update_overlay(self, *, render: bool = True) -> None:
         if self._plotter is None:
             return
-        self._remove_actor("_overlay_actor")
+        self._remove_actor("_overlay_actor", render=render)
         text = (
             overlay_text(
                 self._row,
@@ -627,6 +663,11 @@ class ModelViewer(QtWidgets.QWidget):
             if self._options.show_overlay
             else ""
         )
+        if text and self._component_preview_pending():
+            assert self._model is not None
+            applied = len(self._model.selected_components) or len(self._model.component_meshes)
+            # The preview shows the edited selection; the values still describe the loaded one.
+            text += f"\nValues: applied {applied}/{len(self._model.component_meshes)} components"
         if not text:
             self._set_overlay_reserve(0.0)
             return
@@ -646,6 +687,7 @@ class ModelViewer(QtWidgets.QWidget):
             font_size=OVERLAY_FONT_SIZE,
             color=_TEXT_COLOR,
             shadow=False,
+            render=render,
         )
         self._overlay_actor = actor
         self._style_text(
@@ -833,8 +875,10 @@ class ModelViewer(QtWidgets.QWidget):
                 pass
         self._component_preview_actors = []
         self._component_preview_bounds = []
+        self._component_preview_indexes = []
         self._remove_actor("_component_preview_notice", render=False)
         pending = self._component_preview_pending()
+        overlay_changed = pending != self._component_preview_shown
         if pending or self._component_preview_shown:
             # The loaded union and its highlights describe the applied selection only.
             for attribute in (
@@ -850,29 +894,42 @@ class ModelViewer(QtWidgets.QWidget):
         if pending:
             self._add_component_preview_actors()
             self._update_component_preview_notice()
+        if overlay_changed and self._model is not None and self._model.vertex_count > 0:
+            self._update_overlay(render=False)
         self._sync_grid_bounds()
         if render:
             self._plotter.render()
 
-    def _add_component_preview_actors(self) -> None:
-        import pyvista as pv
+    def _component_mesh(self, index: int) -> Any | None:
+        """Display mesh of one 1-based component, built once per loaded model."""
+        if self._model is None or not 1 <= index <= len(self._model.component_meshes):
+            return None
+        if index not in self._component_polydata:
+            import pyvista as pv
 
+            vertices, faces = self._model.component_meshes[index - 1]
+            if faces.size == 0:
+                self._component_polydata[index] = None
+            else:
+                cells = np.column_stack([np.full(faces.shape[0], 3, dtype=np.int64), faces]).ravel()
+                self._component_polydata[index] = pv.PolyData(vertices, cells)
+        return self._component_polydata[index]
+
+    def _add_component_preview_actors(self) -> None:
         assert self._plotter is not None and self._model is not None
         assert self._component_selection is not None
         selected, mode = self._component_selection
         chosen = set(selected)
-        for index, (vertices, faces) in enumerate(self._model.component_meshes, start=1):
-            if faces.size == 0:
+        for index in range(1, len(self._model.component_meshes) + 1):
+            polydata = self._component_mesh(index)
+            if polydata is None:
                 continue
-            cells = np.column_stack([np.full(faces.shape[0], 3, dtype=np.int64), faces]).ravel()
-            polydata = pv.PolyData(vertices, cells)
             self._component_preview_bounds.append(tuple(polydata.bounds))
             if index in chosen:
+                # No mesh edges: these coarse display meshes are not the measured mesh.
                 style: dict[str, Any] = {
                     "color": MODEL_COLOR,
                     "opacity": self._shape_opacity(),
-                    "show_edges": self._options.mesh_edges,
-                    "edge_color": "#111111",
                     "ambient": 0.35,
                     "diffuse": 0.72,
                     "specular": 0.18,
@@ -890,11 +947,11 @@ class ModelViewer(QtWidgets.QWidget):
                     polydata,
                     smooth_shading=True,
                     split_sharp_edges=True,
-                    pickable=False,
                     render=False,
                     **style,
                 )
             )
+            self._component_preview_indexes.append(index)
 
     def _update_component_preview_notice(self) -> None:
         if self._plotter is None:
@@ -903,7 +960,7 @@ class ModelViewer(QtWidgets.QWidget):
         ratio = self._device_pixel_ratio()
         view_width, _ = self._view_size()
         actor = self._plotter.add_text(
-            COMPONENT_PREVIEW_TEXT,
+            self._component_preview_notice_text(),
             position=(view_width * ratio / 2, OVERLAY_MARGIN * ratio),
             font_size=OVERLAY_FONT_SIZE,
             color=_MUTED_TEXT_COLOR,
@@ -919,6 +976,111 @@ class ModelViewer(QtWidgets.QWidget):
             vertical="bottom",
             panel=True,
         )
+
+    def _component_preview_notice_text(self) -> str:
+        selection = self._component_selection
+        subtract = (
+            selection is not None
+            and selection[1] == "subtract"
+            and self._model is not None
+            and len(selection[0]) < len(self._model.component_meshes)
+        )
+        text = COMPONENT_SUBTRACT_PREVIEW_TEXT if subtract else COMPONENT_PREVIEW_TEXT
+        if self._options.mesh_edges:
+            text += f"\n{COMPONENT_PREVIEW_MESH_EDGES_TEXT}"
+        return text
+
+    def _update_highlight(self, *, render: bool) -> None:
+        if self._plotter is None:
+            return
+        self._remove_highlight()
+        index = self._highlighted_component
+        polydata = None if index is None else self._component_mesh(index)
+        if polydata is not None:
+            actor = self._plotter.add_mesh(
+                polydata,
+                color=HIGHLIGHT_COMPONENT_COLOR,
+                opacity=HIGHLIGHT_COMPONENT_OPACITY,
+                ambient=0.6,
+                diffuse=0.5,
+                pickable=False,
+                render=False,
+            )
+            self._highlight_actor = actor
+            # Draw above the model so a component inside or behind others is still found.
+            front = self._ensure_front_renderer()
+            if front is not None:
+                self._plotter.remove_actor(actor, render=False)
+                front.AddActor(actor)
+        if render:
+            self._plotter.render()
+
+    def _remove_highlight(self) -> None:
+        actor = self._highlight_actor
+        if actor is None:
+            return
+        self._highlight_actor = None
+        if self._front_renderer is not None and self._front_renderer.HasViewProp(actor):
+            self._front_renderer.RemoveActor(actor)
+        elif self._plotter is not None:
+            try:
+                self._plotter.remove_actor(actor, render=False)
+            except Exception:
+                pass
+
+    def _on_double_click(self) -> None:
+        if self._plotter is None:
+            return
+        position = getattr(self._plotter, "click_position", None)
+        if position is None:
+            return
+        index = self.component_at(position)
+        if index is not None:
+            self.component_toggle_requested.emit(index)
+
+    def component_at(self, position: tuple[float, float]) -> int | None:
+        """Return the 1-based component under a display position, or None."""
+        if self._plotter is None or self._model is None or not self._model.component_meshes:
+            return None
+        from vtkmodules.vtkRenderingCore import vtkCellPicker
+
+        picker = vtkCellPicker()
+        picker.SetTolerance(0.0005)
+        if not picker.Pick(float(position[0]), float(position[1]), 0.0, self._plotter.renderer):
+            return None
+        actor = picker.GetActor()
+        for preview_actor, index in zip(
+            self._component_preview_actors, self._component_preview_indexes, strict=True
+        ):
+            if actor is preview_actor:
+                return index
+        return self._nearest_component(np.asarray(picker.GetPickPosition(), dtype=float))
+
+    def _nearest_component(self, point: np.ndarray) -> int | None:
+        """Component whose display mesh is closest to a point on the loaded model surface."""
+        assert self._model is not None
+        best_index: int | None = None
+        best_distance = float("inf")
+        candidates: list[tuple[float, int]] = []
+        for index in range(1, len(self._model.component_meshes) + 1):
+            vertices, faces = self._model.component_meshes[index - 1]
+            if faces.size == 0 or len(vertices) == 0:
+                continue
+            gap = np.maximum(
+                0.0, np.maximum(vertices.min(axis=0) - point, point - vertices.max(axis=0))
+            )
+            candidates.append((float(np.linalg.norm(gap)), index))
+        for box_distance, index in sorted(candidates):
+            if box_distance > best_distance:
+                break
+            polydata = self._component_mesh(index)
+            if polydata is None:
+                continue
+            _, closest = polydata.find_closest_cell(point, return_closest_point=True)
+            distance = float(np.linalg.norm(np.asarray(closest) - point))
+            if distance < best_distance:
+                best_index, best_distance = index, distance
+        return best_index
 
     def _remove_actor(self, attribute: str, *, render: bool = True) -> None:
         if self._plotter is None:

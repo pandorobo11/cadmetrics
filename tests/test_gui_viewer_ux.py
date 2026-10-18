@@ -377,7 +377,7 @@ def test_unapplied_component_changes_preview_per_component(viewer) -> None:
     assert [kwargs["color"] for kwargs in previews] == ["#9fc8ef", "#9aa5b1"]
     assert previews[1]["opacity"] < 0.5
     texts = [entry[1] for entry in plotter.active("text").values()]
-    assert any("Component preview" in text for text in texts)
+    assert any("Apply & Reload" in text for text in texts)
 
     widget.set_component_selection(((1,), "subtract"))
     previews = [kwargs for actor, kwargs in _meshes(plotter, widget) if actor is not union]
@@ -388,7 +388,7 @@ def test_unapplied_component_changes_preview_per_component(viewer) -> None:
     assert widget.component_preview_active is False
     assert union.visible is True
     assert len(_meshes(plotter, widget)) == 1
-    assert not any("Component preview" in entry[1] for entry in plotter.active("text").values())
+    assert not any("Apply & Reload" in entry[1] for entry in plotter.active("text").values())
 
 
 def test_loading_a_model_with_the_new_selection_ends_the_preview(viewer) -> None:
@@ -503,7 +503,7 @@ def test_resizing_during_a_component_preview_only_moves_the_notice(viewer, qtbot
     assert set(widget._component_preview_actors) == previews
     assert tuple(widget._grid_actor.bounds) == preview_bounds
     texts = [entry[1] for entry in plotter.active("text").values()]
-    assert sum("Component preview" in text for text in texts) == 1
+    assert sum("Apply & Reload" in text for text in texts) == 1
 
 
 def test_projection_updates_keep_the_grid_on_the_component_preview(viewer) -> None:
@@ -524,3 +524,49 @@ def test_projection_updates_keep_the_grid_on_the_component_preview(viewer) -> No
     assert tuple(widget._grid_actor.bounds) == (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
     widget.set_request(CalculationRequest(file=Path("model.stl"), alpha_start=5.0))
     assert tuple(widget._grid_actor.bounds) == (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
+
+
+def test_component_preview_never_shows_coarse_mesh_edges(viewer) -> None:
+    widget, plotter = viewer
+    widget.set_model(_component_model((1, 2)))
+    widget.set_options(replace(widget._options, mesh_edges=True))
+    widget.set_component_selection(((1,), "filter"))
+    union = widget._mesh_actor
+    previews = [kwargs for actor, kwargs in _meshes(plotter, widget) if actor is not union]
+    assert previews and not any(kwargs.get("show_edges") for kwargs in previews)
+    texts = [entry[1] for entry in plotter.active("text").values()]
+    assert any("Mesh edges show after applying" in text for text in texts)
+
+
+def test_subtract_preview_notice_and_overlay_name_the_applied_values(viewer) -> None:
+    widget, plotter = viewer
+    widget.set_model(_component_model((1, 2)))
+    widget.set_component_selection(((1,), "subtract"))
+    texts = [entry[1] for entry in plotter.active("text").values()]
+    assert any("red parts will be cut away" in text for text in texts)
+    assert any("Values: applied 2/2 components" in " ".join(text.split()) for text in texts)
+
+    widget.set_component_selection(((1, 2), "subtract"))
+    texts = [entry[1] for entry in plotter.active("text").values()]
+    assert not any("Values: applied" in text for text in texts)
+
+
+def test_highlighted_component_is_drawn_and_cleared(viewer) -> None:
+    widget, plotter = viewer
+    widget.set_model(_component_model((1, 2)))
+    widget.set_highlighted_component(2)
+    assert widget.highlighted_component == 2
+    highlight = widget._highlight_actor
+    assert plotter.actors[highlight][2]["color"] == "#7c3aed"
+    assert plotter.actors[highlight][1].bounds[0] == 2.0
+
+    widget.set_highlighted_component(None)
+    assert widget.highlighted_component is None
+    assert highlight not in plotter.actors
+
+
+def test_nearest_component_maps_a_surface_point(viewer) -> None:
+    widget, _ = viewer
+    widget.set_model(_component_model((1, 2)))
+    assert widget._nearest_component(np.array([0.5, 0.5, 1.0])) == 1
+    assert widget._nearest_component(np.array([2.9, 0.5, 0.0])) == 2

@@ -113,6 +113,9 @@ class ResultsPanel(QtWidgets.QWidget):
                 column_index,
                 FILE_COLUMN_WIDTH if key == "file" else DEFAULT_COLUMN_WIDTH,
             )
+        # Every row of a sweep comes from the same model, which the control panel already
+        # names; the file stays in copied rows and CSV.
+        self.table.setColumnHidden(DISPLAY_FIELDS.index("file"), True)
         # Start in calculation order; clicking a header sorts through the proxy model.
         header.setSortIndicator(-1, QtCore.Qt.SortOrder.AscendingOrder)
         self.table.setSortingEnabled(True)
@@ -202,9 +205,14 @@ class ResultsPanel(QtWidgets.QWidget):
 
     def select_last_row(self) -> None:
         if self._rows:
-            proxy_index = self._sort_model.mapFromSource(
-                self._table_model.index(len(self._rows) - 1, 0)
-            )
+            self.select_source_row(len(self._rows) - 1)
+
+    def select_source_row(self, row: int) -> None:
+        """Select a row by its calculation order, whatever the table's sort."""
+        if 0 <= row < len(self._rows):
+            # The first visible column: the file column is hidden.
+            column = next(c for c in range(len(DISPLAY_FIELDS)) if not self.table.isColumnHidden(c))
+            proxy_index = self._sort_model.mapFromSource(self._table_model.index(row, column))
             if self._cocoa_cell_selection:
                 self.table.setCurrentIndex(proxy_index)
             else:

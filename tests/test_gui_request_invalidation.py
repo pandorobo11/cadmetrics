@@ -19,6 +19,7 @@ class _Viewer(QtWidgets.QWidget):
     message = QtCore.Signal(str)
     base_face_available = QtCore.Signal(bool)
     newly_exposed_surface_available = QtCore.Signal(bool)
+    component_toggle_requested = QtCore.Signal(int)
 
     def set_options(self, options) -> None:
         pass
@@ -30,6 +31,9 @@ class _Viewer(QtWidgets.QWidget):
         pass
 
     def set_component_selection(self, selection) -> None:
+        pass
+
+    def set_highlighted_component(self, index) -> None:
         pass
 
     def set_result(self, row, request, *, align_camera=False) -> None:

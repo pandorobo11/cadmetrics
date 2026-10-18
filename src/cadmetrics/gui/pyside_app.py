@@ -91,6 +91,8 @@ if QtWidgets is not None:
             self.progress_bar.setValue(0)
             self.progress_bar.setFixedWidth(180)
             self.progress_bar.setTextVisible(False)
+            # Shown only while an operation runs; the status text reports the outcome.
+            self.progress_bar.setVisible(False)
             status_bar = QtWidgets.QStatusBar()
             status_bar.addWidget(self.status, 1)
             status_bar.addPermanentWidget(self.progress_bar)
@@ -135,6 +137,8 @@ if QtWidgets is not None:
             self.controls.viewer_options_changed.connect(self.viewer.set_options)
             self.controls.request_changed.connect(self._preview_request)
             self.controls.component_selection_changed.connect(self.viewer.set_component_selection)
+            self.controls.component_hovered.connect(self.viewer.set_highlighted_component)
+            self.viewer.component_toggle_requested.connect(self.controls.toggle_component)
             self.controls.error.connect(self._show_error)
             self.viewer.base_face_available.connect(self._set_base_face_available)
             self.viewer.newly_exposed_surface_available.connect(
@@ -246,6 +250,7 @@ if QtWidgets is not None:
         def _on_state_changed(self, state: OperationState) -> None:
             self.controls.set_busy(state)
             busy = state is not OperationState.IDLE
+            self.progress_bar.setVisible(busy)
             loading_only = state is OperationState.LOADING and not self._calculation_running
             self.results.set_busy(busy, title="Loading model…" if loading_only else "Calculating…")
             if state is OperationState.LOADING:

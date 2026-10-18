@@ -31,6 +31,7 @@ class _FakeViewer(QtWidgets.QWidget):
     message = QtCore.Signal(str)
     base_face_available = QtCore.Signal(bool)
     newly_exposed_surface_available = QtCore.Signal(bool)
+    component_toggle_requested = QtCore.Signal(int)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -47,6 +48,9 @@ class _FakeViewer(QtWidgets.QWidget):
         pass
 
     def set_component_selection(self, selection) -> None:
+        pass
+
+    def set_highlighted_component(self, index) -> None:
         pass
 
     def set_result(self, row, request, *, align_camera=False) -> None:

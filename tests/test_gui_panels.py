@@ -25,6 +25,7 @@ class _FakeViewer(QtWidgets.QWidget):
     message = QtCore.Signal(str)
     base_face_available = QtCore.Signal(bool)
     newly_exposed_surface_available = QtCore.Signal(bool)
+    component_toggle_requested = QtCore.Signal(int)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -40,6 +41,9 @@ class _FakeViewer(QtWidgets.QWidget):
         pass
 
     def set_component_selection(self, selection) -> None:
+        pass
+
+    def set_highlighted_component(self, index) -> None:
         pass
 
     def set_result(self, row, request, *, align_camera=False) -> None:
@@ -392,16 +396,17 @@ def test_result_selection_keeps_row_preview_with_cocoa_single_cell(qtbot, monkey
     if platform == "darwin":
         # Only the first cell is natively selected, but the visible full row must
         # still be highlighted. Compare blank areas in multiple actual painted cells.
-        assert not panel.table.selectionModel().isSelected(panel.table.model().index(0, 2))
+        visible = [c for c in range(len(DISPLAY_FIELDS)) if not panel.table.isColumnHidden(c)][:3]
+        assert not panel.table.selectionModel().isSelected(panel.table.model().index(0, visible[2]))
         image = panel.table.viewport().grab().toImage()
         colors = []
-        for column in (0, 1, 2):
+        for column in visible:
             rect = panel.table.visualRect(panel.table.model().index(0, column))
             colors.append(image.pixelColor(rect.right() - 8, rect.bottom() - 5))
         # The focused cell may have a distinct focus decoration; unselected
         # cells in the current row must share the highlight, not the background.
         assert colors[1] == colors[2]
-        for column, color in enumerate(colors):
+        for column, color in zip(visible, colors, strict=True):
             rect = panel.table.visualRect(panel.table.model().index(1, column))
             assert color != image.pixelColor(rect.right() - 8, rect.bottom() - 5)
 
@@ -411,3 +416,13 @@ def test_result_selection_keeps_row_preview_with_cocoa_single_cell(qtbot, monkey
     panel.select_last_row()
     assert selected[-1] is rows[1]
     assert len(panel.table.selectionModel().selectedIndexes()) == expected
+
+
+def test_results_hide_the_file_column_and_keep_the_column_order(qtbot) -> None:
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    header = panel.table.horizontalHeader()
+    assert panel.table.isColumnHidden(DISPLAY_FIELDS.index("file")) is True
+    assert [header.logicalIndex(visual) for visual in range(len(DISPLAY_FIELDS))] == list(
+        range(len(DISPLAY_FIELDS))
+    )

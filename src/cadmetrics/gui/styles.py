@@ -131,6 +131,14 @@ QPushButton#primaryButton:focus { border: 2px solid #0f3d6b; padding: 3px 13px; 
 QPushButton#primaryButton:disabled {
     background: #e9edf1; border-color: #cdd4dc; color: #66707b;
 }
+/* Apply & Reload: highlighted while there are changes the 3D view does not show exactly. */
+QPushButton#applyButton[emphasis="true"] {
+    background: #e8f1fb; border-color: #2f78c4; color: #154f86; font-weight: 600;
+}
+QPushButton#applyButton[emphasis="true"]:hover { background: #dcebfa; }
+QPushButton#applyButton[emphasis="true"]:disabled {
+    background: #e9edf1; border-color: #cdd4dc; color: #66707b; font-weight: 500;
+}
 QPushButton#dangerButton { background: #fff7f5; border-color: #d8a59a; color: #9f3b2f; }
 QPushButton#dangerButton:hover { background: #ffece8; border-color: #c98a7d; }
 QPushButton#dangerButton:pressed { background: #fbdcd5; }
