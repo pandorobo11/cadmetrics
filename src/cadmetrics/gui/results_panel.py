@@ -7,6 +7,7 @@ from typing import Iterable
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from cadmetrics.gui.export import write_rows_csv
+from cadmetrics.gui.results_chart import ResultsChart
 from cadmetrics.gui.results_model import DISPLAY_FIELDS
 from cadmetrics.gui.results_model import PRIMARY_DISPLAY_FIELDS as PRIMARY_DISPLAY_FIELDS
 from cadmetrics.gui.results_model import RESULT_HEADER_LABELS as RESULT_HEADER_LABELS
@@ -54,6 +55,7 @@ class ResultsPanel(QtWidgets.QWidget):
         self._busy = False
         self._busy_title = "Calculating…"
         self._stale = False
+        self._attitude_mode = "alpha_beta"
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -71,7 +73,20 @@ class ResultsPanel(QtWidgets.QWidget):
         self.stale_label = QtWidgets.QLabel(STALE_MESSAGE)
         self.stale_label.setObjectName("resultsStaleLabel")
         self.stale_label.setVisible(False)
+        self.table_view_button = self._view_toggle("Table", "Show results as a table.")
+        self.chart_view_button = self._view_toggle(
+            "Chart", "Plot projected area against the swept angle."
+        )
+        self.table_view_button.setChecked(True)
+        view_group = QtWidgets.QButtonGroup(self)
+        view_group.setExclusive(True)
+        view_group.addButton(self.table_view_button)
+        view_group.addButton(self.chart_view_button)
+        self.chart_view_button.toggled.connect(lambda _checked: self._sync_rows())
         toolbar_layout.addWidget(self.result_count)
+        toolbar_layout.addSpacing(12)
+        toolbar_layout.addWidget(self.table_view_button)
+        toolbar_layout.addWidget(self.chart_view_button)
         toolbar_layout.addSpacing(12)
         toolbar_layout.addWidget(self.stale_label)
         toolbar_layout.addStretch(1)
@@ -93,6 +108,8 @@ class ResultsPanel(QtWidgets.QWidget):
         empty_layout.addStretch(1)
         self.stack.addWidget(self.empty_state)
 
+        self.chart = ResultsChart()
+        self.chart.row_clicked.connect(self.select_source_row)
         self.table = QtWidgets.QTableView()
         self.table.setProperty("stale", False)
         self._table_model = ResultsTableModel(self.table)
@@ -148,6 +165,7 @@ class ResultsPanel(QtWidgets.QWidget):
         self.copy_action.triggered.connect(self.copy_selection)
         self.table.addAction(self.copy_action)
         self.stack.addWidget(self.table)
+        self.stack.addWidget(self.chart)
         layout.addWidget(self.stack)
         self.set_busy(False)
 
@@ -163,6 +181,11 @@ class ResultsPanel(QtWidgets.QWidget):
     def can_save(self) -> bool:
         return not self._busy and bool(self._rows)
 
+    def set_attitude_mode(self, mode: str) -> None:
+        """Set which angles the chart plots: those swept in this attitude mode."""
+        self._attitude_mode = mode
+        self.chart.set_rows(self._rows, mode)
+
     def set_rows(
         self,
         rows: list[MeasurementRow],
@@ -173,6 +196,8 @@ class ResultsPanel(QtWidgets.QWidget):
         if protected_paths is not None:
             self._protected_paths = tuple(Path(path) for path in protected_paths)
         self._table_model.set_rows(list(self._rows))
+        self.chart.set_selected(None)
+        self.chart.set_rows(self._rows, self._attitude_mode)
         self._set_stale(False)
         self._sync_rows()
 
@@ -182,6 +207,7 @@ class ResultsPanel(QtWidgets.QWidget):
             return
         self._rows.extend(rows)
         self._table_model.append_rows(rows)
+        self.chart.set_rows(self._rows, self._attitude_mode)
         self._set_stale(False)
         self._sync_rows()
 
@@ -198,6 +224,7 @@ class ResultsPanel(QtWidgets.QWidget):
             # Drop the current row so selecting any stale row re-emits it explicitly.
             self.table.selectionModel().clearSelection()
             self.table.setCurrentIndex(QtCore.QModelIndex())
+            self.chart.set_selected(None)
         self._set_stale(stale)
 
     def has_selection(self) -> bool:
@@ -258,6 +285,15 @@ class ResultsPanel(QtWidgets.QWidget):
         except Exception as exc:
             self.error.emit(str(exc))
 
+    @staticmethod
+    def _view_toggle(text: str, tooltip: str) -> QtWidgets.QToolButton:
+        button = QtWidgets.QToolButton()
+        button.setObjectName("viewButton")
+        button.setText(text)
+        button.setToolTip(tooltip)
+        button.setCheckable(True)
+        return button
+
     def _fit_header_widths(self) -> None:
         """Widen columns whose header, which carries the output unit, would be clipped."""
         header = self.table.horizontalHeader()
@@ -281,7 +317,8 @@ class ResultsPanel(QtWidgets.QWidget):
         self.save_button.setToolTip(tooltip)
         if rows:
             self._fit_header_widths()
-            self.stack.setCurrentWidget(self.table)
+            chart = self.chart_view_button.isChecked()
+            self.stack.setCurrentWidget(self.chart if chart else self.table)
         else:
             if self._busy:
                 self.empty_title.setText(self._busy_title)
@@ -297,6 +334,7 @@ class ResultsPanel(QtWidgets.QWidget):
             return
         self._stale = stale
         self.stale_label.setVisible(stale)
+        self.chart.set_stale(stale)
         self.table.setProperty("stale", stale)
         style = self.table.style()
         style.unpolish(self.table)
@@ -320,4 +358,5 @@ class ResultsPanel(QtWidgets.QWidget):
             return
         row = self._sort_model.mapToSource(current).row()
         if 0 <= row < len(self._rows):
+            self.chart.set_selected(row)
             self.selected_row_changed.emit(self._table_model.row(row))

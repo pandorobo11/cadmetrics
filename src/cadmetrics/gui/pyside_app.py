@@ -165,6 +165,7 @@ if QtWidgets is not None:
             self._invalidate_results()
             self._results_request = request
             self.results.set_protected_paths(_request_paths(request))
+            self.results.set_attitude_mode(request.attitude_mode)
             self.viewer.set_request(request)
             self._calculation_running = True
             self.controller.calculate(request)

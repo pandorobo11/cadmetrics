@@ -355,6 +355,13 @@ useful for inspection; all CSV fields remain available by scrolling horizontally
 each case finishes instead of only at the end of the sweep. Before a sweep, the result area shows
 an empty-state prompt instead of an empty table.
 
+`Table` and `Chart` above the results switch between the table and a line chart of projected
+area against the swept angle. The angle with more sweep values runs along the x axis; each value
+of the other angle is one line (up to 8, with a legend). Pointing at a point shows its values, and
+clicking it selects that row, which updates the 3D view just like selecting it in the table.
+Unit-vector results, single attitudes, and sweeps with more than 8 lines show a note instead;
+use the table for those.
+
 Every row of a sweep comes from the loaded model named above `Run Sweep`, so the table hides the
 `File` column; copied rows and CSV files still include it. Numbers are right-aligned
 and shown with 6 significant digits; CSV export keeps full precision. Headers carry the output

@@ -229,6 +229,7 @@ QToolButton#viewButton {
 }
 QToolButton#viewButton:hover { background: #eef3f8; border-color: #99a8b8; }
 QToolButton#viewButton:pressed { background: #e2eaf2; }
+QToolButton#viewButton:checked { background: #dcebfb; border-color: #2f78c4; color: #154f86; }
 QToolButton#viewButton:disabled { background: #f1f4f7; border-color: #dbe1e7; color: #66707b; }
 QPushButton#viewerSaveButton { min-height: 24px; padding: 1px 10px; font-size: 12px; }
 QWidget#resultToolbar { background: #f7f9fb; border-top: 1px solid #d9dee4; }
