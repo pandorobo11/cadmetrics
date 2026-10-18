@@ -377,7 +377,7 @@ def test_unapplied_component_changes_preview_per_component(viewer) -> None:
     assert [kwargs["color"] for kwargs in previews] == ["#9fc8ef", "#9aa5b1"]
     assert previews[1]["opacity"] < 0.5
     texts = [entry[1] for entry in plotter.active("text").values()]
-    assert any("Component preview" in text for text in texts)
+    assert any("Apply & Reload" in text for text in texts)
 
     widget.set_component_selection(((1,), "subtract"))
     previews = [kwargs for actor, kwargs in _meshes(plotter, widget) if actor is not union]
@@ -388,7 +388,7 @@ def test_unapplied_component_changes_preview_per_component(viewer) -> None:
     assert widget.component_preview_active is False
     assert union.visible is True
     assert len(_meshes(plotter, widget)) == 1
-    assert not any("Component preview" in entry[1] for entry in plotter.active("text").values())
+    assert not any("Apply & Reload" in entry[1] for entry in plotter.active("text").values())
 
 
 def test_loading_a_model_with_the_new_selection_ends_the_preview(viewer) -> None:
@@ -503,7 +503,7 @@ def test_resizing_during_a_component_preview_only_moves_the_notice(viewer, qtbot
     assert set(widget._component_preview_actors) == previews
     assert tuple(widget._grid_actor.bounds) == preview_bounds
     texts = [entry[1] for entry in plotter.active("text").values()]
-    assert sum("Component preview" in text for text in texts) == 1
+    assert sum("Apply & Reload" in text for text in texts) == 1
 
 
 def test_projection_updates_keep_the_grid_on_the_component_preview(viewer) -> None:
@@ -524,3 +524,117 @@ def test_projection_updates_keep_the_grid_on_the_component_preview(viewer) -> No
     assert tuple(widget._grid_actor.bounds) == (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
     widget.set_request(CalculationRequest(file=Path("model.stl"), alpha_start=5.0))
     assert tuple(widget._grid_actor.bounds) == (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
+
+
+def test_component_preview_never_shows_coarse_mesh_edges(viewer) -> None:
+    widget, plotter = viewer
+    widget.set_model(_component_model((1, 2)))
+    widget.set_options(replace(widget._options, mesh_edges=True))
+    widget.set_component_selection(((1,), "filter"))
+    union = widget._mesh_actor
+    previews = [kwargs for actor, kwargs in _meshes(plotter, widget) if actor is not union]
+    assert previews and not any(kwargs.get("show_edges") for kwargs in previews)
+    texts = [entry[1] for entry in plotter.active("text").values()]
+    assert any("Mesh edges show after applying" in text for text in texts)
+
+
+def test_subtract_preview_notice_and_overlay_name_the_applied_values(viewer) -> None:
+    widget, plotter = viewer
+    widget.set_model(_component_model((1, 2)))
+    widget.set_component_selection(((1,), "subtract"))
+    texts = [entry[1] for entry in plotter.active("text").values()]
+    assert any("red parts will be cut away" in text for text in texts)
+    assert any("Values: applied 2/2 components" in " ".join(text.split()) for text in texts)
+
+    widget.set_component_selection(((1, 2), "subtract"))
+    texts = [entry[1] for entry in plotter.active("text").values()]
+    assert not any("Values: applied" in text for text in texts)
+
+
+def test_highlighted_component_is_drawn_and_cleared(viewer) -> None:
+    widget, plotter = viewer
+    widget.set_model(_component_model((1, 2)))
+    widget.set_highlighted_component(2)
+    assert widget.highlighted_component == 2
+    highlight = widget._highlight_actor
+    assert plotter.actors[highlight][2]["color"] == "#7c3aed"
+    assert plotter.actors[highlight][1].bounds[0] == 2.0
+
+    widget.set_highlighted_component(None)
+    assert widget.highlighted_component is None
+    assert highlight not in plotter.actors
+
+
+def test_nearest_component_maps_a_surface_point(viewer) -> None:
+    widget, _ = viewer
+    widget.set_model(_component_model((1, 2)))
+    assert widget._nearest_component(np.array([0.5, 0.5, 1.0])) == 1
+    assert widget._nearest_component(np.array([2.9, 0.5, 0.0])) == 2
+
+
+@pytest.mark.parametrize("pending", (False, True))
+def test_component_highlight_preserves_grid_bounds(viewer, pending: bool) -> None:
+    widget, _ = viewer
+    widget.set_model(_component_model((1,)))
+    if pending:
+        widget.set_component_selection(((1, 2), "filter"))
+    bounds = tuple(widget._grid_actor.bounds)
+
+    widget.set_highlighted_component(2)
+    assert tuple(widget._grid_actor.bounds) == bounds
+    widget.set_highlighted_component(None)
+    assert tuple(widget._grid_actor.bounds) == bounds
+
+
+def test_nearest_component_ignores_filtered_out_coincident_surfaces(viewer) -> None:
+    widget, _ = viewer
+    model = _component_model((2,))
+    cube = model.component_meshes[1]
+    widget.set_model(replace(model, vertices=cube[0], faces=cube[1], component_meshes=(cube, cube)))
+    assert widget._nearest_component(np.array([2.9, 0.5, 0.0])) == 2
+
+
+@pytest.mark.parametrize("pending", (False, True))
+def test_component_picker_only_targets_shown_model_actors(viewer, monkeypatch, pending) -> None:
+    from vtkmodules import vtkRenderingCore
+
+    widget, plotter = viewer
+    widget.set_model(_component_model((1, 2)))
+    if pending:
+        widget.set_component_selection(((1,), "filter"))
+    plotter.renderer = object()
+    expected = widget._component_preview_actors if pending else [widget._mesh_actor]
+    picked = expected[-1]
+    picker_actors = []
+
+    class Picker:
+        restricted = False
+
+        def SetTolerance(self, _tolerance):
+            pass
+
+        def PickFromListOn(self):
+            self.restricted = True
+
+        def AddPickList(self, actor):
+            picker_actors.append(actor)
+
+        def Pick(self, _x, _y, _z, _renderer):
+            assert self.restricted
+            assert picker_actors == expected
+            return 1
+
+        def GetActor(self):
+            return picked
+
+        def GetPickPosition(self):
+            return (0.5, 0.5, 1.0)
+
+    monkeypatch.setattr(vtkRenderingCore, "vtkCellPicker", Picker)
+    assert widget.component_at((10.0, 20.0)) == (2 if pending else 1)
+
+
+def test_nearest_component_keeps_subtraction_cutters_as_candidates(viewer) -> None:
+    widget, _ = viewer
+    widget.set_model(_component_model((1,), mode="subtract"))
+    assert widget._nearest_component(np.array([2.9, 0.5, 0.0])) == 2

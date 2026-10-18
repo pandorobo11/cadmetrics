@@ -171,7 +171,7 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
   when projected area, mesh metrics, or GUI display are needed.
 - `measure` and CLI `inspect` avoid STEP tessellation in default B-Rep mode.
 - The GUI reuses the loaded display model for calculation so `Run Sweep` does not reload the same
-  model immediately after Browse or Preview with Settings.
+  model immediately after Browse or Apply & Reload.
 
 ## Accuracy Target
 
@@ -179,5 +179,7 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 - Projected area depends on mesh/tessellation quality
 - `--mesh-deflection` defaults to `auto`, which uses the STEP bounding-box diagonal times
   `1e-4` in the selected output length unit
+- `--mesh-deflection auto-fast` uses the diagonal times `1e-3` and, with the default
+  `--angular-deflection auto`, a `0.3` rad angular deflection (`auto` alone is `0.1` rad)
 - `--mesh-deflection` accepts an explicit positive number so STEP projected-area accuracy can
   be adjusted or fixed for reproducibility

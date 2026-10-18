@@ -150,6 +150,9 @@ below the viewer.
 6. Select rows in the result table to update the camera and overlay.
 7. Save results with `Save CSV` (⌘S / Ctrl+S).
 
+After a file is opened, the `File` field shows only its name so it fits; the full path is in the
+tooltip and appears while the field is being edited.
+
 The selected geometry is loaded and displayed immediately after opening. When multiple files are
 selected, the GUI treats them as one calculation model. STEP and STL files cannot be mixed in the
 same selection.
@@ -157,6 +160,9 @@ same selection.
 `Run Sweep` is disabled while an input is invalid, for example when no file is selected, a file
 does not exist, a sweep `Step` is not usable, the unit vector is `(0, 0, 0)`, or no component is
 enabled. The reason is shown directly above the button.
+
+The status bar shows a progress bar only while a model loads or a sweep runs; afterwards the
+status text reports the outcome.
 
 After a model is loaded, `Run Sweep` reuses the displayed geometry instead of loading the same
 file again. Changing Advanced settings that affect geometry still reloads the model when those
@@ -176,13 +182,14 @@ settings are applied.
 `Advanced` is collapsed by default because these settings are usually changed less often.
 Expand it when the loaded CAD axes, STEP metric source, or tessellation settings need adjustment.
 Changed controls are marked `Advanced · changes pending`. They apply on the next `Run Sweep`;
-click `Preview with Settings` to reload the displayed model with them first.
+click `Apply & Reload` to reload the displayed model with them first. Either `Apply & Reload`
+button (here or under `Components`) applies every pending Advanced and Components change.
 
 ### Axis Map
 
 `Axis map` remaps the loaded model axes before calculation and display. Choose which input axis
 becomes cadmetrics `X`, `Y`, and `Z`. Use signs such as `-Z` when an axis is reversed. Changing
-the combo boxes does not reload the model immediately; click `Preview with Settings`, open a file,
+the combo boxes does not reload the model immediately; click `Apply & Reload`, open a file,
 or run a calculation to use the new mapping.
 
 ## Components
@@ -194,16 +201,27 @@ files it shows a one-line note instead of an empty list.
 For multi-solid STEP files, `Components` lists the loaded solid components. cadmetrics uses
 STEP/XCAF names when they are available and falls back to `Component 1`, `Component 2`, and so
 on when a useful name is not stored in the file. Clear a component checkbox to exclude that
-solid from subsequent calculations. Changes apply on the next `Run Sweep`; click
-`Preview with Settings` under `Advanced` to update the displayed model first.
+solid from subsequent calculations. While the checked components or `Mode` differ from the loaded
+model, the section is marked `Components · changes pending` and its `Apply & Reload` button is
+highlighted; click it to rebuild the model with the new selection, or run `Run Sweep`, which
+applies it too. Restoring the loaded selection clears the pending state.
 
-Until then, the 3D view previews the pending selection without reloading: each component is drawn
-separately, checked components in the model colour, unchecked components as faint grey (or
-translucent red in `Subtract unchecked` mode), with a note at the bottom of the view. The overlay
-values still describe the applied selection. The preview meshes are tessellated once at load from
-copies of the components, much more coarsely than the measurement mesh (about a twentieth of the
+Until then, the 3D view shows an approximate preview of the pending selection without reloading:
+each component is drawn separately, checked components in the model colour, unchecked components
+as faint grey (or translucent red in `Subtract unchecked` mode), with a note at the bottom of the
+view. The preview does not perform the union or subtraction: in `Subtract unchecked` mode it
+marks the parts that will be cut, not the cut shape, and newly exposed surfaces appear only after
+applying. The overlay values still describe the applied selection, and the overlay says so
+(`Values: applied 3/5 components`). The preview meshes are tessellated once at load from copies
+of the components, much more coarsely than the measurement mesh (about a twentieth of the
 triangles on curved parts), so they add little load time or memory. They are never used for
-measurements, and their time is not included in `load_elapsed_sec`.
+measurements, their time is not included in `load_elapsed_sec`, and `Mesh edges` is not drawn on
+them; mesh edges return with the applied model.
+
+Point at a component in the list to highlight it in the 3D view (violet, drawn on top so parts
+inside or behind others can be found). Double-click a part in the 3D view to toggle its checkbox.
+Lists with nine or more components have a `Filter components` field; `All` and `None` then act on
+the listed components only.
 
 The filters operate on STEP solid geometry after loading and before boolean union. Keeping all
 components enabled preserves the default behavior. For multi-file STEP assemblies, components are
@@ -234,18 +252,27 @@ When subtraction creates new surfaces, the 3D viewer highlights them in orange. 
 - `B-Rep`: default CAD-kernel values
 - `Mesh`: values calculated from the tessellated mesh, useful for STL-like comparisons
 
-`Mesh deflection` controls STEP tessellation used for projected-area calculations. `Auto`
-is enabled by default and uses:
+`Mesh quality` picks the preset used by `Auto` mesh deflection:
 
-```text
-bounding-box diagonal * 1e-4
-```
+| preset | mesh deflection | angular deflection (`Auto`) |
+|---|---|---:|
+| `Accurate (default)` | bounding-box diagonal * `1e-4` | `0.1` |
+| `Fast` | bounding-box diagonal * `1e-3` | `0.3` |
 
-The actual diagonal is used for sub-unit models as well; only the final output-unit deflection is
-floored at `1e-9`.
+`Fast` is for exploring many attitudes quickly. On a 64-part curved reference assembly it was
+about 5 to 9 times faster per direction, with a projected-area error of 0.2% to 0.4%. Depending on
+shape and attitude, the error can be an over- or underestimate (see
+[Accuracy: Fast Preset](accuracy.md#fast-preset)). Rerun the attitudes that matter with
+`Accurate`. The preset only affects STEP files; it is disabled when `Mesh deflection` is not
+`Auto`.
 
-`Angular deflection` controls STEP angular tessellation tolerance, in radians. Its default is
-`0.1`.
+`Mesh deflection` controls STEP tessellation used for projected-area calculations. `Auto` is
+enabled by default and follows `Mesh quality`. The actual diagonal is used for sub-unit models as
+well; only the final output-unit deflection is floored at `1e-9`.
+
+`Angular deflection` controls STEP angular tessellation tolerance, in radians. `Auto` is enabled
+by default and shows the angle the preset will use (`0.1`, or `0.3` with `Fast`). Uncheck `Auto`
+to enter a value.
 
 `Base tolerance` controls how close a face must be to cadmetrics-coordinate `Xmax` to count as
 `base_area`. It is relative to the loaded model size: cadmetrics uses
@@ -337,7 +364,15 @@ useful for inspection; all CSV fields remain available by scrolling horizontally
 each case finishes instead of only at the end of the sweep. Before a sweep, the result area shows
 an empty-state prompt instead of an empty table.
 
-The `File` column shows file names (the full path is in the tooltip). Numbers are right-aligned
+`Table` and `Chart` above the results switch between the table and a line chart of projected
+area against the swept angle. The angle with more sweep values runs along the x axis; each value
+of the other angle is one line (up to 8, with a legend). Pointing at a point shows its values, and
+clicking it selects that row, which updates the 3D view just like selecting it in the table.
+Unit-vector results, single attitudes, and sweeps with more than 8 lines show a note instead;
+use the table for those.
+
+Every row of a sweep comes from the loaded model named above `Run Sweep`, so the table hides the
+`File` column; copied rows and CSV files still include it. Numbers are right-aligned
 and shown with 6 significant digits; CSV export keeps full precision. Headers carry the output
 unit, for example `Projected area (m²)`. Click a header to sort, and press ⌘C / Ctrl+C to copy
 the selected row as tab-separated text. Important fields include:

@@ -29,7 +29,7 @@ class CalculationRequest:
     input_unit: str = "auto"
     output_unit: str = "m"
     mesh_deflection: float | str = "auto"
-    angular_deflection: float = 0.1
+    angular_deflection: float | str = "auto"
     base_tolerance: float = DEFAULT_BASE_TOLERANCE
     axis_map: str = DEFAULT_AXIS_MAP
     step_metric_source: str = "brep"

@@ -127,7 +127,7 @@ def test_advanced_wording_explains_run_sweep_applies(qtbot, tmp_path: Path) -> N
     panel.set_model(_model(tmp_path / "model.stl", fmt="stl"))
     panel.axis_x.setCurrentIndex(panel.axis_x.findData("-x"))
     assert "next Run Sweep" in panel.advanced_status.text()
-    assert panel.apply_advanced_button.text() == "Preview with Settings"
+    assert panel.apply_advanced_button.text() == "Apply && Reload"
     assert "not applied" not in panel._section_toggles["Advanced"].text()
     assert "pending" in panel._section_toggles["Advanced"].text()
 
@@ -223,7 +223,7 @@ def test_all_fields_share_one_left_and_right_edge(qtbot) -> None:
             "attitude_mode",
             "step_component_mode",
             "step_metrics",
-            "angular_deflection",
+            "mesh_quality",
             "base_tolerance",
         )
     }
@@ -371,7 +371,8 @@ def test_all_and_none_report_one_component_change(qtbot, tmp_path: Path) -> None
     assert panel.component_summary.text() == "0 of 50 components enabled."
     assert panel.run_button.isEnabled() is False
     assert "component" in panel.validation_label.text().lower()
-    assert panel._advanced_dirty is True
+    assert panel.components_pending is True
+    assert panel._advanced_dirty is False
 
     panel.component_all_button.click()
     assert len(requests) == 2
@@ -403,3 +404,105 @@ def test_component_selection_is_reported_for_the_viewer(qtbot, tmp_path: Path) -
 
     panel._clear_components()
     assert selections[-1] is None
+
+
+def test_component_changes_have_their_own_apply_button(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path, "model.step")
+    panel.set_model(_model(tmp_path / "model.step", ("A", "B", "C")))
+    toggle = panel._section_toggles["Components"]
+    assert panel.components_pending is False
+    assert panel.component_apply_button.isEnabled() is False
+    assert panel.component_status.isHidden() is True
+
+    panel._component_checkboxes[1].setChecked(False)
+    assert panel.components_pending is True
+    assert panel.component_apply_button.isEnabled() is True
+    assert panel.component_apply_button.property("emphasis") is True
+    assert panel.component_status.isHidden() is False
+    assert "approximate preview" in panel.component_status.text()
+    assert toggle.text() == "Components · changes pending"
+    # Component edits no longer flag the unrelated Advanced section.
+    assert panel._section_toggles["Advanced"].text() == "Advanced"
+
+    panel.step_component_mode.setCurrentIndex(panel.step_component_mode.findData("subtract"))
+    assert "not the cut shape" in panel.component_status.text()
+
+    # Restoring the loaded selection and mode clears the pending state.
+    panel.step_component_mode.setCurrentIndex(panel.step_component_mode.findData("filter"))
+    panel._component_checkboxes[1].setChecked(True)
+    assert panel.components_pending is False
+    assert panel.component_apply_button.isEnabled() is False
+    assert toggle.text() == "Components"
+
+
+def test_component_apply_button_reloads_the_model(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path, "model.step")
+    panel.set_model(_model(tmp_path / "model.step", ("A", "B")))
+    reloads = []
+    panel.model_reload_requested.connect(reloads.append)
+    panel._component_checkboxes[0].setChecked(False)
+    panel.component_apply_button.click()
+    assert len(reloads) == 1
+    assert reloads[0].step_components == (2,)
+
+
+def test_component_filter_limits_list_and_all_none(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path, "model.step")
+    names = tuple(f"Bolt {index}" for index in range(6)) + tuple(f"Panel {i}" for i in range(6))
+    panel.set_model(_model(tmp_path / "model.step", names))
+    assert panel.component_filter.isHidden() is False
+
+    panel.component_filter.setText("bolt")
+    shown = [box for box in panel._component_checkboxes if not box.isHidden()]
+    assert len(shown) == 6
+    panel.component_none_button.click()
+    assert [box.isChecked() for box in panel._component_checkboxes] == [False] * 6 + [True] * 6
+
+    panel.component_filter.clear()
+    assert all(not box.isHidden() for box in panel._component_checkboxes)
+
+
+def test_short_component_lists_have_no_filter(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path, "model.step")
+    panel.set_model(_model(tmp_path / "model.step", ("A", "B", "C")))
+    assert panel.component_filter.isHidden() is True
+
+
+def test_toggle_component_and_hover_report(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path, "model.step")
+    panel.set_model(_model(tmp_path / "model.step", ("A", "B")))
+    hovered = []
+    panel.component_hovered.connect(hovered.append)
+
+    assert panel.toggle_component(2) is True
+    assert panel._component_checkboxes[1].isChecked() is False
+    assert panel._section_toggles["Components"].isChecked() is True
+    assert panel.toggle_component(99) is False
+
+    box = panel._component_checkboxes[0]
+    QtWidgets.QApplication.sendEvent(box, QtCore.QEvent(QtCore.QEvent.Type.Enter))
+    QtWidgets.QApplication.sendEvent(box, QtCore.QEvent(QtCore.QEvent.Type.Leave))
+    assert hovered == [1, None]
+
+    panel.set_busy(OperationState.LOADING)
+    assert panel.toggle_component(1) is False
+
+
+def test_file_field_shows_name_until_edited(qtbot, tmp_path: Path) -> None:
+    panel = _panel(qtbot, tmp_path, "model.stl")
+    path = tmp_path / "model.stl"
+    assert panel.file_edit.text() == "model.stl"
+    assert panel.file_edit.toolTip() == str(path)
+    assert panel.file_paths == (path,)
+    assert panel.validation_message() is None
+
+    panel.file_edit.focus_changed.emit(True)
+    assert panel.file_edit.text() == str(path)
+    assert panel.file_paths == (path,)
+    panel.file_edit.focus_changed.emit(False)
+    assert panel.file_edit.text() == "model.stl"
+
+    # A path typed by the user is left as typed.
+    panel.file_edit.setText(str(tmp_path / "other.stl"))
+    panel.file_edit.focus_changed.emit(False)
+    assert panel.file_edit.text() == str(tmp_path / "other.stl")
