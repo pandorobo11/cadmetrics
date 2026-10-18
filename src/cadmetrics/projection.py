@@ -39,13 +39,9 @@ def projected_metrics(
     """Calculate orthographic 2D outline area and its projected centroid."""
 
     try:
-        from shapely.geometry import Polygon
+        import shapely
     except ImportError as exc:
         raise RuntimeError("Projected area calculation requires the 'shapely' dependency.") from exc
-    try:
-        from shapely import union_all
-    except ImportError:
-        from shapely.ops import unary_union as union_all
 
     if model.face_count == 0:
         return ProjectionMetrics(area=0.0, centroid_u=None, centroid_v=None)
@@ -61,30 +57,69 @@ def projected_metrics(
 
     basis_u, basis_v = projection_basis(projection_direction)
     projected = np.column_stack((vertices @ basis_u, vertices @ basis_v))
+    faces = np.asarray(model.faces, dtype=np.int64)
+    triangles = projected[faces]
 
-    polygons = []
-    for face in model.faces:
-        coords = projected[face]
-        # A constant u or v coordinate is exactly degenerate, at any scale.
-        # Leave other cases to Polygon; do not round small positive areas away.
-        if coords[0, 0] == coords[1, 0] == coords[2, 0] or (
-            coords[0, 1] == coords[1, 1] == coords[2, 1]
-        ):
-            continue
-        polygon = Polygon(coords)
-        if polygon.is_valid and polygon.area > 0.0:
-            polygons.append(polygon)
+    # A constant u or v coordinate is exactly degenerate, at any scale.
+    # Leave other cases to shapely; do not round small positive areas away.
+    u = triangles[:, :, 0]
+    v = triangles[:, :, 1]
+    keep = ~(
+        ((u[:, 0] == u[:, 1]) & (u[:, 1] == u[:, 2]))
+        | ((v[:, 0] == v[:, 1]) & (v[:, 1] == v[:, 2]))
+    )
 
-    if not polygons:
+    if model.is_watertight is True and _is_closed_oriented_surface(vertices, faces):
+        # Every line along the projection direction crosses a closed, consistently
+        # oriented surface as often front-to-back as back-to-front, so the triangles
+        # of either winding sign alone already cover the whole silhouette.
+        signed = (u[:, 1] - u[:, 0]) * (v[:, 2] - v[:, 0]) - (u[:, 2] - u[:, 0]) * (
+            v[:, 1] - v[:, 0]
+        )
+        positive = keep & (signed > 0.0)
+        negative = keep & (signed < 0.0)
+        keep = positive if np.count_nonzero(positive) <= np.count_nonzero(negative) else negative
+
+    if not np.any(keep):
         return ProjectionMetrics(area=0.0, centroid_u=None, centroid_v=None)
 
-    outline = union_all(polygons)
+    polygons = shapely.polygons(triangles[keep])
+    polygons = polygons[shapely.is_valid(polygons) & (shapely.area(polygons) > 0.0)]
+
+    if polygons.size == 0:
+        return ProjectionMetrics(area=0.0, centroid_u=None, centroid_v=None)
+
+    outline = shapely.union_all(polygons)
     centroid = outline.centroid
     return ProjectionMetrics(
         area=float(outline.area),
         centroid_u=float(centroid.x),
         centroid_v=float(centroid.y),
     )
+
+
+def _is_closed_oriented_surface(vertices: FloatArray, faces: np.ndarray) -> bool:
+    """Return whether every directed edge is matched by its reverse.
+
+    Vertices are welded by exact coordinates first, so per-face triangulations
+    that duplicate shared vertices still count. Inconsistently wound faces leave
+    unmatched edges and make this False.
+    """
+
+    _, welded = np.unique(vertices, axis=0, return_inverse=True)
+    welded = welded.reshape(-1).astype(np.int64)
+    corners = welded[faces]
+    starts = corners.reshape(-1)
+    ends = corners[:, [1, 2, 0]].reshape(-1)
+    distinct = starts != ends
+    starts = starts[distinct]
+    ends = ends[distinct]
+    if starts.size == 0:
+        return False
+    vertex_count = int(welded.max()) + 1
+    forward = np.sort(starts * vertex_count + ends)
+    backward = np.sort(ends * vertex_count + starts)
+    return bool(np.array_equal(forward, backward))
 
 
 def projection_basis(direction: FloatArray) -> tuple[FloatArray, FloatArray]:
