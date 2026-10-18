@@ -319,7 +319,8 @@ class ControlPanel(QtWidgets.QWidget):
         self.mesh_quality.addItem("Fast", AUTO_FAST_MESH_DEFLECTION)
         self.mesh_quality.setToolTip(
             "Preset for the Auto mesh deflection; an Auto angular deflection follows it. "
-            "Fast meshes much more coarsely and slightly underestimates curved projected areas."
+            "Fast meshes much more coarsely; projected areas can come out slightly high or low "
+            "depending on shape and attitude."
         )
         self._add_row(advanced, "Mesh quality", self.mesh_quality)
         self.mesh_deflection = FlexibleDoubleSpinBox()

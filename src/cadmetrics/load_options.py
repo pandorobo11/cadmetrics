@@ -14,8 +14,8 @@ StepMetricSource = Literal["brep", "mesh"]
 
 # Automatic STEP tessellation presets: linear deflection as a fraction of the bounding-box
 # diagonal, and the angular deflection used when angular_deflection is "auto".
-# On curved models the angular limit dominates the triangle count (and so the projected-area
-# run time), which is why the fast preset mainly relaxes the angle.
+# In the curved reference benchmark the angular limit set the triangle count (and so the
+# projected-area run time), which is why the fast preset mainly relaxes the angle.
 AUTO_MESH_DEFLECTION = "auto"
 AUTO_FAST_MESH_DEFLECTION = "auto-fast"
 AUTO_DEFLECTION_FACTORS = {AUTO_MESH_DEFLECTION: 1.0e-4, AUTO_FAST_MESH_DEFLECTION: 1.0e-3}

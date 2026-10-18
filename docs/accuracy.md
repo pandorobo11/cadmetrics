@@ -202,13 +202,14 @@ With `--angular-deflection auto` (the default), the angle follows the mesh prese
 is an even faster preview. The `mesh_deflection` and `angular_deflection` result columns always
 record the effective values that were used. STL input is not affected.
 
-On curved models the angular limit, not the linear one, sets the triangle count. Projected-area
-run time is roughly proportional to the triangle count. On a curved model, changing only the
-linear factor from `1e-4` to `1e-3` did not change the triangle count, so the fast preset mainly
-relaxes the angle.
+Projected-area run time is roughly proportional to the triangle count. In the reference benchmark
+below, the angular limit, not the linear one, set the triangle count: changing only the linear
+factor from `1e-4` to `1e-3` did not change it. This is an observation for that model, not a rule
+for every curved surface, but it is why the fast preset mainly relaxes the angle.
 
 Reference measurements on a synthetic 64-part curved assembly, per projection direction, against
-a fine reference mesh:
+a fine reference mesh. They describe that model and those conditions only; they are not a general
+error bound:
 
 | angular deflection | triangles | time per direction | projected-area error |
 |---:|---:|---:|---:|
@@ -216,9 +217,13 @@ a fine reference mesh:
 | `0.3` (`auto-fast`) | 100k to 160k | about 2.4 to 4 s | 0.2% to 0.4% |
 | `0.5` | about 40k | about 1 s | about 1% |
 
-The error comes from chords cutting inside curved surfaces, so coarse meshes systematically
-*underestimate* projected area; the error has one sign and does not average out across a sweep.
-Use `auto-fast` to explore attitudes, then rerun the attitudes that matter with `auto` or tighter
+The error comes from approximating curved surfaces and edges with chords, and its sign depends on
+the shape and attitude. In the benchmark above, and for a convex solid such as a sphere, the chords
+cut inside the outline and projected area is underestimated. Around a curved hole the chords cut
+into the opening instead, so the material's projected area is overestimated: for a 10 x 10 x 1 mm
+plate with a 4 mm radius through hole viewed along the hole axis, `auto` reported `+0.024%` and
+`auto-fast` `+0.24%` against the exact `100 - 16π` mm². A coarse mesh is therefore neither a lower
+nor an upper bound in general. Use `auto-fast` to explore attitudes, then rerun the attitudes that matter with `auto` or tighter
 settings. Volume and surface area in the default `--step-metrics brep` mode come from the CAD
 kernel and do not depend on the preset.
 

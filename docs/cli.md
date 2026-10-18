@@ -105,10 +105,11 @@ output length unit. `--mesh-deflection auto-fast` uses the diagonal times `1e-3`
 quick projected-area sweeps.
 
 `--angular-deflection auto` (the default) is `0.1` rad, or `0.3` rad with
-`--mesh-deflection auto-fast`. Pass a number in radians to override it. On curved models the
-angular deflection dominates the triangle count and so the projected-area run time: on a 64-part
-curved assembly `auto-fast` was about 5 to 9 times faster per direction than `auto`, with a
-projected-area underestimate of 0.2% to 0.4%. See
+`--mesh-deflection auto-fast`. Pass a number in radians to override it. On a 64-part curved
+reference assembly, where the angular deflection set the triangle count, `auto-fast` was about
+5 to 9 times faster per direction than `auto`, with a projected-area error of 0.2% to 0.4%. That
+is an observation for that model; depending on shape and attitude the error can be an over- or
+underestimate. Recheck important attitudes with `auto` or tighter settings. See
 [Accuracy: Fast Preset](accuracy.md#fast-preset).
 
 ```bash

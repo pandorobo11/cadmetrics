@@ -248,7 +248,8 @@ sweep.
 The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the
 selected output length unit, including for models whose dimensions are smaller than one input
 unit. `--mesh-deflection auto-fast` uses `1e-3` and a `0.3` rad angular deflection for quick
-sweeps, at the cost of a small projected-area underestimate. Xmax base-face detection uses `--base-tolerance 1e-6` by default,
+sweeps, at the cost of a small projected-area error that can be an over- or underestimate
+depending on shape and attitude. Xmax base-face detection uses `--base-tolerance 1e-6` by default,
 applied as a relative tolerance to the model bounding-box diagonal. The current validation target
 is within `0.1%` against Fusion 360 for representative closed solids.
 

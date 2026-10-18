@@ -241,8 +241,9 @@ When subtraction creates new surfaces, the 3D viewer highlights them in orange. 
 | `Accurate (default)` | bounding-box diagonal * `1e-4` | `0.1` |
 | `Fast` | bounding-box diagonal * `1e-3` | `0.3` |
 
-`Fast` is for exploring many attitudes quickly. On a 64-part curved assembly it was about 5 to 9
-times faster per direction, and underestimated projected area by 0.2% to 0.4% (see
+`Fast` is for exploring many attitudes quickly. On a 64-part curved reference assembly it was
+about 5 to 9 times faster per direction, with a projected-area error of 0.2% to 0.4%. Depending on
+shape and attitude, the error can be an over- or underestimate (see
 [Accuracy: Fast Preset](accuracy.md#fast-preset)). Rerun the attitudes that matter with
 `Accurate`. The preset only affects STEP files; it is disabled when `Mesh deflection` is not
 `Auto`.
