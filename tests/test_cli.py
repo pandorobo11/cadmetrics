@@ -384,6 +384,7 @@ def test_cli_rejects_roll_in_alpha_beta_mode(runner: CliRunner) -> None:
 
 
 def test_project_cli_accepts_fast_mesh_preset(runner: CliRunner, tmp_path: Path) -> None:
+    pytest.importorskip("OCP")
     output = tmp_path / "fast.csv"
     sample = Path(__file__).parents[1] / "samples" / "box_1x2x3" / "box_1x2x3.step"
     result = runner.invoke(
