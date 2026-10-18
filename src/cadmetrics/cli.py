@@ -70,13 +70,18 @@ def measure(
     mesh_deflection: str = typer.Option(
         "auto",
         "--mesh-deflection",
-        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-4.",
+        help=(
+            "STEP tessellation tolerance in output length units, 'auto' for bbox diagonal * 1e-4, "
+            "or 'auto-fast' for bbox diagonal * 1e-3 (coarser, faster projected area)."
+        ),
     ),
-    angular_deflection: float = typer.Option(
-        0.1,
+    angular_deflection: str = typer.Option(
+        "auto",
         "--angular-deflection",
-        min=0.0,
-        help="STEP tessellation angular tolerance.",
+        help=(
+            "STEP tessellation angular tolerance in radians, or 'auto' "
+            "(0.1, or 0.3 with --mesh-deflection auto-fast)."
+        ),
     ),
     base_tolerance: float = typer.Option(
         DEFAULT_BASE_TOLERANCE,
@@ -167,13 +172,18 @@ def project(
     mesh_deflection: str = typer.Option(
         "auto",
         "--mesh-deflection",
-        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-4.",
+        help=(
+            "STEP tessellation tolerance in output length units, 'auto' for bbox diagonal * 1e-4, "
+            "or 'auto-fast' for bbox diagonal * 1e-3 (coarser, faster projected area)."
+        ),
     ),
-    angular_deflection: float = typer.Option(
-        0.1,
+    angular_deflection: str = typer.Option(
+        "auto",
         "--angular-deflection",
-        min=0.0,
-        help="STEP tessellation angular tolerance.",
+        help=(
+            "STEP tessellation angular tolerance in radians, or 'auto' "
+            "(0.1, or 0.3 with --mesh-deflection auto-fast)."
+        ),
     ),
     base_tolerance: float = typer.Option(
         DEFAULT_BASE_TOLERANCE,
@@ -282,13 +292,18 @@ def sweep(
     mesh_deflection: str = typer.Option(
         "auto",
         "--mesh-deflection",
-        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-4.",
+        help=(
+            "STEP tessellation tolerance in output length units, 'auto' for bbox diagonal * 1e-4, "
+            "or 'auto-fast' for bbox diagonal * 1e-3 (coarser, faster projected area)."
+        ),
     ),
-    angular_deflection: float = typer.Option(
-        0.1,
+    angular_deflection: str = typer.Option(
+        "auto",
         "--angular-deflection",
-        min=0.0,
-        help="STEP tessellation angular tolerance.",
+        help=(
+            "STEP tessellation angular tolerance in radians, or 'auto' "
+            "(0.1, or 0.3 with --mesh-deflection auto-fast)."
+        ),
     ),
     base_tolerance: float = typer.Option(
         DEFAULT_BASE_TOLERANCE,
@@ -414,13 +429,18 @@ def inspect(
     mesh_deflection: str = typer.Option(
         "auto",
         "--mesh-deflection",
-        help="STEP tessellation tolerance in output length units, or 'auto' for bbox diagonal * 1e-4.",
+        help=(
+            "STEP tessellation tolerance in output length units, 'auto' for bbox diagonal * 1e-4, "
+            "or 'auto-fast' for bbox diagonal * 1e-3 (coarser, faster projected area)."
+        ),
     ),
-    angular_deflection: float = typer.Option(
-        0.1,
+    angular_deflection: str = typer.Option(
+        "auto",
         "--angular-deflection",
-        min=0.0,
-        help="STEP tessellation angular tolerance.",
+        help=(
+            "STEP tessellation angular tolerance in radians, or 'auto' "
+            "(0.1, or 0.3 with --mesh-deflection auto-fast)."
+        ),
     ),
     base_tolerance: float = typer.Option(
         DEFAULT_BASE_TOLERANCE,

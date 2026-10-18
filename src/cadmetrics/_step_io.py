@@ -35,7 +35,11 @@ from cadmetrics._ocp import (
     _tessellated_ocp_shapes_surface_area,
     load_ocp_bindings,
 )
-from cadmetrics.load_options import ModelLoadOptions
+from cadmetrics.load_options import (
+    AUTO_DEFLECTION_FACTORS,
+    ModelLoadOptions,
+    normalize_auto_mesh_deflection,
+)
 from cadmetrics.types import FloatArray, IntArray, ModelData
 from cadmetrics.units import area_scale, length_scale, normalize_unit, volume_scale
 
@@ -1062,14 +1066,14 @@ def _resolve_mesh_deflection(
     scale: float,
 ) -> float:
     if isinstance(value, str):
-        text = value.strip().lower()
-        if text == "auto":
+        preset = normalize_auto_mesh_deflection(value)
+        if preset is not None:
             output_diagonal = native_diagonal * scale
-            return max(output_diagonal * 1.0e-4, 1.0e-9)
+            return max(output_diagonal * AUTO_DEFLECTION_FACTORS[preset], 1.0e-9)
         try:
-            value = float(text)
+            value = float(value.strip())
         except ValueError as exc:
-            raise ValueError("mesh_deflection must be a number or 'auto'") from exc
+            raise ValueError("mesh_deflection must be a number, 'auto', or 'auto-fast'") from exc
     if not isfinite(float(value)):
         raise ValueError("mesh_deflection must be finite")
     if value <= 0.0:

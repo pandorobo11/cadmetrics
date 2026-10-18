@@ -252,18 +252,27 @@ When subtraction creates new surfaces, the 3D viewer highlights them in orange. 
 - `B-Rep`: default CAD-kernel values
 - `Mesh`: values calculated from the tessellated mesh, useful for STL-like comparisons
 
-`Mesh deflection` controls STEP tessellation used for projected-area calculations. `Auto`
-is enabled by default and uses:
+`Mesh quality` picks the preset used by `Auto` mesh deflection:
 
-```text
-bounding-box diagonal * 1e-4
-```
+| preset | mesh deflection | angular deflection (`Auto`) |
+|---|---|---:|
+| `Accurate (default)` | bounding-box diagonal * `1e-4` | `0.1` |
+| `Fast` | bounding-box diagonal * `1e-3` | `0.3` |
 
-The actual diagonal is used for sub-unit models as well; only the final output-unit deflection is
-floored at `1e-9`.
+`Fast` is for exploring many attitudes quickly. On a 64-part curved reference assembly it was
+about 5 to 9 times faster per direction, with a projected-area error of 0.2% to 0.4%. Depending on
+shape and attitude, the error can be an over- or underestimate (see
+[Accuracy: Fast Preset](accuracy.md#fast-preset)). Rerun the attitudes that matter with
+`Accurate`. The preset only affects STEP files; it is disabled when `Mesh deflection` is not
+`Auto`.
 
-`Angular deflection` controls STEP angular tessellation tolerance, in radians. Its default is
-`0.1`.
+`Mesh deflection` controls STEP tessellation used for projected-area calculations. `Auto` is
+enabled by default and follows `Mesh quality`. The actual diagonal is used for sub-unit models as
+well; only the final output-unit deflection is floored at `1e-9`.
+
+`Angular deflection` controls STEP angular tessellation tolerance, in radians. `Auto` is enabled
+by default and shows the angle the preset will use (`0.1`, or `0.3` with `Fast`). Uncheck `Auto`
+to enter a value.
 
 `Base tolerance` controls how close a face must be to cadmetrics-coordinate `Xmax` to count as
 `base_area`. It is relative to the loaded model size: cadmetrics uses

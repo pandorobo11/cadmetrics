@@ -15,6 +15,12 @@ from cadmetrics.gui.gui_types import OperationState, ViewerOptions
 from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath
 from cadmetrics.gui.styles import disclosure_arrow_image_urls
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
+from cadmetrics.load_options import (
+    AUTO_FAST_MESH_DEFLECTION,
+    AUTO_MESH_DEFLECTION,
+    DEFAULT_ANGULAR_DEFLECTION,
+    resolve_angular_deflection,
+)
 from cadmetrics.sweep import SweepRange
 from cadmetrics.types import ModelData
 
@@ -361,6 +367,15 @@ class ControlPanel(QtWidgets.QWidget):
         self.step_metrics.addItem("B-Rep (default)", "brep")
         self.step_metrics.addItem("Mesh", "mesh")
         self._add_row(advanced, "STEP metrics", self.step_metrics)
+        self.mesh_quality = PanelComboBox()
+        self.mesh_quality.addItem("Accurate (default)", AUTO_MESH_DEFLECTION)
+        self.mesh_quality.addItem("Fast", AUTO_FAST_MESH_DEFLECTION)
+        self.mesh_quality.setToolTip(
+            "Preset for the Auto mesh deflection; an Auto angular deflection follows it. "
+            "Fast meshes much more coarsely; projected areas can come out slightly high or low "
+            "depending on shape and attitude."
+        )
+        self._add_row(advanced, "Mesh quality", self.mesh_quality)
         self.mesh_deflection = FlexibleDoubleSpinBox()
         self.mesh_deflection.setRange(1.0e-8, 1.0)
         self.mesh_deflection.setDecimals(8)
@@ -370,9 +385,7 @@ class ControlPanel(QtWidgets.QWidget):
             "in the output length unit."
         )
         self.mesh_deflection_auto = self._check("Auto", True)
-        self.mesh_deflection_auto.toggled.connect(
-            lambda checked: self.mesh_deflection.setEnabled(not checked)
-        )
+        self.mesh_deflection_auto.toggled.connect(self._sync_mesh_controls)
         mesh_row = QtWidgets.QHBoxLayout()
         mesh_row.setContentsMargins(0, 0, 0, 0)
         mesh_row.setSpacing(8)
@@ -381,9 +394,17 @@ class ControlPanel(QtWidgets.QWidget):
         self._add_row(advanced, "Mesh deflection", mesh_row)
         self.angular_deflection = FlexibleDoubleSpinBox()
         self.angular_deflection.setRange(1.0e-6, 1.0)
-        self.angular_deflection.setValue(0.1)
+        self.angular_deflection.setValue(DEFAULT_ANGULAR_DEFLECTION)
         self.angular_deflection.setToolTip("Maximum angle between tessellation facets, in radians.")
-        self._add_row(advanced, "Angular deflection", self.angular_deflection)
+        self.angular_deflection_auto = self._check("Auto", True)
+        self.angular_deflection_auto.toggled.connect(self._sync_mesh_controls)
+        angular_row = QtWidgets.QHBoxLayout()
+        angular_row.setContentsMargins(0, 0, 0, 0)
+        angular_row.setSpacing(8)
+        angular_row.addWidget(self.angular_deflection)
+        angular_row.addWidget(self.angular_deflection_auto)
+        self._add_row(advanced, "Angular deflection", angular_row)
+        self.mesh_quality.currentIndexChanged.connect(self._sync_mesh_controls)
         self.base_tolerance = FlexibleDoubleSpinBox()
         self.base_tolerance.setRange(1.0e-12, 1.0)
         self.base_tolerance.setDecimals(12)
@@ -443,7 +464,7 @@ class ControlPanel(QtWidgets.QWidget):
         self.component_none_button.setToolTip("Clear every listed component.")
         self._connect_advanced_dirty_signals()
         self._sync_attitude_controls()
-        self.mesh_deflection.setEnabled(False)
+        self._sync_mesh_controls()
         self._sync_case_count()
         self.file_edit.textChanged.connect(self._emit_preview_request)
         self.file_edit.textChanged.connect(self._refresh_validation)
@@ -508,9 +529,15 @@ class ControlPanel(QtWidgets.QWidget):
             input_unit=self.input_unit.currentText(),
             output_unit=self.output_unit.currentText(),
             mesh_deflection=(
-                "auto" if self.mesh_deflection_auto.isChecked() else self.mesh_deflection.value()
+                self.mesh_quality.currentData()
+                if self.mesh_deflection_auto.isChecked()
+                else self.mesh_deflection.value()
             ),
-            angular_deflection=self.angular_deflection.value(),
+            angular_deflection=(
+                "auto"
+                if self.angular_deflection_auto.isChecked()
+                else self.angular_deflection.value()
+            ),
             base_tolerance=self.base_tolerance.value(),
             axis_map=",".join(
                 (self.axis_x.currentData(), self.axis_y.currentData(), self.axis_z.currentData())
@@ -929,6 +956,7 @@ class ControlPanel(QtWidgets.QWidget):
             self.axis_y,
             self.axis_z,
             self.step_metrics,
+            self.mesh_quality,
         ):
             combo.currentIndexChanged.connect(self._mark_advanced_dirty)
         self.step_component_mode.currentIndexChanged.connect(self._on_components_changed)
@@ -940,6 +968,25 @@ class ControlPanel(QtWidgets.QWidget):
         ):
             field.valueChanged.connect(self._mark_advanced_dirty)
         self.mesh_deflection_auto.toggled.connect(self._mark_advanced_dirty)
+        self.angular_deflection_auto.toggled.connect(self._mark_advanced_dirty)
+
+    def _sync_mesh_controls(self, *_args: object) -> None:
+        mesh_auto = self.mesh_deflection_auto.isChecked()
+        angular_auto = self.angular_deflection_auto.isChecked()
+        self.mesh_deflection.setEnabled(not mesh_auto)
+        self.angular_deflection.setEnabled(not angular_auto)
+        # The quality preset is the Auto mesh deflection; an Auto angle follows it.
+        self.mesh_quality.setEnabled(mesh_auto)
+        if angular_auto:
+            # Show the angle the preset will use. The value is ignored while Auto is checked.
+            preset_angle = resolve_angular_deflection(
+                "auto",
+                mesh_deflection=(
+                    self.mesh_quality.currentData() if mesh_auto else AUTO_MESH_DEFLECTION
+                ),
+            )
+            with QtCore.QSignalBlocker(self.angular_deflection):
+                self.angular_deflection.setValue(preset_angle)
 
     def _mark_advanced_dirty(self, *_args: object) -> None:
         if self._bulk_component_change:

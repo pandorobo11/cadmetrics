@@ -12,13 +12,23 @@ DEFAULT_BASE_TOLERANCE = 1.0e-6
 StepComponentMode = Literal["filter", "subtract"]
 StepMetricSource = Literal["brep", "mesh"]
 
+# Automatic STEP tessellation presets: linear deflection as a fraction of the bounding-box
+# diagonal, and the angular deflection used when angular_deflection is "auto".
+# In the curved reference benchmark the angular limit set the triangle count (and so the
+# projected-area run time), which is why the fast preset mainly relaxes the angle.
+AUTO_MESH_DEFLECTION = "auto"
+AUTO_FAST_MESH_DEFLECTION = "auto-fast"
+AUTO_DEFLECTION_FACTORS = {AUTO_MESH_DEFLECTION: 1.0e-4, AUTO_FAST_MESH_DEFLECTION: 1.0e-3}
+AUTO_ANGULAR_DEFLECTIONS = {AUTO_MESH_DEFLECTION: 0.1, AUTO_FAST_MESH_DEFLECTION: 0.3}
+DEFAULT_ANGULAR_DEFLECTION = AUTO_ANGULAR_DEFLECTIONS[AUTO_MESH_DEFLECTION]
+
 
 @dataclass(frozen=True)
 class ModelLoadOptions:
     input_unit: str = "auto"
     output_unit: str = "m"
     mesh_deflection: float | str = "auto"
-    angular_deflection: float = 0.1
+    angular_deflection: float = DEFAULT_ANGULAR_DEFLECTION
     axis_map: str = "x,y,z"
     step_metric_source: StepMetricSource = "brep"
     step_components: tuple[int, ...] | None = None
@@ -35,7 +45,7 @@ class ModelLoadOptions:
         input_unit: str = "auto",
         output_unit: str = "m",
         mesh_deflection: float | str = "auto",
-        angular_deflection: float = 0.1,
+        angular_deflection: float | str = "auto",
         axis_map: str = "x,y,z",
         step_metric_source: str = "brep",
         step_components: tuple[int, ...] | None = None,
@@ -47,11 +57,15 @@ class ModelLoadOptions:
         input_text = input_unit.strip().lower()
         resolved_input_unit = "auto" if input_text == "auto" else normalize_unit(input_unit)
         parsed_axis_map = parse_axis_map(axis_map)
+        resolved_mesh_deflection = _resolve_mesh_deflection_input(mesh_deflection)
         return cls(
             input_unit=resolved_input_unit,
             output_unit=normalize_unit(output_unit),
-            mesh_deflection=_resolve_mesh_deflection_input(mesh_deflection),
-            angular_deflection=resolve_angular_deflection(angular_deflection),
+            mesh_deflection=resolved_mesh_deflection,
+            angular_deflection=resolve_angular_deflection(
+                angular_deflection,
+                mesh_deflection=resolved_mesh_deflection,
+            ),
             axis_map=_format_axis_map(parsed_axis_map),
             step_metric_source=normalize_step_metric_source(step_metric_source),
             step_components=step_components,
@@ -99,11 +113,19 @@ def resolve_base_tolerance(value: float) -> float:
     return tolerance
 
 
-def resolve_angular_deflection(value: float) -> float:
+def resolve_angular_deflection(
+    value: float | str,
+    *,
+    mesh_deflection: float | str = AUTO_MESH_DEFLECTION,
+) -> float:
+    """Return the effective angular deflection; "auto" follows the mesh_deflection preset."""
+    if isinstance(value, str) and value.strip().lower() == "auto":
+        preset = mesh_deflection if isinstance(mesh_deflection, str) else AUTO_MESH_DEFLECTION
+        return AUTO_ANGULAR_DEFLECTIONS.get(preset, DEFAULT_ANGULAR_DEFLECTION)
     try:
         deflection = float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError("angular_deflection must be a number") from exc
+        raise ValueError("angular_deflection must be a number or 'auto'") from exc
     if not isfinite(deflection):
         raise ValueError("angular_deflection must be finite")
     if deflection < 0.0:
@@ -111,13 +133,22 @@ def resolve_angular_deflection(value: float) -> float:
     return deflection
 
 
+def normalize_auto_mesh_deflection(value: object) -> str | None:
+    """Return the canonical preset name for "auto"/"auto-fast", or None for other values."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip().lower().replace("_", "-")
+    return text if text in AUTO_DEFLECTION_FACTORS else None
+
+
 def _resolve_mesh_deflection_input(value: float | str) -> float | str:
-    if isinstance(value, str) and value.strip().lower() == "auto":
-        return "auto"
+    preset = normalize_auto_mesh_deflection(value)
+    if preset is not None:
+        return preset
     try:
         deflection = float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError("mesh_deflection must be a number or 'auto'") from exc
+        raise ValueError("mesh_deflection must be a number, 'auto', or 'auto-fast'") from exc
     if not isfinite(deflection):
         raise ValueError("mesh_deflection must be finite")
     if deflection <= 0.0:
