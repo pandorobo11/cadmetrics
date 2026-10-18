@@ -171,7 +171,7 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
   when projected area, mesh metrics, or GUI display are needed.
 - `measure` and CLI `inspect` avoid STEP tessellation in default B-Rep mode.
 - The GUI reuses the loaded display model for calculation so `Run Sweep` does not reload the same
-  model immediately after Browse or Preview with Settings.
+  model immediately after Browse or Apply & Reload.
 
 ## Accuracy Target
 

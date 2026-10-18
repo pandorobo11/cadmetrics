@@ -27,6 +27,18 @@ from cadmetrics.types import ModelData
 UNIT_OPTIONS = ["auto", "m", "mm", "cm", "in", "ft"]
 OUTPUT_UNIT_OPTIONS = ["m", "mm", "cm", "in", "ft"]
 COMPONENT_LIST_MAX_HEIGHT = 200
+# Long component lists get a filter field; short ones fit without it.
+COMPONENT_FILTER_MIN_COUNT = 9
+# "&&" shows one ampersand; a single "&" would mark a keyboard mnemonic.
+APPLY_BUTTON_TEXT = "Apply && Reload"
+APPLY_BUTTON_TOOLTIP = (
+    "Reload the model now with every pending Components and Advanced change. "
+    "Run Sweep also applies them."
+)
+COMPONENT_PENDING_TEXT = "Not applied yet — the 3D view shows an approximate preview."
+COMPONENT_PENDING_SUBTRACT_TEXT = (
+    "Not applied yet — the 3D view marks the parts to cut, not the cut shape."
+)
 # One label column for every form in the panel so all fields share a left edge.
 LABEL_WIDTH = 112
 FIELD_GAP = 10  # Between a label and its field.
@@ -69,6 +81,20 @@ class PanelComboBox(QtWidgets.QComboBox):
         super().wheelEvent(event)
 
 
+class PathLineEdit(QtWidgets.QLineEdit):
+    """Line edit that reports focus changes, so a loaded path can show compactly."""
+
+    focus_changed = QtCore.Signal(bool)
+
+    def focusInEvent(self, event: QtGui.QFocusEvent) -> None:  # noqa: N802
+        super().focusInEvent(event)
+        self.focus_changed.emit(True)
+
+    def focusOutEvent(self, event: QtGui.QFocusEvent) -> None:  # noqa: N802
+        super().focusOutEvent(event)
+        self.focus_changed.emit(False)
+
+
 class ControlPanel(QtWidgets.QWidget):
     calculation_requested = QtCore.Signal(object)
     model_reload_requested = QtCore.Signal(object)
@@ -77,6 +103,8 @@ class ControlPanel(QtWidgets.QWidget):
     request_changed = QtCore.Signal(object)
     # (checked component indexes, component mode), or None when there is nothing to pick.
     component_selection_changed = QtCore.Signal(object)
+    # Component index under the pointer in the list, or None.
+    component_hovered = QtCore.Signal(object)
     error = QtCore.Signal(str)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
@@ -84,6 +112,10 @@ class ControlPanel(QtWidgets.QWidget):
         self._file_paths: tuple[Path, ...] = ()
         self._component_filter_path: tuple[Path, ...] | None = None
         self._component_checkboxes: list[QtWidgets.QCheckBox] = []
+        self._component_group_labels: list[tuple[QtWidgets.QLabel, list[QtWidgets.QCheckBox]]] = []
+        # Selection and mode of the loaded model; None until a multi-component model loads.
+        self._applied_components: frozenset[int] | None = None
+        self._applied_component_mode = "filter"
         self._section_toggles: dict[str, QtWidgets.QToolButton] = {}
         self._model_loaded = False
         self._advanced_dirty = False
@@ -114,8 +146,9 @@ class ControlPanel(QtWidgets.QWidget):
         layout.setSpacing(8)
 
         setup = self._section(layout, "Setup")
-        self.file_edit = QtWidgets.QLineEdit()
+        self.file_edit = PathLineEdit()
         self.file_edit.setPlaceholderText("STL or STEP file(s)")
+        self.file_edit.focus_changed.connect(self._sync_file_text)
         self.browse_button = QtWidgets.QPushButton("Browse")
         self.browse_button.setObjectName("secondaryButton")
         self.browse_button.clicked.connect(self._browse)
@@ -185,15 +218,18 @@ class ControlPanel(QtWidgets.QWidget):
         components_layout.setSpacing(6)
         self.component_summary = QtWidgets.QLabel("Load a multi-solid STEP file.")
         self.component_summary.setWordWrap(True)
-        self.component_status = QtWidgets.QLabel("Changes will apply on the next Run Sweep")
-        self.component_status.setObjectName("dirtyStatusLabel")
-        self.component_status.setVisible(False)
         components_layout.addWidget(self.component_summary)
-        components_layout.addWidget(self.component_status)
         self.component_detail = QtWidgets.QWidget()
         detail_layout = QtWidgets.QVBoxLayout(self.component_detail)
         detail_layout.setContentsMargins(0, 0, 0, 0)
         detail_layout.setSpacing(6)
+        self.component_filter = QtWidgets.QLineEdit()
+        self.component_filter.setPlaceholderText("Filter components")
+        self.component_filter.setClearButtonEnabled(True)
+        self.component_filter.setToolTip("Show only components whose name contains this text.")
+        self.component_filter.textChanged.connect(self._apply_component_filter)
+        self.component_filter.setVisible(False)
+        detail_layout.addWidget(self.component_filter)
         component_list = QtWidgets.QWidget()
         component_list.setObjectName("componentListContent")
         self._component_list = component_list
@@ -222,6 +258,13 @@ class ControlPanel(QtWidgets.QWidget):
         component_buttons.addWidget(self.component_none_button)
         component_buttons.addStretch(1)
         detail_layout.addLayout(component_buttons)
+        self.component_hint = QtWidgets.QLabel(
+            "Point at a component to highlight it in the 3D view; "
+            "double-click a part there to toggle it."
+        )
+        self.component_hint.setObjectName("fieldHint")
+        self.component_hint.setWordWrap(True)
+        detail_layout.addWidget(self.component_hint)
         self.step_component_mode = PanelComboBox()
         self.step_component_mode.addItem("Exclude unchecked (default)", "filter")
         self.step_component_mode.addItem("Subtract unchecked", "subtract")
@@ -231,6 +274,16 @@ class ControlPanel(QtWidgets.QWidget):
             "which can expose new surfaces."
         )
         detail_layout.addLayout(self._labelled_row("Mode", self.step_component_mode))
+        self.component_status = QtWidgets.QLabel(COMPONENT_PENDING_TEXT)
+        self.component_status.setObjectName("dirtyStatusLabel")
+        self.component_status.setWordWrap(True)
+        self.component_status.setVisible(False)
+        detail_layout.addWidget(self.component_status)
+        self.component_apply_button = QtWidgets.QPushButton(APPLY_BUTTON_TEXT)
+        self.component_apply_button.setObjectName("applyButton")
+        self.component_apply_button.setToolTip(APPLY_BUTTON_TOOLTIP)
+        self.component_apply_button.clicked.connect(self._apply_advanced_settings)
+        detail_layout.addWidget(self.component_apply_button)
         components_layout.addWidget(self.component_detail)
         self.component_detail.setVisible(False)
 
@@ -361,7 +414,8 @@ class ControlPanel(QtWidgets.QWidget):
             "bounding-box diagonal."
         )
         self._add_row(advanced, "Base tolerance", self.base_tolerance)
-        self.apply_advanced_button = QtWidgets.QPushButton("Preview with Settings")
+        self.apply_advanced_button = QtWidgets.QPushButton(APPLY_BUTTON_TEXT)
+        self.apply_advanced_button.setObjectName("applyButton")
         self.apply_advanced_button.clicked.connect(self._apply_advanced_settings)
         self.advanced_status = QtWidgets.QLabel("Changes will apply on the next Run Sweep")
         self.advanced_status.setObjectName("dirtyStatusLabel")
@@ -406,12 +460,8 @@ class ControlPanel(QtWidgets.QWidget):
 
         self.run_button.setToolTip("Run the configured attitude sweep.")
         self.cancel_button.setToolTip("Stop the sweep after the current case finishes.")
-        self.component_all_button.setToolTip(
-            "Available after loading a STEP file with multiple components."
-        )
-        self.component_none_button.setToolTip(
-            "Available after loading a STEP file with multiple components."
-        )
+        self.component_all_button.setToolTip("Check every listed component.")
+        self.component_none_button.setToolTip("Clear every listed component.")
         self._connect_advanced_dirty_signals()
         self._sync_attitude_controls()
         self._sync_mesh_controls()
@@ -426,7 +476,10 @@ class ControlPanel(QtWidgets.QWidget):
     @property
     def file_paths(self) -> tuple[Path, ...]:
         text = self.file_edit.text().strip()
-        if self._file_paths and text == format_file_selection(self._file_paths):
+        if self._file_paths and text in (
+            format_file_selection(self._file_paths),
+            self._file_display_text(self._file_paths, focused=False),
+        ):
             return self._file_paths
         if not text:
             raise ValueError("Select one or more model files.")
@@ -434,8 +487,30 @@ class ControlPanel(QtWidgets.QWidget):
 
     def set_file_paths(self, paths: tuple[Path, ...]) -> None:
         self._file_paths = tuple(path.expanduser() for path in paths)
-        self.file_edit.setText(format_file_selection(self._file_paths))
+        self.file_edit.setText(
+            self._file_display_text(self._file_paths, focused=self.file_edit.hasFocus())
+        )
         self.file_edit.setToolTip("\n".join(str(path) for path in self._file_paths))
+
+    @staticmethod
+    def _file_display_text(paths: tuple[Path, ...], *, focused: bool) -> str:
+        """Full path while editing; otherwise just the file name, which fits the field."""
+        if focused or len(paths) != 1:
+            return format_file_selection(paths)
+        return paths[0].name
+
+    def _sync_file_text(self, focused: bool) -> None:
+        if not self._file_paths:
+            return
+        text = self.file_edit.text().strip()
+        if text not in (
+            format_file_selection(self._file_paths),
+            self._file_display_text(self._file_paths, focused=False),
+        ):
+            return  # The user typed a different path; leave it as typed.
+        display = self._file_display_text(self._file_paths, focused=focused)
+        if text != display:
+            self.file_edit.setText(display)
 
     def request(self) -> CalculationRequest:
         paths = self.file_paths
@@ -515,8 +590,10 @@ class ControlPanel(QtWidgets.QWidget):
             widget.setEnabled(not busy)
         for checkbox in self._component_checkboxes:
             checkbox.setEnabled(not busy)
+        self.component_filter.setEnabled(not busy)
         self._refresh_validation()
         self.apply_advanced_button.setEnabled(not busy and self._advanced_dirty)
+        self._sync_component_pending()
         cancellable = state in (OperationState.CALCULATING, OperationState.CANCELLING)
         self.cancel_button.setVisible(cancellable)
         self.cancel_button.setEnabled(state is OperationState.CALCULATING)
@@ -542,6 +619,7 @@ class ControlPanel(QtWidgets.QWidget):
         )
         self.model_summary.setToolTip(str(model.path))
         self._populate_components(model)
+        self._sync_component_pending()
         self._set_advanced_dirty(False)
         self._refresh_validation()
 
@@ -563,6 +641,7 @@ class ControlPanel(QtWidgets.QWidget):
     def _reload_from_edit(self) -> None:
         if self._busy or self.validation_message() is not None:
             return
+        self.set_file_paths(self.file_paths)
         self._clear_components()
         if self._emit_request(self.model_reload_requested):
             self._set_advanced_dirty(False)
@@ -636,6 +715,7 @@ class ControlPanel(QtWidgets.QWidget):
         current = set(self._selected_components(self.file_paths) or ())
         self._clear_component_widgets()
         self._component_filter_path = self.file_paths
+        self._applied_components = None
         if len(model.component_names) <= 1:
             self.component_summary.setText(
                 "Single STEP component."
@@ -653,21 +733,32 @@ class ControlPanel(QtWidgets.QWidget):
         for group_name, components in component_display_groups(
             model.component_names, grouped=model.is_assembly and model.source_format == "step"
         ):
+            group_boxes: list[QtWidgets.QCheckBox] = []
             if group_name:
                 group_label = QtWidgets.QLabel(group_name)
                 group_label.setObjectName("subheadingLabel")
                 self.component_list_layout.addWidget(group_label)
+                self._component_group_labels.append((group_label, group_boxes))
             for index, name in components:
                 checkbox = QtWidgets.QCheckBox(f"{index}: {name}")
                 checkbox.setProperty("component_index", index)
                 checkbox.setChecked(index in selected)
+                checkbox.installEventFilter(self)
                 checkbox.toggled.connect(self._sync_component_summary)
-                checkbox.toggled.connect(self._mark_advanced_dirty)
+                checkbox.toggled.connect(self._on_components_changed)
                 checkbox.toggled.connect(self._refresh_validation)
                 checkbox.toggled.connect(self._emit_component_selection)
                 self.component_list_layout.addWidget(checkbox)
                 self._component_checkboxes.append(checkbox)
+                group_boxes.append(checkbox)
         self.component_list_layout.addStretch(1)
+        count = len(self._component_checkboxes)
+        self._applied_components = frozenset(model.selected_components) or frozenset(
+            range(1, count + 1)
+        )
+        self._applied_component_mode = model.step_component_mode or "filter"
+        self.component_filter.setVisible(count >= COMPONENT_FILTER_MIN_COUNT)
+        self.component_hint.setVisible(bool(model.component_meshes))
         self._fit_component_list()
         self._emit_component_selection()
         self._sync_component_summary()
@@ -703,6 +794,7 @@ class ControlPanel(QtWidgets.QWidget):
 
     def _clear_components(self) -> None:
         self._component_filter_path = None
+        self._applied_components = None
         self._clear_component_widgets()
         self.component_summary.setText("Load a multi-solid STEP file.")
         self._sync_component_controls(False)
@@ -710,7 +802,13 @@ class ControlPanel(QtWidgets.QWidget):
 
     def _clear_component_widgets(self) -> None:
         self._component_checkboxes = []
+        self._component_group_labels = []
+        self.component_hovered.emit(None)
+        self.component_filter.blockSignals(True)
+        self.component_filter.clear()
+        self.component_filter.blockSignals(False)
         self.component_detail.setVisible(False)
+        self._sync_component_pending()
         while self.component_list_layout.count():
             item = self.component_list_layout.takeAt(0)
             if item is not None:
@@ -731,8 +829,51 @@ class ControlPanel(QtWidgets.QWidget):
         )
         self.component_selection_changed.emit((selected, self.step_component_mode.currentData()))
 
+    def toggle_component(self, index: int) -> bool:
+        """Flip one component's checkbox, as if it were clicked in the list."""
+        if self._busy:
+            return False
+        for checkbox in self._component_checkboxes:
+            if checkbox.property("component_index") == index:
+                toggle = self._section_toggles.get("Components")
+                if toggle is not None:
+                    toggle.setChecked(True)
+                if checkbox.isHidden():
+                    self.component_filter.clear()
+                checkbox.toggle()
+                self.component_scroll.ensureWidgetVisible(checkbox)
+                return True
+        return False
+
+    def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:  # noqa: N802
+        if isinstance(watched, QtWidgets.QCheckBox) and watched in self._component_checkboxes:
+            if event.type() == QtCore.QEvent.Type.Enter:
+                self.component_hovered.emit(int(watched.property("component_index")))
+            elif event.type() == QtCore.QEvent.Type.Leave:
+                self.component_hovered.emit(None)
+        return super().eventFilter(watched, event)
+
+    def _apply_component_filter(self, text: str) -> None:
+        query = text.strip().casefold()
+        for checkbox in self._component_checkboxes:
+            checkbox.setVisible(not query or query in checkbox.text().casefold())
+        for label, boxes in self._component_group_labels:
+            label.setVisible(
+                not query
+                or query in label.text().casefold()
+                or any(not box.isHidden() for box in boxes)
+            )
+            if query and query in label.text().casefold():
+                for box in boxes:
+                    box.setVisible(True)
+
     def _set_all_components(self, checked: bool) -> None:
-        changed = [box for box in self._component_checkboxes if box.isChecked() != checked]
+        # All/None act on the listed components, so a filter can select a subset at once.
+        changed = [
+            box
+            for box in self._component_checkboxes
+            if box.isChecked() != checked and not box.isHidden()
+        ]
         # Report All/None as one change: per-checkbox updates would re-render the
         # preview once for every component.
         self._bulk_component_change = True
@@ -743,7 +884,7 @@ class ControlPanel(QtWidgets.QWidget):
             self._bulk_component_change = False
         self._sync_component_summary()
         if changed:
-            self._mark_advanced_dirty()
+            self._on_components_changed()
             self._refresh_validation()
             self._emit_component_selection()
 
@@ -814,11 +955,11 @@ class ControlPanel(QtWidgets.QWidget):
             self.axis_x,
             self.axis_y,
             self.axis_z,
-            self.step_component_mode,
             self.step_metrics,
             self.mesh_quality,
         ):
             combo.currentIndexChanged.connect(self._mark_advanced_dirty)
+        self.step_component_mode.currentIndexChanged.connect(self._on_components_changed)
         self.step_component_mode.currentIndexChanged.connect(self._emit_component_selection)
         for field in (
             self.mesh_deflection,
@@ -853,14 +994,58 @@ class ControlPanel(QtWidgets.QWidget):
         self._set_advanced_dirty(True)
         self._emit_preview_request()
 
+    def _on_components_changed(self, *_args: object) -> None:
+        if self._bulk_component_change:
+            return
+        self._sync_component_pending()
+        self._emit_preview_request()
+
+    @property
+    def components_pending(self) -> bool:
+        """Whether the checked components or mode differ from the loaded model."""
+        if self._applied_components is None or not self._component_checkboxes:
+            return False
+        selected = {
+            int(box.property("component_index"))
+            for box in self._component_checkboxes
+            if box.isChecked()
+        }
+        if selected != self._applied_components:
+            return True
+        # The mode only changes the geometry when some component is unchecked.
+        mode = self.step_component_mode.currentData()
+        return mode != self._applied_component_mode and len(selected) < len(
+            self._component_checkboxes
+        )
+
+    def _sync_component_pending(self) -> None:
+        pending = self.components_pending
+        subtract = self.step_component_mode.currentData() == "subtract"
+        self.component_status.setText(
+            COMPONENT_PENDING_SUBTRACT_TEXT if subtract else COMPONENT_PENDING_TEXT
+        )
+        self.component_status.setVisible(pending)
+        self.component_apply_button.setEnabled(pending and not self._busy)
+        self._set_emphasis(self.component_apply_button, pending)
+        toggle = self._section_toggles.get("Components")
+        if toggle is not None:
+            toggle.setText("Components · changes pending" if pending else "Components")
+
+    @staticmethod
+    def _set_emphasis(button: QtWidgets.QPushButton, emphasis: bool) -> None:
+        if bool(button.property("emphasis")) == emphasis:
+            return
+        button.setProperty("emphasis", emphasis)
+        button.style().unpolish(button)
+        button.style().polish(button)
+
     def _set_advanced_dirty(self, dirty: bool) -> None:
         self._advanced_dirty = dirty and self._model_loaded
         self.advanced_status.setVisible(self._advanced_dirty)
-        self.component_status.setVisible(self._advanced_dirty and bool(self._component_checkboxes))
         self.apply_advanced_button.setEnabled(self._advanced_dirty and not self._busy)
+        self._set_emphasis(self.apply_advanced_button, self._advanced_dirty)
         self.apply_advanced_button.setToolTip(
-            "Reload the model now to preview the changed axis, component, and tessellation "
-            "settings. Run Sweep also applies them."
+            APPLY_BUTTON_TOOLTIP
             if self._model_loaded
             else "Load a model before reloading it with Advanced settings."
         )
