@@ -519,10 +519,6 @@ def _sweep_orientations(
 
 _MAX_SWEEP_WORKERS = 8
 _CANCEL_POLL_SEC = 0.05
-# Directions are unit vectors computed with trigonometry; equal attitudes such as
-# 0 and 360 degrees differ only by ~1e-16. Rounding at 1e-12 absorbs that noise
-# while keeping any meaningfully different direction (>~1e-12 rad) separate.
-_DIRECTION_KEY_DECIMALS = 12
 
 
 def _sweep_worker_count(distinct_directions: int, max_workers: int | None) -> int:
@@ -532,14 +528,17 @@ def _sweep_worker_count(distinct_directions: int, max_workers: int | None) -> in
 
 
 def _direction_key(direction: FloatArray) -> tuple[float, float, float]:
-    """Return a key shared by a direction and its reverse, up to float noise."""
+    """Return a key shared only by exactly equal or exactly reversed directions."""
 
+    # No rounding: a direction a few ulps away can be the one that turns an edge-on
+    # face into a tiny positive area. Equivalent attitudes still share a key because
+    # orientation._sin_cos_degrees reduces whole and half turns exactly.
     # Adding 0.0 turns -0.0 into 0.0 so both signs of a zero component match.
-    rounded = [round(float(value), _DIRECTION_KEY_DECIMALS) + 0.0 for value in direction]
-    leading = next((value for value in rounded if value != 0.0), 0.0)
+    values = [float(value) + 0.0 for value in direction]
+    leading = next((value for value in values if value != 0.0), 0.0)
     if leading < 0.0:
-        rounded = [-value + 0.0 for value in rounded]
-    return rounded[0], rounded[1], rounded[2]
+        values = [-value + 0.0 for value in values]
+    return values[0], values[1], values[2]
 
 
 def _metrics_for_direction(
