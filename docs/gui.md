@@ -376,12 +376,19 @@ each case finishes instead of only at the end of the sweep. Before a sweep, the 
 an empty-state prompt instead of an empty table.
 
 `Table` and `Chart` above the results switch between the table and a line chart of projected
-area against the swept angle. The angle with more sweep values runs along the x axis; each value
-of the other angle is one line (up to 8, with a legend). Points sit at the requested angles, so
-every sweep row has its own point even when two attitudes look along the same direction. Pointing at a point shows its values, and
-clicking it selects that row, which updates the 3D view just like selecting it in the table.
-Unit-vector results, single attitudes, and sweeps with more than 8 lines show a note instead;
-use the table for those.
+area against the swept angle. By default the angle with more sweep values runs along the x axis;
+choose `Alpha` / `Beta` (or `Roll` / `Pitch`) in `X axis` next to `Chart` to plot the other one
+instead. Each value of the remaining angle is one line. Points sit at the requested angles, so
+every sweep row has its own point even when two attitudes look along the same direction. Up to 8
+lines get distinct colors and a legend; 9 to 24 lines are shaded light to dark along one blue in
+value order, with a compact key from the first to the last value. Pointing at a point shows its
+values and brings its line to the front while the others fade, and clicking it selects that row,
+which updates the 3D view just like selecting it in the table. Unit-vector results, single
+attitudes, and sweeps with more than 24 lines show a note instead; use the table for those.
+
+In the chart view, `Save Image` saves the chart as shown, as a PNG (at twice the on-screen
+resolution) or an SVG for documents that scale it. The pointer's highlight is left out; a
+selected point stays marked.
 
 Every row of a sweep comes from the loaded model named above `Run Sweep`, so the table hides the
 `File` column; copied rows and CSV files still include it. Numbers are right-aligned
