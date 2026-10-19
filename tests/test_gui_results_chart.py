@@ -7,9 +7,16 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui
 
-from cadmetrics.gui.results_chart import EMPTY_MESSAGE, MAX_SERIES, chart_data, nice_ticks
+from cadmetrics.gui.results_chart import (
+    EMPTY_MESSAGE,
+    MAX_SERIES,
+    SERIES_COLORS,
+    chart_data,
+    nice_ticks,
+    series_colors,
+)
 from cadmetrics.gui.results_panel import ResultsPanel
 from cadmetrics.types import MeasurementRow
 
@@ -113,3 +120,77 @@ def test_nice_ticks_preserve_small_positive_areas(low: float, high: float) -> No
     assert ticks[0] <= low < high <= ticks[-1]
     assert all(left < right for left, right in zip(ticks, ticks[1:]))
     assert 0.0 < ticks[-1] < high * 2
+
+
+def test_more_lines_than_hues_shade_one_ramp_light_to_dark(qtbot) -> None:
+    data = chart_data(_sweep(range(0, 91, 5), range(0, 15 * 5, 5)), "alpha_beta")
+    assert len(data.series) == 15
+    colors = series_colors(15)
+    assert len(set(colors)) == 15
+    assert series_colors(len(SERIES_COLORS)) == list(SERIES_COLORS)
+    lightness = [QtGui.QColor(color).lightnessF() for color in colors]
+    assert lightness == sorted(lightness, reverse=True)
+
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(900, 320)
+    panel.show()
+    panel.set_rows(_sweep(range(0, 91, 5), range(0, 15 * 5, 5)))
+    panel.chart_view_button.click()
+    assert len(panel.chart.data.series) == 15
+    panel.chart.grab()
+
+
+def test_the_x_axis_can_be_chosen() -> None:
+    rows = _sweep((0, 45), (0, 10, 20, 30))
+    data = chart_data(rows, "alpha_beta", "alpha_deg")
+    assert data.x_label == "Alpha (°)"
+    assert data.series_label == "Beta"
+    assert [series.value for series in data.series] == [0, 10, 20, 30]
+    assert chart_data(rows, "alpha_beta", "beta_deg").x_label == "Beta (°)"
+    single = chart_data(_sweep((0,), (0, 10, 20)), "alpha_beta", "alpha_deg")
+    assert single.series == ()
+    assert "Alpha has a single value" in (single.message or "")
+
+
+def test_x_axis_combo_follows_mode_and_view(qtbot) -> None:
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.set_rows(_sweep((0, 45), (0, 10, 20, 30)))
+    assert not panel.x_axis_combo.isVisible()
+    panel.chart_view_button.click()
+    assert panel.x_axis_combo.isVisible()
+    assert [panel.x_axis_combo.itemText(i) for i in range(3)] == ["Auto", "Alpha", "Beta"]
+    assert panel.chart.data.x_label == "Beta (°)"
+    panel.x_axis_combo.setCurrentIndex(1)
+    assert panel.chart.data.x_label == "Alpha (°)"
+    panel.set_attitude_mode("roll_pitch")
+    assert panel.x_axis_combo.currentData() is None
+    assert panel.x_axis_combo.itemText(1) == "Roll"
+
+
+def test_chart_saves_as_png_or_svg(qtbot, tmp_path) -> None:
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(800, 360)
+    panel.show()
+    panel.set_rows(_sweep((0, 15, 30, 45), (0, 10)))
+    assert not panel.save_image_button.isVisible()
+    panel.chart_view_button.click()
+    assert panel.save_image_button.isVisible() and panel.save_image_button.isEnabled()
+
+    png = tmp_path / "chart.png"
+    panel.save_image(png)
+    image = QtGui.QImage(str(png))
+    assert image.width() == panel.chart.width() * 2
+    svg = tmp_path / "chart.svg"
+    panel.save_image(svg)
+    assert "<svg" in svg.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="PNG or SVG"):
+        panel.save_image(tmp_path / "chart.jpg")
+
+    panel.set_rows([_row(0, 0, 1.0)])  # A single attitude has no chart to save.
+    assert not panel.save_image_button.isEnabled()
+    with pytest.raises(ValueError, match="no chart"):
+        panel.save_image(tmp_path / "empty.png")

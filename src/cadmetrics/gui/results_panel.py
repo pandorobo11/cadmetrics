@@ -7,7 +7,7 @@ from typing import Iterable
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from cadmetrics.gui.export import write_rows_csv
-from cadmetrics.gui.results_chart import ResultsChart
+from cadmetrics.gui.results_chart import AXES, IMAGE_SUFFIXES, ResultsChart
 from cadmetrics.gui.results_model import DISPLAY_FIELDS
 from cadmetrics.gui.results_model import PRIMARY_DISPLAY_FIELDS as PRIMARY_DISPLAY_FIELDS
 from cadmetrics.gui.results_model import RESULT_HEADER_LABELS as RESULT_HEADER_LABELS
@@ -69,6 +69,10 @@ class ResultsPanel(QtWidgets.QWidget):
         self.save_button.setObjectName("secondaryButton")
         self.save_button.setToolTip("Run a sweep before saving results.")
         self.save_button.clicked.connect(self.choose_csv_path)
+        self.save_image_button = QtWidgets.QPushButton("Save Image")
+        self.save_image_button.setObjectName("secondaryButton")
+        self.save_image_button.setToolTip("Save the chart as a PNG or SVG image.")
+        self.save_image_button.clicked.connect(self.choose_image_path)
         # styles.py dims the table and styles this label via objectName / stale property.
         self.stale_label = QtWidgets.QLabel(STALE_MESSAGE)
         self.stale_label.setObjectName("resultsStaleLabel")
@@ -83,13 +87,25 @@ class ResultsPanel(QtWidgets.QWidget):
         view_group.addButton(self.table_view_button)
         view_group.addButton(self.chart_view_button)
         self.chart_view_button.toggled.connect(lambda _checked: self._sync_rows())
+        self.x_axis_label = QtWidgets.QLabel("X axis")
+        self.x_axis_combo = QtWidgets.QComboBox()
+        self.x_axis_combo.setObjectName("chartXAxisCombo")
+        self.x_axis_combo.setToolTip(
+            "Angle along the chart's x axis; each value of the other angle is one line. "
+            "Auto puts the angle with more values on the x axis."
+        )
+        self.x_axis_combo.currentIndexChanged.connect(self._x_axis_changed)
         toolbar_layout.addWidget(self.result_count)
         toolbar_layout.addSpacing(12)
         toolbar_layout.addWidget(self.table_view_button)
         toolbar_layout.addWidget(self.chart_view_button)
         toolbar_layout.addSpacing(12)
+        toolbar_layout.addWidget(self.x_axis_label)
+        toolbar_layout.addWidget(self.x_axis_combo)
+        toolbar_layout.addSpacing(12)
         toolbar_layout.addWidget(self.stale_label)
         toolbar_layout.addStretch(1)
+        toolbar_layout.addWidget(self.save_image_button)
         toolbar_layout.addWidget(self.save_button)
         layout.addWidget(toolbar)
         self.stack = QtWidgets.QStackedWidget()
@@ -110,6 +126,7 @@ class ResultsPanel(QtWidgets.QWidget):
 
         self.chart = ResultsChart()
         self.chart.row_clicked.connect(self.select_source_row)
+        self._fill_x_axis_choices()
         self.table = QtWidgets.QTableView()
         self.table.setProperty("stale", False)
         self._table_model = ResultsTableModel(self.table)
@@ -183,8 +200,25 @@ class ResultsPanel(QtWidgets.QWidget):
 
     def set_attitude_mode(self, mode: str) -> None:
         """Set which angles the chart plots: those swept in this attitude mode."""
-        self._attitude_mode = mode
+        if mode != self._attitude_mode:
+            self._attitude_mode = mode
+            self._fill_x_axis_choices()
         self.chart.set_rows(self._rows, mode)
+        self._sync_chart_controls()
+
+    def _x_axis_changed(self, _index: int) -> None:
+        self.chart.set_x_field(self.x_axis_combo.currentData())
+        self._sync_chart_controls()
+
+    def _fill_x_axis_choices(self) -> None:
+        """Offer Auto plus this mode's two swept angles; other modes have no chart axes."""
+        with QtCore.QSignalBlocker(self.x_axis_combo):
+            self.x_axis_combo.clear()
+            self.x_axis_combo.addItem("Auto", None)
+            for field, label in AXES.get(self._attitude_mode, ()):
+                self.x_axis_combo.addItem(label, field)
+        self.chart.set_x_field(None)
+        self.x_axis_combo.setEnabled(self._attitude_mode in AXES)
 
     def set_rows(
         self,
@@ -285,6 +319,25 @@ class ResultsPanel(QtWidgets.QWidget):
         except Exception as exc:
             self.error.emit(str(exc))
 
+    def save_image(self, path: str | Path) -> None:
+        self.chart.save_image(path)
+
+    def choose_image_path(self) -> None:
+        path, selected_filter = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save Chart Image",
+            "cadmetrics_chart.png",
+            "PNG Image (*.png);;SVG Image (*.svg)",
+        )
+        if not path:
+            return
+        if Path(path).suffix.lower() not in IMAGE_SUFFIXES:
+            path += ".svg" if selected_filter.startswith("SVG") else ".png"
+        try:
+            self.save_image(path)
+        except Exception as exc:
+            self.error.emit(str(exc))
+
     @staticmethod
     def _view_toggle(text: str, tooltip: str) -> QtWidgets.QToolButton:
         button = QtWidgets.QToolButton()
@@ -315,6 +368,7 @@ class ResultsPanel(QtWidgets.QWidget):
         else:
             tooltip = "Save all result columns to CSV."
         self.save_button.setToolTip(tooltip)
+        self._sync_chart_controls()
         if rows:
             self._fit_header_widths()
             chart = self.chart_view_button.isChecked()
@@ -328,6 +382,13 @@ class ResultsPanel(QtWidgets.QWidget):
                 self.empty_message.setText("Run Sweep to generate results.")
             self.stack.setCurrentWidget(self.empty_state)
         self.rows_changed.emit()
+
+    def _sync_chart_controls(self) -> None:
+        chart_shown = bool(self._rows) and self.chart_view_button.isChecked()
+        self.x_axis_label.setVisible(chart_shown)
+        self.x_axis_combo.setVisible(chart_shown)
+        self.save_image_button.setVisible(chart_shown)
+        self.save_image_button.setEnabled(not self._busy and bool(self.chart.data.series))
 
     def _set_stale(self, stale: bool) -> None:
         if stale == self._stale:

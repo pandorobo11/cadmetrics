@@ -5,8 +5,9 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtSvg, QtWidgets
 
 from cadmetrics.types import MeasurementRow
 
@@ -21,7 +22,21 @@ SERIES_COLORS = (
     "#6250d6",
     "#e34948",
 )
-MAX_SERIES = len(SERIES_COLORS)
+# Beyond the categorical palette, lines are ordered angles: shade them along one hue,
+# light to dark (ordinal steps 250-700, each at least 2:1 against the surface).
+ORDINAL_RAMP = (
+    "#86b6ef",
+    "#6da7ec",
+    "#5598e7",
+    "#3987e5",
+    "#2a78d6",
+    "#256abf",
+    "#1c5cab",
+    "#184f95",
+    "#104281",
+    "#0d366b",
+)
+MAX_SERIES = 24
 _SURFACE = "#ffffff"
 _TEXT = "#202832"
 _MUTED_TEXT = "#5f6b78"
@@ -32,11 +47,14 @@ _MARKER = 8.0
 _SELECTED_MARKER = 12.0
 _HIT_RADIUS = 14.0
 _STALE_OPACITY = 0.45
-# (x field, series field, x label, series label) per attitude mode.
-_AXES = {
+_DIMMED_OPACITY = 0.18
+# ((first field, label), (second field, label)) per attitude mode.
+AXES = {
     "alpha_beta": (("alpha_deg", "Alpha"), ("beta_deg", "Beta")),
     "roll_pitch": (("roll_deg", "Roll"), ("pitch_deg", "Pitch")),
 }
+IMAGE_SUFFIXES = (".png", ".svg")
+_PNG_SCALE = 2  # Pixels per point, so saved charts stay sharp on high-density displays.
 EMPTY_MESSAGE = "The chart needs an Alpha / Beta or Roll / Pitch sweep with several attitudes."
 
 
@@ -66,11 +84,35 @@ def _key(value: float | None) -> float:
     return round(float(value or 0.0) + 0.0, 9)
 
 
-def chart_data(rows: Sequence[MeasurementRow], mode: str) -> ChartData:
-    """Split sweep rows into one series per value of the less-varied angle."""
-    if mode not in _AXES:
+def series_colors(count: int) -> list[str]:
+    """Categorical hues in fixed order, or an ordinal ramp for more lines than hues."""
+    if count <= len(SERIES_COLORS):
+        return list(SERIES_COLORS[:count])
+    last = len(ORDINAL_RAMP) - 1
+    colors = []
+    for index in range(count):
+        position = index * last / (count - 1)
+        low = min(int(position), last - 1)
+        a = QtGui.QColor(ORDINAL_RAMP[low])
+        b = QtGui.QColor(ORDINAL_RAMP[low + 1])
+        t = position - low
+        mixed = QtGui.QColor(
+            round(a.red() + (b.red() - a.red()) * t),
+            round(a.green() + (b.green() - a.green()) * t),
+            round(a.blue() + (b.blue() - a.blue()) * t),
+        )
+        colors.append(mixed.name())
+    return colors
+
+
+def chart_data(rows: Sequence[MeasurementRow], mode: str, x_field: str | None = None) -> ChartData:
+    """Split sweep rows into one series per value of the angle not on the x axis.
+
+    ``x_field`` picks the x-axis angle; ``None`` puts the angle with more values there.
+    """
+    if mode not in AXES:
         return ChartData("", None, (), EMPTY_MESSAGE)
-    first, second = _AXES[mode]
+    first, second = AXES[mode]
     usable = [
         (index, row, row.projected_area)
         for index, row in enumerate(rows)
@@ -78,16 +120,28 @@ def chart_data(rows: Sequence[MeasurementRow], mode: str) -> ChartData:
     ]
     first_values = {_key(getattr(row, first[0])) for _, row, _ in usable}
     second_values = {_key(getattr(row, second[0])) for _, row, _ in usable}
-    # The angle with more values runs along the x axis; ties keep the first angle there.
-    (x_field, x_name), (s_field, s_name) = (
-        (second, first) if len(second_values) > len(first_values) else (first, second)
-    )
+    if x_field == second[0]:
+        swap = True
+    elif x_field == first[0]:
+        swap = False
+    else:
+        # The angle with more values runs along the x axis; ties keep the first angle there.
+        swap = len(second_values) > len(first_values)
+    x_values = second_values if swap else first_values
+    (x_field, x_name), (s_field, s_name) = (second, first) if swap else (first, second)
     groups: dict[float, list[ChartPoint]] = {}
     for index, row, area in usable:
         point = ChartPoint(_key(getattr(row, x_field)), float(area), index)
         groups.setdefault(_key(getattr(row, s_field)), []).append(point)
     x_label = f"{x_name} (°)"
     if not groups or max(len(points) for points in groups.values()) < 2:
+        if usable and len(x_values) == 1 and len(groups) > 1:
+            return ChartData(
+                x_label,
+                None,
+                (),
+                f"{x_name} has a single value in this sweep; plot {s_name} along the x axis.",
+            )
         return ChartData(x_label, None, (), EMPTY_MESSAGE)
     if len(groups) > MAX_SERIES:
         return ChartData(
@@ -141,7 +195,9 @@ class ResultsChart(QtWidgets.QWidget):
         self.setMinimumHeight(160)
         self._rows: list[MeasurementRow] = []
         self._mode = "alpha_beta"
+        self._x_field: str | None = None
         self._data = ChartData("", None, (), EMPTY_MESSAGE)
+        self._colors: list[str] = []
         self._selected: int | None = None
         self._hovered: int | None = None
         self._stale = False
@@ -156,7 +212,17 @@ class ResultsChart(QtWidgets.QWidget):
     def set_rows(self, rows: Sequence[MeasurementRow], mode: str) -> None:
         self._rows = list(rows)
         self._mode = mode
-        self._data = chart_data(self._rows, mode)
+        self._refresh()
+
+    def set_x_field(self, x_field: str | None) -> None:
+        """Plot this angle along x; ``None`` picks the angle with more values."""
+        if x_field != self._x_field:
+            self._x_field = x_field
+            self._refresh()
+
+    def _refresh(self) -> None:
+        self._data = chart_data(self._rows, self._mode, self._x_field)
+        self._colors = series_colors(len(self._data.series))
         if self._selected is not None and self._selected >= len(self._rows):
             self._selected = None
         self._hovered = None
@@ -171,6 +237,39 @@ class ResultsChart(QtWidgets.QWidget):
         if stale != self._stale:
             self._stale = stale
             self.update()
+
+    def save_image(self, path: str | Path) -> None:
+        """Save the chart as it is shown, as PNG or SVG by the file's suffix."""
+        path = Path(path)
+        suffix = path.suffix.lower()
+        if suffix not in IMAGE_SUFFIXES:
+            raise ValueError(
+                f"Chart images are saved as PNG or SVG, not {path.suffix or path.name}."
+            )
+        if not self._data.series:
+            raise ValueError("There is no chart to save.")
+        # The pointer's highlight is transient; the saved chart keeps only the selection.
+        hovered, self._hovered = self._hovered, None
+        try:
+            if suffix == ".svg":
+                generator = QtSvg.QSvgGenerator()
+                generator.setFileName(str(path))
+                generator.setSize(self.size())
+                generator.setViewBox(self.rect())
+                generator.setTitle("Projected area")
+                self.render(generator)
+                # QSvgGenerator reports no write errors; an empty file means it failed.
+                if not path.is_file() or path.stat().st_size == 0:
+                    raise OSError(f"Could not write {path}.")
+            else:
+                image = QtGui.QImage(self.size() * _PNG_SCALE, QtGui.QImage.Format.Format_ARGB32)
+                image.setDevicePixelRatio(_PNG_SCALE)
+                image.fill(QtGui.QColor(_SURFACE))
+                self.render(image)
+                if not image.save(str(path), "PNG"):
+                    raise OSError(f"Could not write {path}.")
+        finally:
+            self._hovered = hovered
 
     def point_at(self, position: QtCore.QPointF) -> ChartPoint | None:
         """Nearest point within the hit radius, which is larger than the marker."""
@@ -201,7 +300,7 @@ class ResultsChart(QtWidgets.QWidget):
         self._y_range = (y_ticks[0], y_ticks[-1])
         metrics = self.fontMetrics()
         left = max(metrics.horizontalAdvance(_format_tick(tick)) for tick in y_ticks) + 22
-        legend = metrics.height() + 14 if self._data.series_label else 8
+        legend = self._legend_height() if self._data.series_label else 8
         top = legend + metrics.height() + 6  # Room for the y-axis title above the plot.
         bottom = metrics.height() * 2 + 16
         right = 18 + self._direct_label_width()
@@ -299,10 +398,24 @@ class ResultsChart(QtWidgets.QWidget):
         )
         painter.drawText(QtCore.QPointF(8, plot.top() - 8), f"Projected area{self._y_unit()}")
 
+    def _hovered_series(self) -> int | None:
+        found = self._point_for_row(self._hovered)
+        return None if found is None or len(self._data.series) < 2 else found[0]
+
     def _paint_series(self, painter: QtGui.QPainter) -> None:
         surface = QtGui.QColor(_SURFACE)
-        for index, series in enumerate(self._data.series):
-            color = QtGui.QColor(SERIES_COLORS[index])
+        base_opacity = painter.opacity()
+        hovered = self._hovered_series()
+        order = list(range(len(self._data.series)))
+        if hovered is not None:
+            # Pointing at a line lifts it above the others, which step back.
+            order.remove(hovered)
+            order.append(hovered)
+        for index in order:
+            series = self._data.series[index]
+            dimmed = hovered is not None and index != hovered
+            painter.setOpacity(base_opacity * (_DIMMED_OPACITY if dimmed else 1.0))
+            color = QtGui.QColor(self._colors[index])
             pen = QtGui.QPen(color, _LINE_WIDTH)
             pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
             pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
@@ -314,6 +427,7 @@ class ResultsChart(QtWidgets.QWidget):
             painter.setBrush(color)
             for point in series.points:
                 painter.drawEllipse(self._map(point), _MARKER / 2, _MARKER / 2)
+        painter.setOpacity(base_opacity)
         if self._direct_labels():
             self._paint_direct_labels(painter)
         self._paint_focus(painter)
@@ -359,22 +473,79 @@ class ResultsChart(QtWidgets.QWidget):
                     QtCore.QPointF(center.x(), self._plot.bottom()),
                 )
             painter.setPen(QtGui.QPen(QtGui.QColor(_TEXT), 2.0))
-            painter.setBrush(QtGui.QColor(SERIES_COLORS[index]))
+            painter.setBrush(QtGui.QColor(self._colors[index]))
             painter.drawEllipse(center, size / 2, size / 2)
+
+    def _legend_entries(self) -> list[tuple[str, str]]:
+        return [
+            (self._colors[index], self._series_name(series))
+            for index, series in enumerate(self._data.series)
+        ]
+
+    def _legend_rows(self) -> list[list[tuple[str, str, float]]]:
+        """Categorical legend entries wrapped to the plot width, with their widths."""
+        metrics = self.fontMetrics()
+        available = max(self.width() - 60.0, 120.0)
+        rows: list[list[tuple[str, str, float]]] = [[]]
+        used = 0.0
+        for color, name in self._legend_entries():
+            width = 22 + metrics.horizontalAdvance(name) + 16
+            if rows[-1] and used + width > available:
+                rows.append([])
+                used = 0.0
+            rows[-1].append((color, name, width))
+            used += width
+        return rows
+
+    def _ordinal_legend(self) -> bool:
+        return len(self._data.series) > len(SERIES_COLORS)
+
+    def _legend_height(self) -> float:
+        line = self.fontMetrics().height() + 4
+        rows = 1 if self._ordinal_legend() else len(self._legend_rows())
+        return rows * line + 10
 
     def _paint_legend(self, painter: QtGui.QPainter) -> None:
         if not self._data.series_label:
             return
         metrics = self.fontMetrics()
-        x = self._plot.left()
+        line = metrics.height() + 4
+        if self._ordinal_legend():
+            self._paint_ordinal_legend(painter)
+            return
+        for row_index, row in enumerate(self._legend_rows()):
+            x = self._plot.left()
+            y = 6 + metrics.height() / 2 + row_index * line
+            for color, name, width in row:
+                painter.setPen(QtGui.QPen(QtGui.QColor(color), 3.0))
+                painter.drawLine(QtCore.QPointF(x, y), QtCore.QPointF(x + 16, y))
+                painter.setPen(QtGui.QColor(_TEXT))
+                painter.drawText(QtCore.QPointF(x + 22, y + metrics.ascent() / 2 - 1), name)
+                x += width
+
+    def _paint_ordinal_legend(self, painter: QtGui.QPainter) -> None:
+        """Series label, then first value, one swatch per line light to dark, last value."""
+        metrics = self.fontMetrics()
+        series = self._data.series
         y = 6 + metrics.height() / 2
-        for index, series in enumerate(self._data.series):
-            painter.setPen(QtGui.QPen(QtGui.QColor(SERIES_COLORS[index]), 3.0))
-            painter.drawLine(QtCore.QPointF(x, y), QtCore.QPointF(x + 16, y))
-            painter.setPen(QtGui.QColor(_TEXT))
-            name = self._series_name(series)
-            painter.drawText(QtCore.QPointF(x + 22, y + metrics.ascent() / 2 - 1), name)
-            x += 22 + metrics.horizontalAdvance(name) + 16
+        baseline = y + metrics.ascent() / 2 - 1
+        x = self._plot.left()
+        hovered = self._hovered_series()
+        painter.setPen(QtGui.QColor(_TEXT))
+        for text in (f"{self._data.series_label} ({len(series)} lines)", f"{series[0].value:g}°"):
+            painter.drawText(QtCore.QPointF(x, baseline), text)
+            x += metrics.horizontalAdvance(text) + 8
+        swatch = 10.0
+        for index, color in enumerate(self._colors):
+            rect = QtCore.QRectF(x, y - swatch / 2, swatch, swatch)
+            painter.fillRect(rect, QtGui.QColor(color))
+            if index == hovered:
+                painter.setPen(QtGui.QPen(QtGui.QColor(_TEXT), 1.5))
+                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+                painter.drawRect(rect.adjusted(-2, -2, 2, 2))
+            x += swatch + 2
+        painter.setPen(QtGui.QColor(_TEXT))
+        painter.drawText(QtCore.QPointF(x + 6, baseline), f"{series[-1].value:g}°")
 
     # Interaction --------------------------------------------------------------------
 
