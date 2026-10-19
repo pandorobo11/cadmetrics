@@ -33,8 +33,8 @@ CAMERA_VIEWS: tuple[tuple[str, str, tuple[float, float, float]], ...] = (
     ("-Y", "View from -Y", (0.0, -1.0, 0.0)),
     ("+Z", "View from +Z", (0.0, 0.0, 1.0)),
     ("-Z", "View from -Z", (0.0, 0.0, -1.0)),
-    ("ISO", "Isometric view from -X -Y +Z", (-1.0, -1.0, 1.0)),
-    ("ISO↓", "Isometric view from below (+X +Y -Z)", (1.0, 1.0, -1.0)),
+    ("-X-Y+Z", "Isometric view from -X -Y +Z", (-1.0, -1.0, 1.0)),
+    ("+X+Y-Z", "Isometric view from below (+X +Y -Z)", (1.0, 1.0, -1.0)),
 )
 DEFAULT_CAMERA_DIRECTION = (-1.0, -1.0, 1.0)
 # Keep the orientation triad in the lower-right corner, away from the upper-left overlay.

@@ -337,6 +337,46 @@ def test_roll_pitch_sweep_reports_public_angles_to_progress_callback() -> None:
     assert progress == [(1, 2, 0.0, 90.0), (2, 2, 90.0, 90.0)]
 
 
+def test_alpha_beta_sweep_keeps_requested_angles_and_recovers_the_rest() -> None:
+    rows = sweep(
+        DATA_DIR / "unit_cube.stl",
+        alpha_deg="270:360:90",
+        beta_deg="-90:0:90",
+    )
+
+    assert [(row.alpha_deg, row.beta_deg) for row in rows] == [
+        (270.0, -90.0),
+        (270.0, 0.0),
+        (360.0, -90.0),
+        (360.0, 0.0),
+    ]
+    assert all(row.attitude == "alpha-beta" for row in rows)
+    # Alpha 360 / beta 0 looks along the same direction as alpha 0 / beta 0.
+    assert (rows[3].direction_x, rows[3].direction_y, rows[3].direction_z) == pytest.approx(
+        (1.0, 0.0, 0.0)
+    )
+    assert rows[3].roll_deg == pytest.approx(0.0)
+    assert rows[3].pitch_deg == pytest.approx(0.0, abs=1e-12)
+    # Alpha 270 / beta 0 points along -Z; roll/pitch are recovered as pitch 90.
+    assert rows[1].pitch_deg == pytest.approx(90.0)
+    assert 0.0 <= rows[1].pitch_deg <= 180.0
+
+
+def test_roll_pitch_project_keeps_requested_angles_and_recovers_alpha_beta() -> None:
+    row = project(
+        DATA_DIR / "unit_cube.stl",
+        attitude="roll-pitch",
+        roll_deg=390,
+        pitch_deg=-60,
+    )
+
+    assert row.attitude == "roll-pitch"
+    assert (row.roll_deg, row.pitch_deg) == (390.0, -60.0)
+    assert -180.0 <= row.alpha_deg <= 180.0
+    assert -90.0 <= row.beta_deg <= 90.0
+    assert row.direction_x == pytest.approx(0.5)
+
+
 def test_vector_sweep_returns_one_row() -> None:
     rows = sweep(
         DATA_DIR / "unit_cube.stl",
@@ -346,6 +386,8 @@ def test_vector_sweep_returns_one_row() -> None:
 
     assert len(rows) == 1
     assert rows[0].direction_y == pytest.approx(1.0)
+    assert rows[0].attitude == "vector"
+    assert rows[0].beta_deg == pytest.approx(-90.0)
 
 
 @pytest.mark.parametrize(

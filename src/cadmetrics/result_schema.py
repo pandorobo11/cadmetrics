@@ -78,10 +78,39 @@ RESULT_FIELD_SPECS = (
     ),
     _spec("input_unit", "unit used when reading the model", label="Input unit"),
     _spec("output_unit", "unit used for output values", label="Output unit"),
-    _spec("roll_deg", "equivalent roll angle", label="Roll (°)", priority=3),
-    _spec("pitch_deg", "equivalent pitch angle", label="Pitch (°)", priority=4),
-    _spec("alpha_deg", "equivalent angle of attack", label="Alpha (°)", priority=1),
-    _spec("beta_deg", "equivalent sideslip angle", label="Beta (°)", priority=2),
+    _spec(
+        "attitude",
+        "attitude input mode (`alpha-beta`, `roll-pitch`, or `vector`); empty without a projection",
+        label="Attitude",
+    ),
+    _spec(
+        "roll_deg",
+        "roll angle; as requested in `roll-pitch` mode, otherwise recovered from the "
+        "projection direction",
+        label="Roll (°)",
+        priority=3,
+    ),
+    _spec(
+        "pitch_deg",
+        "pitch angle; as requested in `roll-pitch` mode, otherwise recovered from the "
+        "projection direction",
+        label="Pitch (°)",
+        priority=4,
+    ),
+    _spec(
+        "alpha_deg",
+        "angle of attack; as requested in `alpha-beta` mode, otherwise recovered from the "
+        "projection direction",
+        label="Alpha (°)",
+        priority=1,
+    ),
+    _spec(
+        "beta_deg",
+        "sideslip angle; as requested in `alpha-beta` mode, otherwise recovered from the "
+        "projection direction",
+        label="Beta (°)",
+        priority=2,
+    ),
     _spec(
         "direction_x",
         "normalized projection-direction X component",

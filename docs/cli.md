@@ -259,10 +259,11 @@ All calculation commands use the same CSV schema:
 | `step_component_names` | selected STEP component names, semicolon-separated |
 | `input_unit` | unit used when reading the model |
 | `output_unit` | unit used for output values |
-| `roll_deg` | equivalent roll angle |
-| `pitch_deg` | equivalent pitch angle |
-| `alpha_deg` | equivalent angle of attack |
-| `beta_deg` | equivalent sideslip angle |
+| `attitude` | attitude input mode (`alpha-beta`, `roll-pitch`, or `vector`); empty without a projection |
+| `roll_deg` | roll angle; as requested in `roll-pitch` mode, otherwise recovered from the projection direction |
+| `pitch_deg` | pitch angle; as requested in `roll-pitch` mode, otherwise recovered from the projection direction |
+| `alpha_deg` | angle of attack; as requested in `alpha-beta` mode, otherwise recovered from the projection direction |
+| `beta_deg` | sideslip angle; as requested in `alpha-beta` mode, otherwise recovered from the projection direction |
 | `direction_x` | normalized projection-direction X component |
 | `direction_y` | normalized projection-direction Y component |
 | `direction_z` | normalized projection-direction Z component |
