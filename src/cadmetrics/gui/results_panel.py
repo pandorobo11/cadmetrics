@@ -333,10 +333,23 @@ class ResultsPanel(QtWidgets.QWidget):
             return
         if Path(path).suffix.lower() not in IMAGE_SUFFIXES:
             path += ".svg" if selected_filter.startswith("SVG") else ".png"
+            # The dialog only confirmed overwriting the name it returned, not this one.
+            if Path(path).exists() and not self._confirm_overwrite(path):
+                return
         try:
             self.save_image(path)
         except Exception as exc:
             self.error.emit(str(exc))
+
+    def _confirm_overwrite(self, path: str) -> bool:
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Save Chart Image",
+            f"{Path(path).name} already exists. Do you want to replace it?",
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        return answer == QtWidgets.QMessageBox.StandardButton.Yes
 
     @staticmethod
     def _view_toggle(text: str, tooltip: str) -> QtWidgets.QToolButton:

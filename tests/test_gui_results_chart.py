@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6 import QtCore, QtGui
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from cadmetrics.gui.results_chart import (
     EMPTY_MESSAGE,
@@ -194,3 +194,105 @@ def test_chart_saves_as_png_or_svg(qtbot, tmp_path) -> None:
     assert not panel.save_image_button.isEnabled()
     with pytest.raises(ValueError, match="no chart"):
         panel.save_image(tmp_path / "empty.png")
+
+
+_FILTERS = {".png": "PNG Image (*.png)", ".svg": "SVG Image (*.svg)"}
+
+
+@pytest.fixture
+def chart_panel(qtbot):
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(800, 360)
+    panel.show()
+    panel.set_rows(_sweep((0, 15, 30, 45), (0, 10)))
+    panel.chart_view_button.click()
+    return panel
+
+
+def _choose(monkeypatch, panel, returned, selected_filter, answer=None):
+    """Run choose_image_path with a mocked dialog; return (saved paths, questions asked)."""
+    monkeypatch.setattr(
+        QtWidgets.QFileDialog,
+        "getSaveFileName",
+        staticmethod(lambda *args, **kwargs: (returned, selected_filter)),
+    )
+    questions = []
+
+    def question(*args):
+        questions.append(args)
+        return answer
+
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question", staticmethod(question))
+    saved = []
+    original = panel.save_image
+    monkeypatch.setattr(panel, "save_image", lambda path: (saved.append(path), original(path)))
+    panel.choose_image_path()
+    return saved, questions
+
+
+@pytest.mark.parametrize("suffix", (".png", ".svg"))
+@pytest.mark.parametrize(
+    "answer",
+    (QtWidgets.QMessageBox.StandardButton.No, QtWidgets.QMessageBox.StandardButton.Cancel),
+)
+def test_declining_to_replace_a_completed_name_keeps_the_file(
+    chart_panel, monkeypatch, tmp_path, suffix, answer
+) -> None:
+    existing = tmp_path / f"report{suffix}"
+    existing.write_bytes(b"keep me")
+    saved, questions = _choose(
+        monkeypatch, chart_panel, str(tmp_path / "report"), _FILTERS[suffix], answer
+    )
+    assert len(questions) == 1
+    # Not replacing is the default button.
+    assert questions[0][-1] == QtWidgets.QMessageBox.StandardButton.No
+    assert saved == []
+    assert existing.read_bytes() == b"keep me"
+
+
+@pytest.mark.parametrize("suffix", (".png", ".svg"))
+def test_replacing_a_completed_name_saves_there(chart_panel, monkeypatch, tmp_path, suffix) -> None:
+    existing = tmp_path / f"report{suffix}"
+    existing.write_bytes(b"old")
+    saved, questions = _choose(
+        monkeypatch,
+        chart_panel,
+        str(tmp_path / "report"),
+        _FILTERS[suffix],
+        QtWidgets.QMessageBox.StandardButton.Yes,
+    )
+    assert len(questions) == 1
+    assert saved == [str(existing)]
+    assert existing.read_bytes() != b"old"
+
+
+@pytest.mark.parametrize("suffix", (".png", ".svg"))
+def test_a_new_completed_name_saves_without_asking(
+    chart_panel, monkeypatch, tmp_path, suffix
+) -> None:
+    saved, questions = _choose(monkeypatch, chart_panel, str(tmp_path / "report"), _FILTERS[suffix])
+    assert questions == []
+    assert saved == [str(tmp_path / f"report{suffix}")]
+    assert (tmp_path / f"report{suffix}").stat().st_size > 0
+
+
+@pytest.mark.parametrize("suffix", (".png", ".svg"))
+def test_a_name_with_its_suffix_relies_on_the_dialogs_confirmation(
+    chart_panel, monkeypatch, tmp_path, suffix
+) -> None:
+    existing = tmp_path / f"report{suffix}"
+    existing.write_bytes(b"old")  # The dialog already asked about this exact file.
+    saved, questions = _choose(monkeypatch, chart_panel, str(existing), _FILTERS[suffix])
+    assert questions == []
+    assert saved == [str(existing)]
+    assert existing.read_bytes() != b"old"
+
+
+@pytest.mark.parametrize("suffix", (".png", ".svg"))
+def test_cancelling_the_save_dialog_saves_nothing(
+    chart_panel, monkeypatch, tmp_path, suffix
+) -> None:
+    saved, questions = _choose(monkeypatch, chart_panel, "", _FILTERS[suffix])
+    assert saved == [] and questions == []
+    assert list(tmp_path.iterdir()) == []
