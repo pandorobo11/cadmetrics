@@ -99,11 +99,12 @@ def projected_metrics(
     )
 
 
-# Snap-rounding grid sizes for the retry, relative to the largest projected
-# coordinate after centring the outline on the origin. Snapping moves each vertex by at most half a cell, so the area
-# changes by about perimeter * grid: 2**-44 (~256 ulps) kept the 16-part
-# benchmark assembly within 6e-15 relative. Grids near one ulp (2**-52)
-# fail again, and the coarser second size is a last resort.
+# Snap-rounding grid sizes for the retry, relative to the outline's half-extent
+# (the largest coordinate once the outline is centred on the origin). Snapping
+# moves each vertex by at most half a cell, so the area changes by about
+# perimeter * grid: 2**-44 kept the 16-part benchmark assembly within 6e-15
+# relative. Grids near one ulp (2**-52) fail again, and the coarser second size
+# is a last resort.
 _UNION_RETRY_RELATIVE_GRIDS = (2.0**-44, 2.0**-34)
 
 
