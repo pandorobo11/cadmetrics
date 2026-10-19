@@ -320,3 +320,36 @@ def test_cancelling_the_save_dialog_saves_nothing(
     saved, questions = _choose(monkeypatch, chart_panel, "", _FILTERS[suffix])
     assert saved == [] and questions == []
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("width", (260, 360, 480, 900))
+def test_ordinal_legend_fits_narrow_charts_and_saved_images(qtbot, tmp_path, width) -> None:
+    from cadmetrics.gui.results_chart import ResultsChart
+
+    chart = ResultsChart()
+    qtbot.addWidget(chart)
+    chart.resize(width, 300)
+    betas = range(-115, 125, 10)
+    chart.set_rows(_sweep(range(0, 181, 15), betas), "alpha_beta")
+    chart.set_x_field("alpha_deg")
+    assert len(chart.data.series) == MAX_SERIES == 24
+    chart.grab()  # Lays out the plot.
+
+    items, rects = chart._ordinal_legend_items()
+    texts = [text for _, text in items]
+    assert texts[1:] == ["-115°", "115°"]
+    metrics = chart.fontMetrics()
+    for position, text in items:
+        assert 0 <= position.x()
+        assert position.x() + metrics.horizontalAdvance(text) <= width
+    assert len(rects) == 24
+    assert all(0 <= rect.left() and rect.right() <= width and rect.width() > 0 for rect in rects)
+    assert all(a.right() <= b.left() for a, b in zip(rects, rects[1:]))
+
+    png = tmp_path / "chart.png"
+    chart.save_image(png)
+    assert QtGui.QImage(str(png)).width() == width * 2
+    svg = tmp_path / "chart.svg"
+    chart.save_image(svg)
+    content = svg.read_text(encoding="utf-8")
+    assert "-115°" in content and "115°" in content

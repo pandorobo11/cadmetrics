@@ -523,29 +523,55 @@ class ResultsChart(QtWidgets.QWidget):
                 painter.drawText(QtCore.QPointF(x + 22, y + metrics.ascent() / 2 - 1), name)
                 x += width
 
-    def _paint_ordinal_legend(self, painter: QtGui.QPainter) -> None:
-        """Series label, then first value, one swatch per line light to dark, last value."""
+    def _ordinal_legend_items(self) -> tuple[list[tuple[QtCore.QPointF, str]], list[QtCore.QRectF]]:
+        """Texts and swatches of the ordinal key, narrowed to fit the chart's width.
+
+        Swatches shrink first, then the key moves left of the plot, then the line count goes,
+        so the first and last values stay readable.
+        """
         metrics = self.fontMetrics()
         series = self._data.series
+        first, last = f"{series[0].value:g}°", f"{series[-1].value:g}°"
+        right = self.width() - 8.0
+        min_step = 3.0
+        for label, left in (
+            (f"{self._data.series_label} ({len(series)} lines)", self._plot.left()),
+            (f"{self._data.series_label} ({len(series)} lines)", 8.0),
+            (self._data.series_label or "", 8.0),
+        ):
+            texts = metrics.horizontalAdvance(label) + 8 + metrics.horizontalAdvance(first) + 8
+            room = right - left - texts - 6 - metrics.horizontalAdvance(last)
+            if room >= min_step * len(series):
+                break
+        step = min(max(room / len(series), min_step), 12.0)
+        swatch = step - 2 if step >= 6 else step
         y = 6 + metrics.height() / 2
         baseline = y + metrics.ascent() / 2 - 1
-        x = self._plot.left()
-        hovered = self._hovered_series()
-        painter.setPen(QtGui.QColor(_TEXT))
-        for text in (f"{self._data.series_label} ({len(series)} lines)", f"{series[0].value:g}°"):
-            painter.drawText(QtCore.QPointF(x, baseline), text)
+        x = left
+        items = []
+        for text in (label, first):
+            items.append((QtCore.QPointF(x, baseline), text))
             x += metrics.horizontalAdvance(text) + 8
-        swatch = 10.0
-        for index, color in enumerate(self._colors):
-            rect = QtCore.QRectF(x, y - swatch / 2, swatch, swatch)
+        rects = []
+        for _ in series:
+            rects.append(QtCore.QRectF(x, y - min(swatch, 10.0) / 2, swatch, min(swatch, 10.0)))
+            x += step
+        items.append((QtCore.QPointF(x + 6, baseline), last))
+        return items, rects
+
+    def _paint_ordinal_legend(self, painter: QtGui.QPainter) -> None:
+        """Series label, then first value, one swatch per line light to dark, last value."""
+        items, rects = self._ordinal_legend_items()
+        hovered = self._hovered_series()
+        for index, (rect, color) in enumerate(zip(rects, self._colors, strict=True)):
             painter.fillRect(rect, QtGui.QColor(color))
             if index == hovered:
                 painter.setPen(QtGui.QPen(QtGui.QColor(_TEXT), 1.5))
                 painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
                 painter.drawRect(rect.adjusted(-2, -2, 2, 2))
-            x += swatch + 2
         painter.setPen(QtGui.QColor(_TEXT))
-        painter.drawText(QtCore.QPointF(x + 6, baseline), f"{series[-1].value:g}°")
+        for position, text in items:
+            painter.drawText(position, text)
 
     # Interaction --------------------------------------------------------------------
 
