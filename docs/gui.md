@@ -282,8 +282,9 @@ lie at the final model Xmax.
 
 ## Shape Display
 
-The toolbar above the 3D view sets the camera to `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`, `ISO`
-(from `-X -Y +Z`), or `ISO↓` (from below, `+X +Y -Z`). Clicking a button always re-applies that
+The toolbar above the 3D view sets the camera to `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`, or one of
+two isometric views, `-X-Y+Z` (from above) and `+X+Y-Z` (from below). Each label names the side
+the camera looks from. Clicking a button always re-applies that
 view, and the chosen view is kept for models loaded later. `Save Image…` in the same toolbar, or
 `File` > `Save View Image…` (⇧⌘S / Ctrl+Shift+S), exports the current view as PNG.
 
@@ -313,7 +314,7 @@ exports. The small orientation axes remain visible. The grid follows the loaded 
 and uses compact, explicitly sized text instead of the PyVista theme font.
 
 The viewer uses parallel projection with a light that follows the camera, so projection-aligned
-views stay as bright as the ISO view. After a calculation, selecting a result row points the
+views stay as bright as the isometric views. After a calculation, selecting a result row points the
 camera along that row's projection direction. Before a model is loaded, the view shows how to
 open one. While an input is invalid, the projection arrow is hidden instead of showing a
 default direction.
@@ -335,7 +336,10 @@ when `Start` and `End` are the same:
 - `Unit vector`: calculates one explicit projection direction
 
 Angle modes use separate `Start`, `End`, and `Step` fields, shown in degrees. The sweep calculates
-every combination of the selected angle ranges. Unit-vector mode does not sweep.
+every combination of the selected angle ranges. Unit-vector mode does not sweep. Results keep the
+selected mode's angles as entered, so alpha 360 stays 360 and a beta -90 row keeps its alpha even
+when several attitudes share one projection direction; the other angle pair is recovered from the
+direction.
 
 Number fields have no step arrows; type the value. Once a field has focus, the Up/Down keys and the
 mouse wheel still step it. Scrolling over the left panel scrolls it; the mouse wheel changes a
@@ -367,12 +371,13 @@ an empty-state prompt instead of an empty table.
 `Table` and `Chart` above the results switch between the table and a line chart of projected
 area against the swept angle. By default the angle with more sweep values runs along the x axis;
 choose `Alpha` / `Beta` (or `Roll` / `Pitch`) in `X axis` next to `Chart` to plot the other one
-instead. Each value of the remaining angle is one line. Up to 8 lines get distinct colors and a
-legend; 9 to 24 lines are shaded light to dark along one blue in value order, with a compact key
-from the first to the last value. Pointing at a point shows its values and brings its line to
-the front while the others fade, and clicking it selects that row, which updates the 3D view
-just like selecting it in the table. Unit-vector results, single attitudes, and sweeps with more
-than 24 lines show a note instead; use the table for those.
+instead. Each value of the remaining angle is one line. Points sit at the requested angles, so
+every sweep row has its own point even when two attitudes look along the same direction. Up to 8
+lines get distinct colors and a legend; 9 to 24 lines are shaded light to dark along one blue in
+value order, with a compact key from the first to the last value. Pointing at a point shows its
+values and brings its line to the front while the others fade, and clicking it selects that row,
+which updates the 3D view just like selecting it in the table. Unit-vector results, single
+attitudes, and sweeps with more than 24 lines show a note instead; use the table for those.
 
 In the chart view, `Save Image` saves the chart as shown, as a PNG (at twice the on-screen
 resolution) or an SVG for documents that scale it. The pointer's highlight is left out; a
@@ -391,6 +396,7 @@ the selected row as tab-separated text. Important fields include:
 - `projected_area`
 - `centroid_u`, `centroid_v`
 - `centroid_x`, `centroid_y`, `centroid_z`
+- `attitude`
 - `alpha_deg`, `beta_deg`
 - `roll_deg`, `pitch_deg`
 - `direction_x`, `direction_y`, `direction_z`

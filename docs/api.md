@@ -81,6 +81,10 @@ rows = sweep(
 )
 ```
 
+Each projected row's `attitude` names the input mode. That mode's angle fields keep the requested
+values unnormalized (`alpha_deg`/`beta_deg` for `alpha-beta`, `roll_deg`/`pitch_deg` for
+`roll-pitch`); the other pair and `direction_x/y/z` are recovered from the projection direction.
+
 Use `progress_callback` to receive the completed row for each orientation:
 
 ```python

@@ -134,6 +134,7 @@ class MeasurementRow:
     cadmetrics_version: str = field(default_factory=cadmetrics_version)
     cadmetrics_hash: str = field(default_factory=cadmetrics_hash)
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    attitude: str | None = None
 
     def to_csv_row(self) -> dict[str, CsvValue]:
         return serialize_result_row(self)
