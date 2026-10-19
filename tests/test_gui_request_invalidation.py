@@ -53,6 +53,7 @@ def window(qtbot, monkeypatch, tmp_path: Path):
     path.touch()
     window.controls.set_file_paths((path,))
     window.controls.mesh_deflection_auto.setChecked(False)
+    window.controls.angular_deflection_auto.setChecked(False)
     window._on_model_loaded(
         ModelData(
             path=path,
@@ -101,6 +102,7 @@ def window(qtbot, monkeypatch, tmp_path: Path):
         ("angular_deflection", 0.2),
         ("base_tolerance", 0.01),
         ("mesh_deflection_auto", True),
+        ("angular_deflection_auto", True),
     ],
 )
 def test_advanced_edit_marks_results_stale_and_reverting_restores_them(window, name, value):
@@ -133,6 +135,27 @@ def test_advanced_edit_marks_results_stale_and_reverting_restores_them(window, n
     assert window._request == original
     assert not window.results.is_stale
     assert window.results.rows == rows
+
+
+def test_fast_mesh_quality_updates_request_and_shows_preset_angle(window):
+    controls = window.controls
+    controls.mesh_deflection_auto.setChecked(True)
+    controls.angular_deflection_auto.setChecked(True)
+    assert not controls.angular_deflection.isEnabled()
+    assert controls.angular_deflection.value() == pytest.approx(0.1)
+
+    controls.mesh_quality.setCurrentIndex(controls.mesh_quality.findData("auto-fast"))
+
+    request = controls.request()
+    assert request.mesh_deflection == "auto-fast"
+    assert request.angular_deflection == "auto"
+    assert request.load_options().angular_deflection == pytest.approx(0.3)
+    assert controls.angular_deflection.value() == pytest.approx(0.3)
+    assert window._request == request
+
+    controls.mesh_deflection_auto.setChecked(False)
+    assert not controls.mesh_quality.isEnabled()
+    assert controls.angular_deflection.value() == pytest.approx(0.1)
 
 
 def test_component_changes_including_empty_selection_mark_results_stale(window):

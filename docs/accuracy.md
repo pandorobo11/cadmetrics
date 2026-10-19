@@ -185,8 +185,47 @@ For reproducible validation runs, pass an explicit value:
 cadmetrics project model.step --mesh-deflection 0.001
 ```
 
-`--angular-deflection` defaults to `0.1`. It is an angular tolerance, so cadmetrics does not
-scale it with model size.
+`--angular-deflection` defaults to `auto`, which is `0.1` rad. It is an angular tolerance, so
+cadmetrics does not scale it with model size.
+
+### Fast Preset
+
+`--mesh-deflection auto-fast` selects a coarser automatic preset for quick orientation sweeps:
+
+```text
+auto-fast = STEP bounding-box diagonal * 1e-3, angular deflection 0.3 rad
+```
+
+With `--angular-deflection auto` (the default), the angle follows the mesh preset: `0.1` for
+`auto` or an explicit `--mesh-deflection` value, `0.3` for `auto-fast`. An explicit
+`--angular-deflection` always wins, so `--mesh-deflection auto-fast --angular-deflection 0.5`
+is an even faster preview. The `mesh_deflection` and `angular_deflection` result columns always
+record the effective values that were used. STL input is not affected.
+
+Projected-area run time is roughly proportional to the triangle count. In the reference benchmark
+below, the angular limit, not the linear one, set the triangle count: changing only the linear
+factor from `1e-4` to `1e-3` did not change it. This is an observation for that model, not a rule
+for every curved surface, but it is why the fast preset mainly relaxes the angle.
+
+Reference measurements on a synthetic 64-part curved assembly, per projection direction, against
+a fine reference mesh. They describe that model and those conditions only; they are not a general
+error bound:
+
+| angular deflection | triangles | time per direction | projected-area error |
+|---:|---:|---:|---:|
+| `0.1` (`auto`) | about 800k | about 21 s | about 0.04% |
+| `0.3` (`auto-fast`) | 100k to 160k | about 2.4 to 4 s | 0.2% to 0.4% |
+| `0.5` | about 40k | about 1 s | about 1% |
+
+The error comes from approximating curved surfaces and edges with chords, and its sign depends on
+the shape and attitude. In the benchmark above, and for a convex solid such as a sphere, the chords
+cut inside the outline and projected area is underestimated. Around a curved hole the chords cut
+into the opening instead, so the material's projected area is overestimated: for a 10 x 10 x 1 mm
+plate with a 4 mm radius through hole viewed along the hole axis, `auto` reported `+0.024%` and
+`auto-fast` `+0.24%` against the exact `100 - 16π` mm². A coarse mesh is therefore neither a lower
+nor an upper bound in general. Use `auto-fast` to explore attitudes, then rerun the attitudes that
+matter with `auto` or tighter settings. Volume and surface area in the default
+`--step-metrics brep` mode come from the CAD kernel and do not depend on the preset.
 
 ## Large STEP Performance Notes
 
@@ -208,8 +247,8 @@ calculating projected area does not reload and tessellate the same model a secon
 change Advanced settings that affect geometry, click `Apply & Reload` or run the calculation to
 load the updated model.
 
-Use coarser `--mesh-deflection` and `--angular-deflection` values for quick previews, then tighten
-them for final projected-area validation.
+Use `--mesh-deflection auto-fast` (or coarser explicit values) for quick previews, then tighten
+the settings for final projected-area validation.
 
 ## Watertightness
 
@@ -242,8 +281,8 @@ Typical settings:
 
 | use case | `--mesh-deflection` | `--angular-deflection` |
 |---|---:|---:|
-| Fast preview | bounding-box diagonal * `1e-3` | `0.3` to `0.5` |
-| Normal projected-area work | bounding-box diagonal * `1e-4` | `0.1` |
+| Fast preview | `auto-fast` (diagonal * `1e-3`) | `auto` (`0.3`) to `0.5` |
+| Normal projected-area work | `auto` (diagonal * `1e-4`) | `auto` (`0.1`) |
 | CAD comparison / final validation | bounding-box diagonal * `3e-5` to `1e-5` | `0.05` to `0.1` |
 
 Keep the deflection fixed when comparing many versions of similar geometry.
