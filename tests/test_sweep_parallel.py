@@ -207,6 +207,8 @@ def test_near_edge_on_sweep_rows_match_independent_projection(
 
     angles = parse_sweep_values(spec)
     _assert_matches_independent(rows, yz_triangle, mode, angles)
+    requested = "alpha_deg" if mode == "alpha-beta" else "pitch_deg"
+    assert [getattr(row, requested) for row in rows] == angles
     areas = {angle: row.projected_area for angle, row in zip(angles, rows, strict=True)}
     assert areas[90.0] == 0.0
     assert areas[90.00000000001] > 0.0
@@ -229,6 +231,7 @@ def test_adjacent_floats_around_edge_on_are_not_merged(
     rows = api._sweep_orientations(
         yz_triangle,
         orientations,
+        attitude=mode,
         total=len(orientations),
         progress_callback=None,
         cancel_callback=None,
@@ -237,6 +240,9 @@ def test_adjacent_floats_around_edge_on_are_not_merged(
     )
 
     _assert_matches_independent(rows, yz_triangle, mode, angles)
+    # Reused rows keep their own requested angle, not the representative's.
+    requested = "alpha_deg" if mode == "alpha-beta" else "pitch_deg"
+    assert [getattr(row, requested) for row in rows] == angles
     assert rows[0].projected_area == 0.0
     assert rows[1].projected_area > 0.0
     assert rows[2].projected_area > 0.0

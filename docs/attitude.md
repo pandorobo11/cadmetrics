@@ -45,6 +45,13 @@ The output CSV always reports all equivalent representations:
 - `roll_deg`, `pitch_deg`
 - `direction_x`, `direction_y`, `direction_z`
 
+The `attitude` column names the input mode. That mode's own angle pair keeps the requested values
+exactly as given, without normalization: an `alpha-beta` sweep reports `alpha_deg=360` for alpha
+360, and its `beta_deg=-90` rows keep their requested alpha values even though they share one
+direction. The other mode's pair and the direction vector are recovered from the projection
+direction with the formulas below, so they are normalized (`alpha` in -180..180, `beta` in
+-90..90, `pitch` in 0..180). In `vector` mode, both angle pairs are recovered.
+
 ## Alpha and Beta
 
 In `alpha-beta` mode, cadmetrics builds the projection direction from angle of attack and
@@ -54,7 +61,7 @@ sideslip:
 d = (cos(alpha) cos(beta), -sin(beta), sin(alpha) cos(beta))
 ```
 
-The equivalent output angles are recovered from a unit vector as:
+When alpha/beta are not the input mode, they are recovered from a unit vector as:
 
 ```text
 alpha = atan2(d_z, d_x)
@@ -74,7 +81,7 @@ Examples:
 In `roll-pitch` mode, `pitch` is the angle away from the +X direction. Positive `roll` is the
 right-hand rotation around the +X axis, measured from +Z toward -Y.
 
-The equivalent output values are:
+When roll/pitch are not the input mode, they are recovered as:
 
 ```text
 pitch = atan2(sqrt(d_y^2 + d_z^2), d_x)
@@ -92,7 +99,7 @@ For explicit vector input:
 cadmetrics project model.step --attitude vector --direction 1,0,0
 ```
 
-cadmetrics normalizes the vector first, then calculates equivalent `alpha`/`beta` and
+cadmetrics normalizes the vector first, then recovers equivalent `alpha`/`beta` and
 `roll`/`pitch` values for CSV and GUI display.
 
 ## CLI Examples

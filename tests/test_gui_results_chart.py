@@ -58,6 +58,30 @@ def test_too_many_series_or_a_single_attitude_explain_instead_of_plotting() -> N
     assert chart_data(_sweep((0, 15), (0,)), "vector").message == EMPTY_MESSAGE
 
 
+def test_full_sphere_sweep_charts_every_requested_attitude() -> None:
+    from pathlib import Path
+
+    from cadmetrics.api import sweep
+
+    sample = (
+        Path(__file__).parents[1]
+        / "samples"
+        / "two_boxes_overlap_projection"
+        / "two_boxes_overlap_projection_binary.stl"
+    )
+    rows = sweep(sample, alpha_deg="0:360:30", beta_deg="-90:90:30")
+    data = chart_data(rows, "alpha_beta")
+
+    assert len(rows) == 91
+    points = [point for series in data.series for point in series.points]
+    assert len(points) == 91
+    positions = {(series.value, point.x) for series in data.series for point in series.points}
+    assert len(positions) == 91
+    assert data.x_label == "Alpha (°)"
+    bottom = next(series for series in data.series if series.value == -90)
+    assert [point.x for point in bottom.points] == [float(a) for a in range(0, 361, 30)]
+
+
 def test_nice_ticks_cover_the_range() -> None:
     ticks = nice_ticks(0.78, 3.34)
     assert ticks[0] <= 0.78 and ticks[-1] >= 3.34

@@ -29,6 +29,8 @@ def test_csv_writer_preserves_schema_order_and_special_serialization(tmp_path: P
     assert set(reader.fieldnames) == {item.name for item in fields(MeasurementRow)}
     assert records[0]["file"] == "model.step"
     assert records[0]["pitch_deg"] == ""
+    assert records[0]["attitude"] == ""
+    assert CSV_FIELDS.index("attitude") == CSV_FIELDS.index("roll_deg") - 1
     assert records[0]["is_watertight"] == "True"
     assert records[0]["step_components"] == "1,3"
     assert records[0]["step_component_names"] == "Body; Tail"

@@ -83,6 +83,8 @@ def test_measure_project_and_sweep_preserve_model_metadata(model, attitude) -> N
     for row in (measured, projected, rows[0]):
         serialized = row.to_csv_row()
         assert {key: serialized[key] for key in expected} == expected
+    assert measured.attitude is None
+    assert projected.attitude == rows[0].attitude == attitude.get("attitude", "alpha-beta")
     assert measured.method == "step-brep-subtract-assembly"
     assert measured.projected_area is None
     assert measured.direction_x is None

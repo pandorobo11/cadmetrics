@@ -243,6 +243,8 @@ def _project_model_with_attitude(
         projection_direction=projection_direction,
         projection_metrics=metrics,
         elapsed_sec=elapsed_sec if elapsed_sec is not None else 0.0,
+        attitude=resolved_attitude.mode,
+        orientation=orientation,
     )
     if elapsed_sec is not None:
         return row
@@ -255,10 +257,19 @@ def _projected_row(
     projection_direction: FloatArray,
     projection_metrics: ProjectionMetrics,
     elapsed_sec: float,
+    attitude: AttitudeMode,
+    orientation: Orientation | None = None,
 ) -> MeasurementRow:
     projection_direction = normalize_vector(projection_direction)
     alpha_deg, beta_deg = alpha_beta_from_direction(projection_direction)
     roll_deg, pitch_deg = roll_pitch_from_direction(projection_direction)
+    # The input mode's own pair keeps the requested angles unnormalized, so every
+    # sweep point is reported where it was asked for; the other pair is recovered.
+    if orientation is not None and attitude == "alpha-beta":
+        alpha_deg, beta_deg = orientation.alpha_deg, orientation.beta_deg
+    elif orientation is not None and attitude == "roll-pitch":
+        # In roll-pitch mode Orientation.alpha_deg carries the pitch angle.
+        roll_deg, pitch_deg = orientation.roll_deg, orientation.alpha_deg
     centroid_x, centroid_y, centroid_z = _centroid_model_coordinates(
         model,
         projection_direction=projection_direction,
@@ -267,6 +278,7 @@ def _projected_row(
     )
     return replace(
         _model_row(model, projected=True),
+        attitude=attitude,
         roll_deg=roll_deg,
         alpha_deg=alpha_deg,
         beta_deg=beta_deg,
@@ -412,6 +424,7 @@ def _sweep_model_with_attitude(
     return _sweep_orientations(
         model,
         list(orientations),
+        attitude=resolved_attitude.mode,
         total=total,
         progress_callback=progress_callback,
         cancel_callback=cancel_callback,
@@ -432,6 +445,7 @@ def _sweep_orientations(
     model: ModelData,
     orientations: list[Orientation],
     *,
+    attitude: AttitudeMode,
     total: int,
     progress_callback: Callable[[int, int, MeasurementRow], None] | None,
     cancel_callback: Callable[[], None] | None,
@@ -473,8 +487,8 @@ def _sweep_orientations(
     next_submit = 0
     rows: list[MeasurementRow] = []
     try:
-        for row_number, (direction, key) in enumerate(
-            zip(row_directions, row_keys, strict=True), 1
+        for row_number, (orientation, direction, key) in enumerate(
+            zip(orientations, row_directions, row_keys, strict=True), 1
         ):
             if cancel_callback is not None:
                 cancel_callback()
@@ -502,6 +516,8 @@ def _sweep_orientations(
                 projection_direction=direction,
                 projection_metrics=row_metrics,
                 elapsed_sec=0.0,
+                attitude=attitude,
+                orientation=orientation,
             )
             row = replace(row, elapsed_sec=compute_elapsed + perf_counter() - row_start)
             if cancel_callback is not None:
