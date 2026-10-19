@@ -383,19 +383,30 @@ def test_cli_rejects_roll_in_alpha_beta_mode(runner: CliRunner) -> None:
     assert "--roll cannot be used" in Text.from_ansi(result.output).plain
 
 
-def test_project_cli_accepts_fast_mesh_preset(runner: CliRunner, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("options", "expected_factor", "expected_angle"),
+    [
+        ([], 1.0e-3, 0.3),
+        (["--mesh-deflection", "auto-fast"], 1.0e-3, 0.3),
+        (["--mesh-deflection", "auto-precise"], 1.0e-4, 0.1),
+    ],
+)
+def test_project_cli_mesh_presets(
+    runner: CliRunner,
+    tmp_path: Path,
+    options: list[str],
+    expected_factor: float,
+    expected_angle: float,
+) -> None:
     pytest.importorskip("OCP")
-    output = tmp_path / "fast.csv"
+    output = tmp_path / "preset.csv"
     sample = Path(__file__).parents[1] / "samples" / "box_1x2x3" / "box_1x2x3.step"
-    result = runner.invoke(
-        app,
-        ["project", str(sample), "--mesh-deflection", "auto-fast", "--out", str(output)],
-    )
+    result = runner.invoke(app, ["project", str(sample), *options, "--out", str(output)])
 
     assert result.exit_code == 0, result.output
     row = _csv_rows(output.read_text(encoding="utf-8"))[0]
-    assert float(row["mesh_deflection"]) == pytest.approx(14.0**0.5 * 1.0e-3)
-    assert float(row["angular_deflection"]) == pytest.approx(0.3)
+    assert float(row["mesh_deflection"]) == pytest.approx(14.0**0.5 * expected_factor)
+    assert float(row["angular_deflection"]) == pytest.approx(expected_angle)
 
 
 def test_cli_rejects_negative_angular_deflection(runner: CliRunner) -> None:

@@ -178,11 +178,17 @@ Advanced settings for single STEP files and same-format multi-file STEP assembli
 
 ## Accuracy Target
 
-- Target validation tolerance: 0.1% against Fusion 360 for representative closed solids
-- Projected area depends on mesh/tessellation quality
+- Target validation tolerance: 0.1% against Fusion 360 for representative closed solids, with
+  `--mesh-deflection auto-precise` for projected area
+- Projected area, the GUI display, `--step-metrics mesh` volume and surface area, and the
+  base-area fallback depend on mesh/tessellation quality; default B-Rep volume and surface area
+  do not
 - `--mesh-deflection` defaults to `auto`, which uses the STEP bounding-box diagonal times
-  `1e-4` in the selected output length unit
-- `--mesh-deflection auto-fast` uses the diagonal times `1e-3` and, with the default
-  `--angular-deflection auto`, a `0.3` rad angular deflection (`auto` alone is `0.1` rad)
+  `1e-3` in the selected output length unit and, with the default `--angular-deflection auto`,
+  a `0.3` rad angular deflection
+- `--mesh-deflection auto-precise` uses the diagonal times `1e-4` and `0.1` rad (the `auto`
+  of earlier versions); `auto-fast` is accepted as another name for `auto`
+- Changing the default changes mesh-based results slightly; the largest projected-area
+  difference the user observed on production models was 0.12%
 - `--mesh-deflection` accepts an explicit positive number so STEP projected-area accuracy can
   be adjusted or fixed for reproducibility

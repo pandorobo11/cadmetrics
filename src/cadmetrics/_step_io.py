@@ -37,6 +37,7 @@ from cadmetrics._ocp import (
 )
 from cadmetrics.load_options import (
     AUTO_DEFLECTION_FACTORS,
+    AUTO_MESH_DEFLECTION,
     ModelLoadOptions,
     normalize_auto_mesh_deflection,
 )
@@ -534,7 +535,7 @@ def _finalize_step_model(
 
 # Preview meshes only need to read as shapes, so they use a much coarser tessellation.
 # On curved models the angular limit dominates; with smooth shading 0.5 rad still looks
-# round, at about a twentieth of the triangles of the default measurement mesh.
+# round, at about a twentieth of the triangles of an auto-precise measurement mesh.
 PREVIEW_DEFLECTION_FACTOR = 10.0
 PREVIEW_ANGULAR_DEFLECTION = 0.5
 
@@ -559,9 +560,9 @@ def _tessellate_step_components_for_display(
     for solid in prepared.solids:
         # The model deflection follows the selected shape. A large unchecked component next
         # to a small selection would be meshed far too finely, so never go below the
-        # automatic deflection of the component itself.
+        # automatic deflection of the component itself, using the selected preset.
         own_deflection = _resolve_mesh_deflection(
-            "auto",
+            normalize_auto_mesh_deflection(options.mesh_deflection) or AUTO_MESH_DEFLECTION,
             native_diagonal=_loose_ocp_diagonal(solid, ocp=ocp),
             scale=geometry.scale,
         )
@@ -1073,7 +1074,7 @@ def _resolve_mesh_deflection(
         try:
             value = float(value.strip())
         except ValueError as exc:
-            raise ValueError("mesh_deflection must be a number, 'auto', or 'auto-fast'") from exc
+            raise ValueError("mesh_deflection must be a number, 'auto', or 'auto-precise'") from exc
     if not isfinite(float(value)):
         raise ValueError("mesh_deflection must be finite")
     if value <= 0.0:

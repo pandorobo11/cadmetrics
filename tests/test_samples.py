@@ -94,9 +94,12 @@ def test_satellite_step_matches_fusion_validation_values() -> None:
     path = ROOT / sample["files"]["step"]
     expected = sample["expected"]
 
+    # The Fusion comparison uses the precise preset; the faster default is not held to 0.1%.
     measured = measure(path)
-    projected_x = project(path)
-    projected_alpha_60 = project(path, alpha_deg=60, output_unit="mm")
+    projected_x = project(path, mesh_deflection="auto-precise")
+    projected_alpha_60 = project(
+        path, alpha_deg=60, output_unit="mm", mesh_deflection="auto-precise"
+    )
 
     assert measured.input_unit == "mm"
     assert measured.volume == pytest.approx(expected["volume"])

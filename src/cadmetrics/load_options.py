@@ -15,11 +15,14 @@ StepMetricSource = Literal["brep", "mesh"]
 # Automatic STEP tessellation presets: linear deflection as a fraction of the bounding-box
 # diagonal, and the angular deflection used when angular_deflection is "auto".
 # In the curved reference benchmark the angular limit set the triangle count (and so the
-# projected-area run time), which is why the fast preset mainly relaxes the angle.
+# projected-area run time), which is why the default preset mainly relaxes the angle.
+# "auto" is the fast default; "auto-precise" is the finer preset that was "auto" before.
 AUTO_MESH_DEFLECTION = "auto"
-AUTO_FAST_MESH_DEFLECTION = "auto-fast"
-AUTO_DEFLECTION_FACTORS = {AUTO_MESH_DEFLECTION: 1.0e-4, AUTO_FAST_MESH_DEFLECTION: 1.0e-3}
-AUTO_ANGULAR_DEFLECTIONS = {AUTO_MESH_DEFLECTION: 0.1, AUTO_FAST_MESH_DEFLECTION: 0.3}
+AUTO_PRECISE_MESH_DEFLECTION = "auto-precise"
+AUTO_DEFLECTION_FACTORS = {AUTO_MESH_DEFLECTION: 1.0e-3, AUTO_PRECISE_MESH_DEFLECTION: 1.0e-4}
+AUTO_ANGULAR_DEFLECTIONS = {AUTO_MESH_DEFLECTION: 0.3, AUTO_PRECISE_MESH_DEFLECTION: 0.1}
+# Accepted for compatibility: "auto-fast" was the opt-in name of today's "auto" preset.
+AUTO_MESH_DEFLECTION_ALIASES = {"auto-fast": AUTO_MESH_DEFLECTION}
 DEFAULT_ANGULAR_DEFLECTION = AUTO_ANGULAR_DEFLECTIONS[AUTO_MESH_DEFLECTION]
 
 
@@ -120,8 +123,8 @@ def resolve_angular_deflection(
 ) -> float:
     """Return the effective angular deflection; "auto" follows the mesh_deflection preset."""
     if isinstance(value, str) and value.strip().lower() == "auto":
-        preset = mesh_deflection if isinstance(mesh_deflection, str) else AUTO_MESH_DEFLECTION
-        return AUTO_ANGULAR_DEFLECTIONS.get(preset, DEFAULT_ANGULAR_DEFLECTION)
+        preset = normalize_auto_mesh_deflection(mesh_deflection) or AUTO_MESH_DEFLECTION
+        return AUTO_ANGULAR_DEFLECTIONS[preset]
     try:
         deflection = float(value)
     except (TypeError, ValueError) as exc:
@@ -134,10 +137,11 @@ def resolve_angular_deflection(
 
 
 def normalize_auto_mesh_deflection(value: object) -> str | None:
-    """Return the canonical preset name for "auto"/"auto-fast", or None for other values."""
+    """Return the canonical preset name for "auto"/"auto-precise", or None for other values."""
     if not isinstance(value, str):
         return None
     text = value.strip().lower().replace("_", "-")
+    text = AUTO_MESH_DEFLECTION_ALIASES.get(text, text)
     return text if text in AUTO_DEFLECTION_FACTORS else None
 
 
@@ -148,7 +152,7 @@ def _resolve_mesh_deflection_input(value: float | str) -> float | str:
     try:
         deflection = float(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError("mesh_deflection must be a number, 'auto', or 'auto-fast'") from exc
+        raise ValueError("mesh_deflection must be a number, 'auto', or 'auto-precise'") from exc
     if not isfinite(deflection):
         raise ValueError("mesh_deflection must be finite")
     if deflection <= 0.0:
