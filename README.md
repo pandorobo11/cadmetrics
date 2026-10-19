@@ -245,13 +245,18 @@ For faster large STEP checks, default B-Rep `measure` and CLI `inspect` skip tes
 display/projected-area mesh is not needed. The GUI reuses the loaded display mesh when running a
 sweep.
 
-The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the
+The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-3` in the
 selected output length unit, including for models whose dimensions are smaller than one input
-unit. `--mesh-deflection auto-fast` uses `1e-3` and a `0.3` rad angular deflection for quick
-sweeps, at the cost of a small projected-area error that can be an over- or underestimate
-depending on shape and attitude. Xmax base-face detection uses `--base-tolerance 1e-6` by default,
-applied as a relative tolerance to the model bounding-box diagonal. The current validation target
-is within `0.1%` against Fusion 360 for representative closed solids.
+unit, with a `0.3` rad angular deflection. It is meant for quick sweeps and has a small
+projected-area error that can be an over- or underestimate depending on shape and attitude.
+`--mesh-deflection auto-precise` uses `1e-4` and `0.1` rad, the default of earlier versions; use
+it when you need higher accuracy. Because the default changed, mesh-based results change slightly;
+on the user's own production models the largest projected-area difference observed was `0.12%`.
+Mesh accuracy affects projected area, display, `--step-metrics mesh` volume and surface area, and
+the base-area fallback, but not the default B-Rep volume and surface area. Xmax base-face
+detection uses `--base-tolerance 1e-6` by default, applied as a relative tolerance to the model
+bounding-box diagonal. The current validation target is within `0.1%` against Fusion 360 for
+representative closed solids, using `auto-precise` for projected area.
 
 See [Accuracy Notes](docs/accuracy.md) for details.
 

@@ -100,25 +100,35 @@ cadmetrics measure model.step \
   --base-tolerance 1e-6
 ```
 
-`--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-4` in the selected
-output length unit. `--mesh-deflection auto-fast` uses the diagonal times `1e-3` and is meant for
-quick projected-area sweeps.
+`--mesh-deflection auto` (the default) uses the STEP bounding-box diagonal times `1e-3` in the
+selected output length unit and is meant for quick projected-area sweeps.
+`--mesh-deflection auto-precise` uses the diagonal times `1e-4`. `auto-fast` is still accepted as
+another name for `auto`.
 
-`--angular-deflection auto` (the default) is `0.1` rad, or `0.3` rad with
-`--mesh-deflection auto-fast`. Pass a number in radians to override it. On a 64-part curved
-reference assembly, where the angular deflection set the triangle count, `auto-fast` was about
-5 to 9 times faster per direction than `auto`, with a projected-area error of 0.2% to 0.4%. That
-is an observation for that model; depending on shape and attitude the error can be an over- or
-underestimate. Recheck important attitudes with `auto` or tighter settings. See
-[Accuracy: Fast Preset](accuracy.md#fast-preset).
+`--angular-deflection auto` (the default) is `0.3` rad, or `0.1` rad with
+`--mesh-deflection auto-precise`. Pass a number in radians to override it.
+
+`auto` was the finer preset in earlier versions and is now `auto-precise`, so mesh-based results
+with default settings change slightly. On the user's own production models the largest
+projected-area difference observed between the new and the old `auto` was 0.12%. Use
+`auto-precise` when you need higher accuracy or want to reproduce earlier results. On a 64-part
+curved reference assembly, `auto` was about 5 to 9 times faster per direction than
+`auto-precise`, with a projected-area error of 0.2% to 0.4%. These are observations for those
+models; depending on shape and attitude the error can be an over- or underestimate. Recheck
+important attitudes with `auto-precise` or tighter settings.
+
+Mesh accuracy affects projected area, the GUI display, STEP volume and surface area with
+`--step-metrics mesh`, and the rare base-area fallback. With the default `--step-metrics brep`,
+volume and surface area do not depend on it. See
+[Accuracy: Tessellation Controls](accuracy.md#tessellation-controls).
 
 ```bash
 cadmetrics sweep model.step \
-  --mesh-deflection auto-fast \
+  --mesh-deflection auto-precise \
   --attitude alpha-beta \
   --alpha 0:180:5 \
   --beta 0:90:5 \
-  --out sweep_fast.csv
+  --out sweep_precise.csv
 ```
 
 `--step-metrics brep` is the default and reports STEP volume/surface area from the CAD kernel.
