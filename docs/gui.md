@@ -335,7 +335,10 @@ when `Start` and `End` are the same:
 - `Unit vector`: calculates one explicit projection direction
 
 Angle modes use separate `Start`, `End`, and `Step` fields, shown in degrees. The sweep calculates
-every combination of the selected angle ranges. Unit-vector mode does not sweep.
+every combination of the selected angle ranges. Unit-vector mode does not sweep. Results keep the
+selected mode's angles as entered, so alpha 360 stays 360 and a beta -90 row keeps its alpha even
+when several attitudes share one projection direction; the other angle pair is recovered from the
+direction.
 
 Number fields have no step arrows; type the value. Once a field has focus, the Up/Down keys and the
 mouse wheel still step it. Scrolling over the left panel scrolls it; the mouse wheel changes a
@@ -366,7 +369,8 @@ an empty-state prompt instead of an empty table.
 
 `Table` and `Chart` above the results switch between the table and a line chart of projected
 area against the swept angle. The angle with more sweep values runs along the x axis; each value
-of the other angle is one line (up to 8, with a legend). Pointing at a point shows its values, and
+of the other angle is one line (up to 8, with a legend). Points sit at the requested angles, so
+every sweep row has its own point even when two attitudes look along the same direction. Pointing at a point shows its values, and
 clicking it selects that row, which updates the 3D view just like selecting it in the table.
 Unit-vector results, single attitudes, and sweeps with more than 8 lines show a note instead;
 use the table for those.
@@ -384,6 +388,7 @@ the selected row as tab-separated text. Important fields include:
 - `projected_area`
 - `centroid_u`, `centroid_v`
 - `centroid_x`, `centroid_y`, `centroid_z`
+- `attitude`
 - `alpha_deg`, `beta_deg`
 - `roll_deg`, `pitch_deg`
 - `direction_x`, `direction_y`, `direction_z`
