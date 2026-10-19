@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -89,13 +90,60 @@ def projected_metrics(
     if polygons.size == 0:
         return ProjectionMetrics(area=0.0, centroid_u=None, centroid_v=None)
 
-    outline = shapely.union_all(polygons)
+    outline = _union_polygons(shapely, polygons, projection_direction)
     centroid = outline.centroid
     return ProjectionMetrics(
         area=float(outline.area),
         centroid_u=float(centroid.x),
         centroid_v=float(centroid.y),
     )
+
+
+# Snap-rounding grid sizes for the retry, relative to the largest projected
+# coordinate. Snapping moves each vertex by at most half a cell, so the area
+# changes by about perimeter * grid: 2**-44 (~256 ulps) kept the 16-part
+# benchmark assembly within 1.3e-13 relative. Grids near one ulp (2**-52)
+# fail again, and the coarser second size is a last resort.
+_UNION_RETRY_RELATIVE_GRIDS = (2.0**-44, 2.0**-34)
+
+
+class ProjectionUnionError(RuntimeError):
+    """The projected triangles could not be unioned into an outline."""
+
+
+def _union_polygons(shapely: Any, polygons: np.ndarray, direction: FloatArray) -> Any:
+    """Union projected triangles, retrying with snap-rounding when GEOS fails.
+
+    GEOS retries a failed floating-point overlay with snapping and its own
+    snap-rounding, but those retries only handle TopologyException. Nearly
+    collinear edges, such as sliver triangles whose coordinates differ by one
+    ulp, can instead raise "AssertionFailedException: found two shells in
+    EdgeRing list" and fail the whole union. Retrying with an explicit tiny
+    grid_size runs the snap-rounding overlay on every pairwise union, so only
+    the failing directions pay for it and every other result stays
+    bit-identical.
+    """
+
+    try:
+        return shapely.union_all(polygons)
+    except shapely.errors.GEOSException as exc:
+        first_error = exc
+
+    bounds = shapely.total_bounds(polygons)
+    scale = float(np.max(np.abs(bounds)))
+    if not np.isfinite(scale) or scale == 0.0:
+        scale = 1.0
+    for relative_grid in _UNION_RETRY_RELATIVE_GRIDS:
+        try:
+            return shapely.union_all(polygons, grid_size=scale * relative_grid)
+        except shapely.errors.GEOSException:
+            continue
+
+    direction_text = ", ".join(repr(float(value)) for value in direction)
+    raise ProjectionUnionError(
+        f"Could not union {polygons.size} projected triangles for projection direction "
+        f"({direction_text}), even with snap-rounding retries: {first_error}"
+    ) from first_error
 
 
 def _is_closed_oriented_surface(vertices: FloatArray, faces: np.ndarray) -> bool:
