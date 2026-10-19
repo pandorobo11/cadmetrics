@@ -315,6 +315,59 @@ def test_auto_mesh_presets_record_effective_deflections(tmp_path: Path) -> None:
     assert fast.surface_area == pytest.approx(precise.surface_area)
 
 
+def _synthetic_projection_shape(name: str):
+    z_axis = gp_Ax2(gp_Pnt(0.0, 0.0, 0.0), gp_Dir(0.0, 0.0, 1.0))
+    if name == "sphere":
+        return BRepPrimAPI_MakeSphere(10.0).Shape()
+    if name == "cylinder_end":
+        return BRepPrimAPI_MakeCylinder(z_axis, 5.0, 20.0).Shape()
+    plate = BRepPrimAPI_MakeBox(10.0, 10.0, 1.0).Shape()
+    hole = BRepPrimAPI_MakeCylinder(
+        gp_Ax2(gp_Pnt(5.0, 5.0, -1.0), gp_Dir(0.0, 0.0, 1.0)), 4.0, 3.0
+    ).Shape()
+    return BRepAlgoAPI_Cut(plate, hole).Shape()
+
+
+# Regression bounds for these shapes only, with headroom over the observed errors
+# (auto: about 0.24% to 0.32%, auto-precise: about 0.024% to 0.033%). They are not an
+# accuracy guarantee for other geometry.
+@pytest.mark.parametrize(
+    ("name", "direction", "exact_area", "sign"),
+    [
+        # Chords sit inside a convex outline, so the area comes out low.
+        ("sphere", "1,1,1", np.pi * 10.0**2, -1.0),
+        ("cylinder_end", "0,0,1", np.pi * 5.0**2, -1.0),
+        # Chords cut into a hole, so the material's area comes out high.
+        ("plate_with_hole", "0,0,1", 100.0 - 16.0 * np.pi, 1.0),
+    ],
+)
+def test_auto_mesh_presets_projected_area_against_exact_values(
+    tmp_path: Path,
+    name: str,
+    direction: str,
+    exact_area: float,
+    sign: float,
+) -> None:
+    step_path = tmp_path / f"{name}.step"
+    writer = STEPControl_Writer()
+    writer.Transfer(_synthetic_projection_shape(name), STEPControl_AsIs)
+    assert writer.Write(str(step_path)) == IFSelect_RetDone
+
+    errors = {}
+    for preset, bound in (("auto", 6.0e-3), ("auto-precise", 6.0e-4)):
+        row = project(
+            step_path,
+            input_unit="mm",
+            output_unit="mm",
+            mesh_deflection=preset,
+            attitude="vector",
+            direction=direction,
+        )
+        errors[preset] = row.projected_area / exact_area - 1.0
+        assert 0.0 < sign * errors[preset] < bound, (preset, errors[preset])
+    assert abs(errors["auto-precise"]) < abs(errors["auto"])
+
+
 @pytest.mark.parametrize("mesh_deflection", ["auto", "auto-precise", "auto-fast"])
 def test_auto_mesh_presets_do_not_affect_stl(mesh_deflection: str) -> None:
     row = project(STL_CUBE, mesh_deflection=mesh_deflection, angular_deflection="auto")
