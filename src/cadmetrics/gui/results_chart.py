@@ -266,7 +266,7 @@ class ResultsChart(QtWidgets.QWidget):
                 image.setDevicePixelRatio(_PNG_SCALE)
                 image.fill(QtGui.QColor(_SURFACE))
                 self.render(image)
-                if not image.save(str(path), "PNG"):
+                if not image.save(str(path)):  # The checked suffix picks PNG.
                     raise OSError(f"Could not write {path}.")
         finally:
             self._hovered = hovered
