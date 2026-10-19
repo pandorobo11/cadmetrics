@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
-from dataclasses import replace
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass, replace
 from pathlib import Path
 from time import perf_counter
 from typing import Callable
+
+import numpy as np
 
 from cadmetrics.attitude import (
     ATTITUDE_MODES as ATTITUDE_MODES,
@@ -23,6 +27,7 @@ from cadmetrics.load_options import (
     StepComponentMode,
 )
 from cadmetrics.orientation import (
+    Orientation,
     alpha_beta_from_direction,
     normalize_vector,
     projection_direction_for_orientation,
@@ -376,6 +381,8 @@ def _sweep_model_with_attitude(
     *,
     progress_callback: Callable[[int, int, MeasurementRow], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
+    max_workers: int | None = None,
+    reuse_directions: bool = True,
 ) -> list[MeasurementRow]:
     if resolved_attitude.mode == "vector":
         if cancel_callback is not None:
@@ -392,7 +399,6 @@ def _sweep_model_with_attitude(
             progress_callback(1, 1, row)
         return [row]
 
-    rows: list[MeasurementRow] = []
     total = orientation_count(
         roll=resolved_attitude.roll,
         alpha=resolved_attitude.alpha,
@@ -403,24 +409,157 @@ def _sweep_model_with_attitude(
         alpha=resolved_attitude.alpha,
         beta=resolved_attitude.beta,
     )
-    for index, orientation in enumerate(orientations, start=1):
-        if cancel_callback is not None:
-            cancel_callback()
-        row_start = perf_counter()
-        projection_direction = projection_direction_for_orientation(orientation)
-        row = _projected_row(
-            model,
-            projection_direction=projection_direction,
-            projection_metrics=projected_metrics(model, orientation=orientation),
-            elapsed_sec=0.0,
-        )
-        row = replace(row, elapsed_sec=perf_counter() - row_start)
-        if cancel_callback is not None:
-            cancel_callback()
-        rows.append(row)
-        if progress_callback is not None:
-            progress_callback(index, total, row)
+    return _sweep_orientations(
+        model,
+        list(orientations),
+        total=total,
+        progress_callback=progress_callback,
+        cancel_callback=cancel_callback,
+        max_workers=max_workers,
+        reuse_directions=reuse_directions,
+    )
+
+
+@dataclass(frozen=True)
+class _SweepDirection:
+    """A distinct projection direction shared by one or more sweep rows."""
+
+    orientation: Orientation
+    direction: FloatArray
+
+
+def _sweep_orientations(
+    model: ModelData,
+    orientations: list[Orientation],
+    *,
+    total: int,
+    progress_callback: Callable[[int, int, MeasurementRow], None] | None,
+    cancel_callback: Callable[[], None] | None,
+    max_workers: int | None,
+    reuse_directions: bool,
+) -> list[MeasurementRow]:
+    # Each row maps to a distinct direction; d and -d project onto the same plane,
+    # so their outlines are mirror images with equal area and the same 3D centroid.
+    row_directions: list[FloatArray] = []
+    row_keys: list[int] = []
+    distinct: list[_SweepDirection] = []
+    key_index: dict[tuple[float, float, float], int] = {}
+    for orientation in orientations:
+        direction = projection_direction_for_orientation(orientation)
+        row_directions.append(direction)
+        if reuse_directions:
+            direction_key = _direction_key(direction)
+            index = key_index.get(direction_key)
+            if index is None:
+                index = key_index[direction_key] = len(distinct)
+                distinct.append(_SweepDirection(orientation, direction))
+        else:
+            index = len(distinct)
+            distinct.append(_SweepDirection(orientation, direction))
+        row_keys.append(index)
+
+    def compute(item: _SweepDirection) -> tuple[ProjectionMetrics, float]:
+        start = perf_counter()
+        metrics = projected_metrics(model, orientation=item.orientation)
+        return metrics, perf_counter() - start
+
+    workers = _sweep_worker_count(len(distinct), max_workers)
+    executor = ThreadPoolExecutor(max_workers=workers) if workers > 1 else None
+    # Keep only a bounded number of directions queued ahead of the row being
+    # emitted, so cancellation never leaves a long backlog behind.
+    window = workers * 2
+    futures: dict[int, Future[tuple[ProjectionMetrics, float]]] = {}
+    results: dict[int, ProjectionMetrics] = {}
+    next_submit = 0
+    rows: list[MeasurementRow] = []
+    try:
+        for row_number, (direction, key) in enumerate(
+            zip(row_directions, row_keys, strict=True), 1
+        ):
+            if cancel_callback is not None:
+                cancel_callback()
+            row_start = perf_counter()
+            compute_elapsed = 0.0
+            metrics = results.get(key)
+            if metrics is None:
+                if executor is None:
+                    metrics, compute_elapsed = compute(distinct[key])
+                else:
+                    while next_submit < len(distinct) and next_submit < key + window:
+                        futures[next_submit] = executor.submit(compute, distinct[next_submit])
+                        next_submit += 1
+                    future = futures.pop(key)
+                    while not future.done():
+                        wait((future,), timeout=_CANCEL_POLL_SEC)
+                        if cancel_callback is not None:
+                            cancel_callback()
+                    metrics, compute_elapsed = future.result()
+                results[key] = metrics
+                row_start = perf_counter()
+            row_metrics = _metrics_for_direction(metrics, distinct[key].direction, direction)
+            row = _projected_row(
+                model,
+                projection_direction=direction,
+                projection_metrics=row_metrics,
+                elapsed_sec=0.0,
+            )
+            row = replace(row, elapsed_sec=compute_elapsed + perf_counter() - row_start)
+            if cancel_callback is not None:
+                cancel_callback()
+            rows.append(row)
+            if progress_callback is not None:
+                progress_callback(row_number, total, row)
+    finally:
+        if executor is not None:
+            # On cancellation, drop queued directions and return without waiting
+            # for the ones already inside shapely; their results are discarded.
+            executor.shutdown(wait=False, cancel_futures=True)
     return rows
+
+
+_MAX_SWEEP_WORKERS = 8
+_CANCEL_POLL_SEC = 0.05
+
+
+def _sweep_worker_count(distinct_directions: int, max_workers: int | None) -> int:
+    if max_workers is None:
+        max_workers = min(os.cpu_count() or 1, _MAX_SWEEP_WORKERS)
+    return max(1, min(max_workers, distinct_directions))
+
+
+def _direction_key(direction: FloatArray) -> tuple[float, float, float]:
+    """Return a key shared only by exactly equal or exactly reversed directions."""
+
+    # No rounding: a direction a few ulps away can be the one that turns an edge-on
+    # face into a tiny positive area. Equivalent attitudes still share a key because
+    # orientation._sin_cos_degrees reduces whole and half turns exactly.
+    # Adding 0.0 turns -0.0 into 0.0 so both signs of a zero component match.
+    values = [float(value) + 0.0 for value in direction]
+    leading = next((value for value in values if value != 0.0), 0.0)
+    if leading < 0.0:
+        values = [-value + 0.0 for value in values]
+    return values[0], values[1], values[2]
+
+
+def _metrics_for_direction(
+    metrics: ProjectionMetrics,
+    computed_direction: FloatArray,
+    direction: FloatArray,
+) -> ProjectionMetrics:
+    """Express metrics computed along one direction in another direction's basis."""
+
+    if np.array_equal(computed_direction, direction):
+        return metrics
+    if metrics.centroid_u is None or metrics.centroid_v is None:
+        return metrics
+    computed_u, computed_v = projection_basis(computed_direction)
+    centroid = computed_u * metrics.centroid_u + computed_v * metrics.centroid_v
+    basis_u, basis_v = projection_basis(direction)
+    return ProjectionMetrics(
+        area=metrics.area,
+        centroid_u=float(centroid @ basis_u),
+        centroid_v=float(centroid @ basis_v),
+    )
 
 
 def _selected_component_names(model: ModelData) -> tuple[str, ...]:

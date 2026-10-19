@@ -55,8 +55,18 @@ def _sin_cos_degrees(angle_deg: float) -> tuple[float, float]:
     if angle_deg % 90.0 == 0.0:
         quadrant = int((angle_deg % 360.0) / 90.0)
         return ((0.0, 1.0), (1.0, 0.0), (0.0, -1.0), (-1.0, 0.0))[quadrant]
-    angle = radians(angle_deg)
-    return sin(angle), cos(angle)
+    # Reduce whole and half turns exactly so equivalent attitudes (30 and 390, or a
+    # direction and its reverse) give bit-identical or exactly negated vectors.
+    # Angles in (-180, 180) are evaluated exactly as before.
+    turn = abs(angle_deg) % 360.0
+    half_turn = turn >= 180.0
+    angle = radians(turn - 180.0 if half_turn else turn)
+    sine, cosine = sin(angle), cos(angle)
+    if half_turn:
+        sine, cosine = -sine, -cosine
+    if angle_deg < 0.0:
+        sine = -sine
+    return sine, cosine
 
 
 def projection_direction_for_orientation(orientation: Orientation) -> FloatArray:
