@@ -133,21 +133,26 @@ def _union_polygons(shapely: Any, polygons: np.ndarray, direction: FloatArray) -
     scale = float(np.max(np.abs(bounds)))
     if not np.isfinite(scale) or scale == 0.0:
         scale = 1.0
+    reason = "even with snap-rounding retries"
     for relative_grid in _UNION_RETRY_RELATIVE_GRIDS:
+        grid_size = scale * relative_grid
         try:
-            outline = shapely.union_all(polygons, grid_size=scale * relative_grid)
+            outline = shapely.union_all(polygons, grid_size=grid_size)
         except shapely.errors.GEOSException:
             continue
         # Inputs have positive area. An empty outline means snapping erased all
         # geometry; a coarser grid is not a reliable recovery of that outline.
         if outline.is_empty:
+            reason = (
+                f"and the snap-rounding retry (grid_size={grid_size!r}) erased the whole outline"
+            )
             break
         return outline
 
     direction_text = ", ".join(repr(float(value)) for value in direction)
     raise ProjectionUnionError(
         f"Could not union {polygons.size} projected triangles for projection direction "
-        f"({direction_text}), even with snap-rounding retries: {first_error}"
+        f"({direction_text}), {reason}: {first_error}"
     ) from first_error
 
 

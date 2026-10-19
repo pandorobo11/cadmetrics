@@ -93,6 +93,7 @@ def test_projected_metrics_reports_unrecoverable_union(
 
     message = str(error.value)
     assert "3 projected triangles" in message
+    assert "even with snap-rounding retries" in message
     assert "(-0.5000000000000001, -0.8660254037844386, 0.0)" in message
     assert "synthetic failure" in message
     assert isinstance(error.value.__cause__, shapely.errors.GEOSException)
@@ -119,7 +120,7 @@ def test_projected_metrics_reports_outline_collapsed_by_retry(
     original_union = shapely.union_all
     attempts: list[float | None] = []
 
-    def fail_first(polygons: np.ndarray, *, grid_size: float | None = None):
+    def fail_first(polygons: np.ndarray, *, grid_size: float | None = None) -> object:
         attempts.append(grid_size)
         if grid_size is None:
             raise shapely.errors.GEOSException("synthetic first-attempt failure")
@@ -133,5 +134,6 @@ def test_projected_metrics_reports_outline_collapsed_by_retry(
 
     assert isinstance(error.value.__cause__, shapely.errors.GEOSException)
     assert "synthetic first-attempt failure" in str(error.value)
+    assert "erased the whole outline" in str(error.value)
     # Do not try to recreate already-erased geometry with an even coarser grid.
     assert len(attempts) == 2
