@@ -96,3 +96,42 @@ def test_projected_metrics_reports_unrecoverable_union(
     assert "(-0.5000000000000001, -0.8660254037844386, 0.0)" in message
     assert "synthetic failure" in message
     assert isinstance(error.value.__cause__, shapely.errors.GEOSException)
+
+
+def test_projected_metrics_reports_outline_collapsed_by_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A positive, almost edge-on square is narrower than the retry grid.
+    model = ModelData(
+        path=Path("edge_on_square.stl"),
+        source_format="stl",
+        vertices=np.array([[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [0.0, 0.0, 1.0]]),
+        faces=np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64),
+        input_unit="m",
+        output_unit="m",
+        volume=None,
+        surface_area=None,
+        base_area=None,
+        is_watertight=False,
+    )
+    direction = np.array([1.0e-16, 0.0, 1.0])
+    assert projected_metrics(model, direction=direction).area > 0.0
+    original_union = shapely.union_all
+    attempts: list[float | None] = []
+
+    def fail_first(polygons: np.ndarray, *, grid_size: float | None = None):
+        attempts.append(grid_size)
+        if grid_size is None:
+            raise shapely.errors.GEOSException("synthetic first-attempt failure")
+        outline = original_union(polygons, grid_size=grid_size)
+        assert outline.is_empty
+        return outline
+
+    monkeypatch.setattr(shapely, "union_all", fail_first)
+    with pytest.raises(ProjectionUnionError, match="2 projected triangles") as error:
+        projected_metrics(model, direction=direction)
+
+    assert isinstance(error.value.__cause__, shapely.errors.GEOSException)
+    assert "synthetic first-attempt failure" in str(error.value)
+    # Do not try to recreate already-erased geometry with an even coarser grid.
+    assert len(attempts) == 2

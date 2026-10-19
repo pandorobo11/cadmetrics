@@ -135,9 +135,14 @@ def _union_polygons(shapely: Any, polygons: np.ndarray, direction: FloatArray) -
         scale = 1.0
     for relative_grid in _UNION_RETRY_RELATIVE_GRIDS:
         try:
-            return shapely.union_all(polygons, grid_size=scale * relative_grid)
+            outline = shapely.union_all(polygons, grid_size=scale * relative_grid)
         except shapely.errors.GEOSException:
             continue
+        # Inputs have positive area. An empty outline means snapping erased all
+        # geometry; a coarser grid is not a reliable recovery of that outline.
+        if outline.is_empty:
+            break
+        return outline
 
     direction_text = ", ".join(repr(float(value)) for value in direction)
     raise ProjectionUnionError(
