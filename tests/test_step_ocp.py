@@ -155,7 +155,8 @@ def test_declared_step_units_are_converted_once(
     assert inspected.base_area == pytest.approx(6.0)
     assert inspected.vertices.min(axis=0) == pytest.approx((0.0, 0.0, 0.0))
     assert inspected.vertices.max(axis=0) == pytest.approx((1.0, 2.0, 3.0))
-    assert inspected.mesh_deflection == pytest.approx((1.0**2 + 2.0**2 + 3.0**2) ** 0.5 * 1.0e-4)
+    assert inspected.mesh_deflection == pytest.approx((1.0**2 + 2.0**2 + 3.0**2) ** 0.5 * 1.0e-3)
+    assert inspected.angular_deflection == pytest.approx(0.3)
 
 
 def test_metre_step_keeps_kernel_tolerances_for_sub_micrometre_box(
@@ -264,6 +265,7 @@ def test_auto_mesh_deflection_uses_actual_sub_unit_diagonal(tmp_path: Path) -> N
     projected = project(
         step_path,
         output_unit="mm",
+        mesh_deflection="auto-precise",
         attitude="vector",
         direction="1,0,0",
     )
@@ -276,7 +278,7 @@ def test_auto_mesh_deflection_uses_actual_sub_unit_diagonal(tmp_path: Path) -> N
     )
 
 
-def test_auto_fast_mesh_preset_records_effective_deflections(tmp_path: Path) -> None:
+def test_auto_mesh_presets_record_effective_deflections(tmp_path: Path) -> None:
     step_path = tmp_path / "sphere.step"
     radius_mm = 10.0
     shape = BRepPrimAPI_MakeSphere(radius_mm).Shape()
@@ -286,32 +288,89 @@ def test_auto_fast_mesh_preset_records_effective_deflections(tmp_path: Path) -> 
     expected_diagonal = 2.0 * radius_mm * 3.0**0.5
     exact_area = 3.141592653589793 * radius_mm**2
 
-    accurate = load_model(step_path, output_unit="mm")
-    fast = load_model(step_path, output_unit="mm", mesh_deflection="auto-fast")
+    precise = load_model(step_path, output_unit="mm", mesh_deflection="auto-precise")
+    fast = load_model(step_path, output_unit="mm")
+    legacy_fast = load_model(step_path, output_unit="mm", mesh_deflection="auto-fast")
     fast_row = project(
         step_path,
         output_unit="mm",
-        mesh_deflection="auto-fast",
         attitude="vector",
         direction="1,0,0",
     )
 
-    assert accurate.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-4)
-    assert accurate.angular_deflection == pytest.approx(0.1)
+    assert precise.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-4)
+    assert precise.angular_deflection == pytest.approx(0.1)
     assert fast.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-3)
     assert fast.angular_deflection == pytest.approx(0.3)
+    assert legacy_fast.mesh_deflection == fast.mesh_deflection
+    assert legacy_fast.angular_deflection == fast.angular_deflection
     assert fast_row.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-3)
     assert fast_row.angular_deflection == pytest.approx(0.3)
-    assert len(fast.faces) < len(accurate.faces) / 4
-    # Chords sit inside the true surface, so the coarse mesh can only underestimate.
+    assert len(fast.faces) < len(precise.faces) / 4
+    # On a sphere the chords sit inside the outline, so the coarse mesh underestimates.
     assert fast_row.projected_area < exact_area
     assert fast_row.projected_area == pytest.approx(exact_area, rel=2.0e-2)
     # B-Rep metrics do not depend on the tessellation preset.
-    assert fast.volume == pytest.approx(accurate.volume)
+    assert fast.volume == pytest.approx(precise.volume)
+    assert fast.surface_area == pytest.approx(precise.surface_area)
 
 
-def test_auto_fast_mesh_preset_does_not_affect_stl() -> None:
-    row = project(STL_CUBE, mesh_deflection="auto-fast", angular_deflection="auto")
+def _synthetic_projection_shape(name: str):
+    z_axis = gp_Ax2(gp_Pnt(0.0, 0.0, 0.0), gp_Dir(0.0, 0.0, 1.0))
+    if name == "sphere":
+        return BRepPrimAPI_MakeSphere(10.0).Shape()
+    if name == "cylinder_end":
+        return BRepPrimAPI_MakeCylinder(z_axis, 5.0, 20.0).Shape()
+    plate = BRepPrimAPI_MakeBox(10.0, 10.0, 1.0).Shape()
+    hole = BRepPrimAPI_MakeCylinder(
+        gp_Ax2(gp_Pnt(5.0, 5.0, -1.0), gp_Dir(0.0, 0.0, 1.0)), 4.0, 3.0
+    ).Shape()
+    return BRepAlgoAPI_Cut(plate, hole).Shape()
+
+
+# Regression bounds for these shapes only, with headroom over the observed errors
+# (auto: about 0.24% to 0.32%, auto-precise: about 0.024% to 0.033%). They are not an
+# accuracy guarantee for other geometry.
+@pytest.mark.parametrize(
+    ("name", "direction", "exact_area", "sign"),
+    [
+        # Chords sit inside a convex outline, so the area comes out low.
+        ("sphere", "1,1,1", np.pi * 10.0**2, -1.0),
+        ("cylinder_end", "0,0,1", np.pi * 5.0**2, -1.0),
+        # Chords cut into a hole, so the material's area comes out high.
+        ("plate_with_hole", "0,0,1", 100.0 - 16.0 * np.pi, 1.0),
+    ],
+)
+def test_auto_mesh_presets_projected_area_against_exact_values(
+    tmp_path: Path,
+    name: str,
+    direction: str,
+    exact_area: float,
+    sign: float,
+) -> None:
+    step_path = tmp_path / f"{name}.step"
+    writer = STEPControl_Writer()
+    writer.Transfer(_synthetic_projection_shape(name), STEPControl_AsIs)
+    assert writer.Write(str(step_path)) == IFSelect_RetDone
+
+    errors = {}
+    for preset, bound in (("auto", 6.0e-3), ("auto-precise", 6.0e-4)):
+        row = project(
+            step_path,
+            input_unit="mm",
+            output_unit="mm",
+            mesh_deflection=preset,
+            attitude="vector",
+            direction=direction,
+        )
+        errors[preset] = row.projected_area / exact_area - 1.0
+        assert 0.0 < sign * errors[preset] < bound, (preset, errors[preset])
+    assert abs(errors["auto-precise"]) < abs(errors["auto"])
+
+
+@pytest.mark.parametrize("mesh_deflection", ["auto", "auto-precise", "auto-fast"])
+def test_auto_mesh_presets_do_not_affect_stl(mesh_deflection: str) -> None:
+    row = project(STL_CUBE, mesh_deflection=mesh_deflection, angular_deflection="auto")
 
     assert row.mesh_deflection is None
     assert row.angular_deflection is None
@@ -1248,12 +1307,20 @@ def test_component_preview_meshes_are_coarser_than_the_measurement_mesh(tmp_path
             BRepPrimAPI_MakeSphere(gp_Pnt(5.0, 0.0, 0.0), 1.0).Shape(),
         ],
     )
-    plain = _inspect_model_with_options(path, ModelLoadOptions.resolve())
+    plain = _inspect_model_with_options(
+        path, ModelLoadOptions.resolve(mesh_deflection="auto-precise")
+    )
     preview = _inspect_model_with_options(
-        path, ModelLoadOptions.resolve(component_preview_meshes=True)
+        path,
+        ModelLoadOptions.resolve(mesh_deflection="auto-precise", component_preview_meshes=True),
     )
     preview_triangles = sum(faces.shape[0] for _, faces in preview.component_meshes)
     assert 0 < preview_triangles * 5 < preview.faces.shape[0]
+    default = _inspect_model_with_options(
+        path, ModelLoadOptions.resolve(component_preview_meshes=True)
+    )
+    default_preview_triangles = sum(faces.shape[0] for _, faces in default.component_meshes)
+    assert 0 < default_preview_triangles < default.faces.shape[0]
     # Meshing the copies must not touch the measured mesh or metrics.
     np.testing.assert_array_equal(preview.vertices, plain.vertices)
     np.testing.assert_array_equal(preview.faces, plain.faces)

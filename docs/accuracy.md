@@ -71,12 +71,12 @@ Representative local comparisons against B-Rep values:
 | sample | mesh deflection | volume difference | surface-area difference |
 |---|---:|---:|---:|
 | cube / box / frame | `auto` to coarse explicit values | about `0%` | about `0%` |
-| `sphere_r1` | `D*1e-4` current `auto` | `-0.0507%` | `-0.0272%` |
+| `sphere_r1` | `D*1e-4` (`auto-precise`) | `-0.0507%` | `-0.0272%` |
 | `sphere_r1` | `D*3e-5` | `-0.0153%` | `-0.0083%` |
 | `sphere_r1` | `D*1e-5` | `-0.0051%` | `-0.0028%` |
-| `cylinder_x_r1_l2` | `D*1e-4` current `auto` | `-0.0230%` | `-0.0115%` |
+| `cylinder_x_r1_l2` | `D*1e-4` (`auto-precise`) | `-0.0230%` | `-0.0115%` |
 | `cylinder_x_r1_l2` | `D*3e-5` | `-0.0069%` | `-0.0034%` |
-| `satellite` | `D*1e-4` current `auto` | `-0.0379%` | `-0.0148%` |
+| `satellite` | `D*1e-4` (`auto-precise`) | `-0.0379%` | `-0.0148%` |
 | `satellite` | `D*3e-5` | `-0.0130%` | `-0.0052%` |
 
 For intersecting STEP solids, tessellate after the STEP boolean union if mesh-based comparison
@@ -162,50 +162,62 @@ area matters more than the sum of all visible facets.
 
 ## Tessellation Controls
 
-STEP projected area depends on tessellation. The most important control is:
+STEP mesh accuracy is set by two options. `--mesh-deflection` is the maximum distance between
+the surface and its tessellation, in the output length unit. `--angular-deflection` is the
+maximum angle between facets, in radians; it is an angular tolerance, so cadmetrics does not
+scale it with model size. Both default to `auto`.
 
-```bash
---mesh-deflection
-```
+| `--mesh-deflection` | linear deflection | angle with `--angular-deflection auto` |
+|---|---|---:|
+| `auto` (default) | STEP bounding-box diagonal * `1e-3` | `0.3` rad |
+| `auto-precise` | STEP bounding-box diagonal * `1e-4` | `0.1` rad |
 
-The default is:
+`auto-fast` is still accepted as another name for `auto`.
 
-```text
-auto = STEP bounding-box diagonal * 1e-4
-```
+With `--angular-deflection auto`, the angle follows the selected preset, and is `0.3` when
+`--mesh-deflection` is an explicit number. An explicit `--angular-deflection` always wins, so
+`--angular-deflection 0.5` gives an even faster preview. The `mesh_deflection` and
+`angular_deflection` result columns always record the effective values that were used. STL input
+is not affected.
 
 The actual diagonal is used even when every model dimension is smaller than one input unit. The
 value is expressed in the selected output length unit and only the final deflection is floored at
 `1e-9`. Smaller values usually improve projected-area accuracy for curved geometry but increase
 calculation time.
 
-For reproducible validation runs, pass an explicit value:
+For reproducible validation runs, pass explicit values:
 
 ```bash
-cadmetrics project model.step --mesh-deflection 0.001
+cadmetrics project model.step --mesh-deflection 0.001 --angular-deflection 0.1
 ```
 
-`--angular-deflection` defaults to `auto`, which is `0.1` rad. It is an angular tolerance, so
-cadmetrics does not scale it with model size.
+### What Mesh Accuracy Affects
 
-### Fast Preset
+The tessellation is used for:
 
-`--mesh-deflection auto-fast` selects a coarser automatic preset for quick orientation sweeps:
+- projected area (`project`, `sweep`, and GUI sweeps)
+- the GUI 3D display
+- STEP volume and surface area with `--step-metrics mesh`
+- the rare base-area fallback used when the exact B-Rep base-area calculation fails
 
-```text
-auto-fast = STEP bounding-box diagonal * 1e-3, angular deflection 0.3 rad
-```
+With the default `--step-metrics brep`, volume and surface area come from the CAD kernel and do
+not depend on the mesh settings.
 
-With `--angular-deflection auto` (the default), the angle follows the mesh preset: `0.1` for
-`auto` or an explicit `--mesh-deflection` value, `0.3` for `auto-fast`. An explicit
-`--angular-deflection` always wins, so `--mesh-deflection auto-fast --angular-deflection 0.5`
-is an even faster preview. The `mesh_deflection` and `angular_deflection` result columns always
-record the effective values that were used. STL input is not affected.
+### Default Change: `auto` Is Now the Faster Preset
+
+Earlier versions used diagonal * `1e-4` and `0.1` rad for `auto`; that preset is now called
+`auto-precise`. Mesh-based results with default settings therefore change slightly compared with
+those versions. Use `--mesh-deflection auto-precise` (GUI: `Mesh quality` `Precise`) when you need
+the higher accuracy or want to reproduce earlier results. On the user's own production models,
+the largest projected-area difference observed between the new and the old `auto` was `0.12%`.
+That is an observation for those models, not a general bound.
+
+### Speed and Accuracy
 
 Projected-area run time is roughly proportional to the triangle count. In the reference benchmark
 below, the angular limit, not the linear one, set the triangle count: changing only the linear
 factor from `1e-4` to `1e-3` did not change it. This is an observation for that model, not a rule
-for every curved surface, but it is why the fast preset mainly relaxes the angle.
+for every curved surface, but it is why the default preset mainly relaxes the angle.
 
 Reference measurements on a synthetic 64-part curved assembly, per projection direction, against
 a fine reference mesh. They describe that model and those conditions only; they are not a general
@@ -213,19 +225,18 @@ error bound:
 
 | angular deflection | triangles | time per direction | projected-area error |
 |---:|---:|---:|---:|
-| `0.1` (`auto`) | about 800k | about 21 s | about 0.04% |
-| `0.3` (`auto-fast`) | 100k to 160k | about 2.4 to 4 s | 0.2% to 0.4% |
+| `0.1` (`auto-precise`) | about 800k | about 21 s | about 0.04% |
+| `0.3` (`auto`) | 100k to 160k | about 2.4 to 4 s | 0.2% to 0.4% |
 | `0.5` | about 40k | about 1 s | about 1% |
 
 The error comes from approximating curved surfaces and edges with chords, and its sign depends on
 the shape and attitude. In the benchmark above, and for a convex solid such as a sphere, the chords
 cut inside the outline and projected area is underestimated. Around a curved hole the chords cut
 into the opening instead, so the material's projected area is overestimated: for a 10 x 10 x 1 mm
-plate with a 4 mm radius through hole viewed along the hole axis, `auto` reported `+0.024%` and
-`auto-fast` `+0.24%` against the exact `100 - 16π` mm². A coarse mesh is therefore neither a lower
-nor an upper bound in general. Use `auto-fast` to explore attitudes, then rerun the attitudes that
-matter with `auto` or tighter settings. Volume and surface area in the default
-`--step-metrics brep` mode come from the CAD kernel and do not depend on the preset.
+plate with a 4 mm radius through hole viewed along the hole axis, `auto-precise` reported
+`+0.024%` and `auto` `+0.24%` against the exact `100 - 16π` mm². A coarse mesh is therefore
+neither a lower nor an upper bound in general. Use `auto` to explore attitudes, then rerun the
+attitudes that matter with `auto-precise` or tighter settings.
 
 ## Large STEP Performance Notes
 
@@ -247,8 +258,8 @@ calculating projected area does not reload and tessellate the same model a secon
 change Advanced settings that affect geometry, click `Apply & Reload` or run the calculation to
 load the updated model.
 
-Use `--mesh-deflection auto-fast` (or coarser explicit values) for quick previews, then tighten
-the settings for final projected-area validation.
+The default `auto` preset is meant for quick sweeps; use `--mesh-deflection auto-precise` or
+tighter explicit values for final projected-area validation.
 
 ## Watertightness
 
@@ -260,7 +271,9 @@ or unavailable.
 
 ## Validation Target
 
-The current target is within `0.1%` against Fusion 360 for representative closed solids.
+The current target is within `0.1%` against Fusion 360 for representative closed solids, with
+`--mesh-deflection auto-precise` for projected area. The faster default `auto` is not held to
+this target.
 
 The satellite sample has been manually checked against Fusion 360:
 
@@ -271,7 +284,8 @@ See [Fusion 360 Validation Notes](fusion_validation.md) for details.
 
 ## Practical Guidance
 
-Use the default settings for normal sweeps. Tighten `--mesh-deflection` when:
+Use the default settings for exploratory sweeps. Use `auto-precise`, or tighter explicit values,
+when:
 
 - validating against CAD software
 - evaluating small curved features
@@ -281,8 +295,8 @@ Typical settings:
 
 | use case | `--mesh-deflection` | `--angular-deflection` |
 |---|---:|---:|
-| Fast preview | `auto-fast` (diagonal * `1e-3`) | `auto` (`0.3`) to `0.5` |
-| Normal projected-area work | `auto` (diagonal * `1e-4`) | `auto` (`0.1`) |
+| Fast preview / exploratory sweeps | `auto` (diagonal * `1e-3`) | `auto` (`0.3`) to `0.5` |
+| Precise projected-area work | `auto-precise` (diagonal * `1e-4`) | `auto` (`0.1`) |
 | CAD comparison / final validation | bounding-box diagonal * `3e-5` to `1e-5` | `0.05` to `0.1` |
 
 Keep the deflection fixed when comparing many versions of similar geometry.

@@ -41,12 +41,15 @@ def test_model_load_options_reject_invalid_values(
 @pytest.mark.parametrize(
     ("mesh_deflection", "angular_deflection", "expected_mesh", "expected_angular"),
     [
-        ("auto", "auto", "auto", 0.1),
-        ("AUTO-FAST", "auto", "auto-fast", 0.3),
-        ("auto_fast", "Auto", "auto-fast", 0.3),
-        ("auto-fast", 0.05, "auto-fast", 0.05),
-        ("auto-fast", "0.4", "auto-fast", 0.4),
-        (0.01, "auto", 0.01, 0.1),
+        ("auto", "auto", "auto", 0.3),
+        ("AUTO-PRECISE", "auto", "auto-precise", 0.1),
+        ("auto_precise", "Auto", "auto-precise", 0.1),
+        ("auto-precise", 0.05, "auto-precise", 0.05),
+        ("auto-precise", "0.4", "auto-precise", 0.4),
+        # "auto-fast" is a compatibility alias for the default preset.
+        ("AUTO-FAST", "auto", "auto", 0.3),
+        ("auto_fast", 0.2, "auto", 0.2),
+        (0.01, "auto", 0.01, 0.3),
     ],
 )
 def test_angular_deflection_auto_follows_mesh_preset(
@@ -64,18 +67,21 @@ def test_angular_deflection_auto_follows_mesh_preset(
     assert options.angular_deflection == pytest.approx(expected_angular)
 
 
-def test_default_options_keep_accurate_auto_preset() -> None:
+def test_default_options_use_fast_auto_preset() -> None:
     options = ModelLoadOptions.resolve()
 
     assert options.mesh_deflection == "auto"
-    assert options.angular_deflection == 0.1
-    assert ModelLoadOptions().angular_deflection == 0.1
+    assert options.angular_deflection == 0.3
+    assert ModelLoadOptions().angular_deflection == 0.3
 
 
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
-        ({"mesh_deflection": "fast"}, "mesh_deflection must be a number, 'auto', or 'auto-fast'"),
+        (
+            {"mesh_deflection": "fast"},
+            "mesh_deflection must be a number, 'auto', or 'auto-precise'",
+        ),
         ({"angular_deflection": "coarse"}, "angular_deflection must be a number or 'auto'"),
     ],
 )

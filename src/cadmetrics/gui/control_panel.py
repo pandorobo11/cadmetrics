@@ -16,8 +16,8 @@ from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath
 from cadmetrics.gui.styles import disclosure_arrow_image_urls
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.load_options import (
-    AUTO_FAST_MESH_DEFLECTION,
     AUTO_MESH_DEFLECTION,
+    AUTO_PRECISE_MESH_DEFLECTION,
     DEFAULT_ANGULAR_DEFLECTION,
     resolve_angular_deflection,
 )
@@ -368,12 +368,12 @@ class ControlPanel(QtWidgets.QWidget):
         self.step_metrics.addItem("Mesh", "mesh")
         self._add_row(advanced, "STEP metrics", self.step_metrics)
         self.mesh_quality = PanelComboBox()
-        self.mesh_quality.addItem("Accurate (default)", AUTO_MESH_DEFLECTION)
-        self.mesh_quality.addItem("Fast", AUTO_FAST_MESH_DEFLECTION)
+        self.mesh_quality.addItem("Fast (default)", AUTO_MESH_DEFLECTION)
+        self.mesh_quality.addItem("Precise", AUTO_PRECISE_MESH_DEFLECTION)
         self.mesh_quality.setToolTip(
             "Preset for the Auto mesh deflection; an Auto angular deflection follows it. "
-            "Fast meshes much more coarsely; projected areas can come out slightly high or low "
-            "depending on shape and attitude."
+            "Precise meshes much more finely and is slower; Fast projected areas can come out "
+            "slightly high or low depending on shape and attitude."
         )
         self._add_row(advanced, "Mesh quality", self.mesh_quality)
         self.mesh_deflection = FlexibleDoubleSpinBox()
