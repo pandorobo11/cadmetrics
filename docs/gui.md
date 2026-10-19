@@ -282,8 +282,9 @@ lie at the final model Xmax.
 
 ## Shape Display
 
-The toolbar above the 3D view sets the camera to `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`, `ISO`
-(from `-X -Y +Z`), or `ISO↓` (from below, `+X +Y -Z`). Clicking a button always re-applies that
+The toolbar above the 3D view sets the camera to `+X`, `-X`, `+Y`, `-Y`, `+Z`, `-Z`, or one of
+two isometric views, `-X-Y+Z` (from above) and `+X+Y-Z` (from below). Each label names the side
+the camera looks from. Clicking a button always re-applies that
 view, and the chosen view is kept for models loaded later. `Save Image…` in the same toolbar, or
 `File` > `Save View Image…` (⇧⌘S / Ctrl+Shift+S), exports the current view as PNG.
 
@@ -313,7 +314,7 @@ exports. The small orientation axes remain visible. The grid follows the loaded 
 and uses compact, explicitly sized text instead of the PyVista theme font.
 
 The viewer uses parallel projection with a light that follows the camera, so projection-aligned
-views stay as bright as the ISO view. After a calculation, selecting a result row points the
+views stay as bright as the isometric views. After a calculation, selecting a result row points the
 camera along that row's projection direction. Before a model is loaded, the view shows how to
 open one. While an input is invalid, the projection arrow is hidden instead of showing a
 default direction.
