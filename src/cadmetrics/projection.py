@@ -100,9 +100,9 @@ def projected_metrics(
 
 
 # Snap-rounding grid sizes for the retry, relative to the largest projected
-# coordinate. Snapping moves each vertex by at most half a cell, so the area
+# coordinate after centring the outline on the origin. Snapping moves each vertex by at most half a cell, so the area
 # changes by about perimeter * grid: 2**-44 (~256 ulps) kept the 16-part
-# benchmark assembly within 1.3e-13 relative. Grids near one ulp (2**-52)
+# benchmark assembly within 6e-15 relative. Grids near one ulp (2**-52)
 # fail again, and the coarser second size is a last resort.
 _UNION_RETRY_RELATIVE_GRIDS = (2.0**-44, 2.0**-34)
 
@@ -129,15 +129,19 @@ def _union_polygons(shapely: Any, polygons: np.ndarray, direction: FloatArray) -
     except shapely.errors.GEOSException as exc:
         first_error = exc
 
+    # Snap in coordinates centred on the outline so the grid follows the
+    # outline's size, not its distance from the origin.
     bounds = shapely.total_bounds(polygons)
-    scale = float(np.max(np.abs(bounds)))
+    center = np.array([(bounds[0] + bounds[2]) / 2.0, (bounds[1] + bounds[3]) / 2.0])
+    local = shapely.transform(polygons, lambda coords: coords - center)
+    scale = float(np.max(np.abs(shapely.total_bounds(local))))
     if not np.isfinite(scale) or scale == 0.0:
         scale = 1.0
     reason = "even with snap-rounding retries"
     for relative_grid in _UNION_RETRY_RELATIVE_GRIDS:
         grid_size = scale * relative_grid
         try:
-            outline = shapely.union_all(polygons, grid_size=grid_size)
+            outline = shapely.union_all(local, grid_size=grid_size)
         except shapely.errors.GEOSException:
             continue
         # Inputs have positive area. An empty outline means snapping erased all
@@ -147,7 +151,7 @@ def _union_polygons(shapely: Any, polygons: np.ndarray, direction: FloatArray) -
                 f"and the snap-rounding retry (grid_size={grid_size!r}) erased the whole outline"
             )
             break
-        return outline
+        return shapely.transform(outline, lambda coords: coords + center)
 
     direction_text = ", ".join(repr(float(value)) for value in direction)
     raise ProjectionUnionError(

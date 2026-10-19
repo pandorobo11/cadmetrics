@@ -137,3 +137,49 @@ def test_projected_metrics_reports_outline_collapsed_by_retry(
     assert "erased the whole outline" in str(error.value)
     # Do not try to recreate already-erased geometry with an even coarser grid.
     assert len(attempts) == 2
+
+
+def test_snap_rounding_retry_is_independent_of_distance_from_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A 1 mm square 1e9 m from the origin. Scaling the retry grid by the raw
+    # coordinates made it ~6e-5 m and inflated the area by about 5 %.
+    offset, size = 1.0e9, 1.0e-3
+    model = ModelData(
+        path=Path("far_square.stl"),
+        source_format="stl",
+        vertices=np.array(
+            [
+                [0.0, offset, offset],
+                [0.0, offset + size, offset],
+                [0.0, offset + size, offset + size],
+                [0.0, offset, offset + size],
+            ]
+        ),
+        faces=np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64),
+        input_unit="m",
+        output_unit="m",
+        volume=None,
+        surface_area=None,
+        base_area=None,
+        is_watertight=False,
+    )
+    direction = np.array([1.0, 0.0, 0.0])
+    expected = projected_metrics(model, direction=direction)
+    original_union = shapely.union_all
+    grid_sizes: list[float | None] = []
+
+    def fail_first(polygons: np.ndarray, *, grid_size: float | None = None) -> object:
+        grid_sizes.append(grid_size)
+        if grid_size is None:
+            raise shapely.errors.GEOSException("synthetic first-attempt failure")
+        return original_union(polygons, grid_size=grid_size)
+
+    monkeypatch.setattr(shapely, "union_all", fail_first)
+    metrics = projected_metrics(model, direction=direction)
+
+    assert len(grid_sizes) == 2
+    assert grid_sizes[1] is not None and grid_sizes[1] < size * 1.0e-12
+    assert metrics.area == pytest.approx(expected.area, rel=1.0e-9, abs=0.0)
+    assert metrics.centroid_u == pytest.approx(expected.centroid_u, rel=0.0, abs=size * 1.0e-9)
+    assert metrics.centroid_v == pytest.approx(expected.centroid_v, rel=0.0, abs=size * 1.0e-9)
