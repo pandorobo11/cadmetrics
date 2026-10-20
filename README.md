@@ -45,7 +45,7 @@ This installs STEP support and the GUI. If you need less:
 cadmetrics-gui
 ```
 
-1. Click `Browse` and open a model.
+1. Click `Browse` and open a model, or choose `File` > `Open Sample…` to try a sample.
 2. Check `Input unit` and `Output unit`.
 3. Enter the angles in `Attitude` and click `Run Sweep`.
 4. Click a result row to see it in 3D, then click `Save CSV`.

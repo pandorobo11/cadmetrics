@@ -54,6 +54,9 @@ Any of these opens a model:
 - drag files onto the window
 - type a path in the `File` field and press Enter
 
+To try cadmetrics on a sample model, choose `File` > `Open Sample…`. The file dialog opens in the
+folder of [sample models](samples.md).
+
 The model appears in the 3D view as soon as it loads. To open several files as one model, select
 them together. They must all be STL or all be STEP (see
 [Several files as one model](concepts.md#several-files-as-one-model)).

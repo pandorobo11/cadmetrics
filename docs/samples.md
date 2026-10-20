@@ -1,10 +1,42 @@
 # Sample Models
 
-The `samples/` folder of the cadmetrics source repository contains small test models with known answers. Use them to try cadmetrics or to check that it
-works as expected on your computer. They are not installed with `pip`.
+cadmetrics comes with small test models whose answers are known. Use them to try cadmetrics or to
+check that it works as expected on your computer.
 
-Most samples come as a STEP file, an ASCII STL file, and a binary STL file. The values below are
-in meters, which is what you get with the default settings.
+## Open a sample
+
+- GUI: choose `File` > `Open Sample…`. The file dialog opens in the sample folder.
+- CLI: `cadmetrics samples` lists the sample files, and `cadmetrics samples --path` prints the
+  sample folder.
+- Python: `cadmetrics.samples.samples_dir()` returns the sample folder.
+
+Use the folder path to run a sample from the command line:
+
+```bash
+cadmetrics measure "$(cadmetrics samples --path)/unit_cube/unit_cube.step"
+cadmetrics project "$(cadmetrics samples --path)/box_1x2x3/box_1x2x3.step" --alpha 0
+```
+
+When you run cadmetrics from a copy of the source repository, the sample folder is its `samples/`
+folder, so `samples/unit_cube/unit_cube.step` also works from the repository root.
+
+## What is included
+
+Most samples come as a STEP file and a binary STL file. The package installed with `pip` includes
+every STEP and binary STL file, plus one ASCII (text) STL example,
+`unit_cube/unit_cube_ascii.stl`. The source repository also has ASCII STL versions of the other
+models; they contain the same triangles as the binary STL files.
+
+- `open_cube_missing_face` has no STEP file, because it exists to show the "not watertight"
+  warning for STL.
+- `multi_file_step_components` has no STL file. Open `box_pair_a.step` and `box_pair_b.step`
+  together.
+- The STEP samples are stored in millimeters; with `Input unit` `auto` they give the same meter
+  values as the STL files.
+
+## Expected values
+
+The values below are in meters, which is what you get with the default settings.
 
 | name | what it shows | expected values |
 |---|---|---|
@@ -19,20 +51,5 @@ in meters, which is what you get with the default settings.
 | `frame_with_hole` | a hole and a concave outline | volume `0.8`, surface `17.6`, projection from +Z `8` |
 | `satellite` | a realistic model checked against Fusion 360 | volume about `2.561` m³ (`2.561E+09` mm³) |
 
-Notes:
-
-- `open_cube_missing_face` has no STEP file, because it exists to show the "not watertight"
-  warning for STL.
-- `multi_file_step_components` has no STL file. Open `box_pair_a.step` and `box_pair_b.step`
-  together.
-- The STEP samples are stored in millimeters; with `Input unit` `auto` they give the same meter
-  values as the STL files.
-
-Try one from the command line:
-
-```bash
-cadmetrics measure samples/unit_cube/unit_cube.step
-cadmetrics project samples/box_1x2x3/box_1x2x3.step --alpha 0
-```
-
-The full list of expected values is in [samples/metadata.json](../samples/metadata.json).
+The full list of expected values is in [samples/metadata.json](../samples/metadata.json), which is
+also in the sample folder.

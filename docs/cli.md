@@ -11,6 +11,7 @@ jobs, and gives the same results as the GUI.
 | `cadmetrics project` | projected area for one direction |
 | `cadmetrics sweep` | projected area for a range of angles |
 | `cadmetrics inspect` | information about the model, such as its unit and components |
+| `cadmetrics samples` | the bundled sample models |
 
 Run `cadmetrics COMMAND --help` to see every option of a command.
 
@@ -37,13 +38,13 @@ All commands write the same CSV columns. See [Result Columns](results.md).
 Calculate volume, surface area, base area, and bounds:
 
 ```bash
-cadmetrics measure samples/unit_cube/unit_cube.step
+cadmetrics measure model.step
 ```
 
 Report the results in millimeters:
 
 ```bash
-cadmetrics measure samples/satellite/satellite.step --output-unit mm
+cadmetrics measure model.step --output-unit mm
 ```
 
 ## project
@@ -110,6 +111,23 @@ cadmetrics inspect model.step
 `inspect` prints the detected unit, bounds, volume, surface area, whether the shape is closed
 (watertight), warnings, and, for STEP files, the numbered list of components. For STEP files the
 vertex and face counts can show `0`, because `inspect` skips building a mesh to save time.
+
+## samples
+
+List the sample models that come with cadmetrics, or print the folder they are in:
+
+```bash
+cadmetrics samples
+cadmetrics samples --path
+```
+
+Use the folder path to try a command on a sample:
+
+```bash
+cadmetrics measure "$(cadmetrics samples --path)/satellite/satellite.step" --output-unit mm
+```
+
+See [Sample Models](samples.md) for what each sample shows and its expected values.
 
 ## Several files
 

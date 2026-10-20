@@ -417,3 +417,20 @@ def test_cli_rejects_negative_angular_deflection(runner: CliRunner) -> None:
 
     assert result.exit_code != 0
     assert "angular_deflection must not be negative" in result.output
+
+
+def test_samples_cli_path_prints_sample_directory(runner: CliRunner) -> None:
+    result = runner.invoke(app, ["samples", "--path"])
+
+    assert result.exit_code == 0
+    directory = Path(result.output.strip())
+    assert (directory / "metadata.json").is_file()
+    assert (directory / "unit_cube" / "unit_cube.step").is_file()
+
+
+def test_samples_cli_lists_sample_files(runner: CliRunner) -> None:
+    result = runner.invoke(app, ["samples"])
+
+    assert result.exit_code == 0
+    assert "satellite/satellite.step" in result.output
+    assert "unit_cube/unit_cube_binary.stl" in result.output

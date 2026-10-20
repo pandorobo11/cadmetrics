@@ -32,6 +32,7 @@ from cadmetrics.coordinates import DEFAULT_AXIS_MAP
 from cadmetrics.csv_io import CSV_FIELDS, validate_csv_output_path, write_rows_csv
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.load_options import normalize_step_metric_source
+from cadmetrics.samples import list_samples, samples_dir
 from cadmetrics.types import MeasurementRow
 
 app = typer.Typer(no_args_is_help=True, help="Calculate CAD volume, surface, and projected area.")
@@ -529,6 +530,28 @@ def inspect(
     table.add_row("is_watertight", str(model.is_watertight))
     table.add_row("warnings", "; ".join(model.warnings))
     console.print(table)
+
+
+@app.command()
+def samples(
+    path: bool = typer.Option(
+        False,
+        "--path",
+        help="Print only the sample directory, e.g. for $(cadmetrics samples --path)/unit_cube/unit_cube.step.",
+    ),
+) -> None:
+    """List the bundled sample geometry files."""
+
+    directory = _run_or_exit(samples_dir)
+    if path:
+        typer.echo(directory)
+        return
+    # Plain text keeps the paths unwrapped so they can be copied into other commands.
+    typer.echo(f"Sample directory: {directory}")
+    for sample in _run_or_exit(list_samples):
+        typer.echo(f"\n{sample.name}: {sample.description}")
+        for file in sample.files:
+            typer.echo(f"  {file.relative_to(directory).as_posix()}")
 
 
 def _emit_rows(

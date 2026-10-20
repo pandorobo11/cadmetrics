@@ -20,6 +20,7 @@ from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.jobs import CalculationRequest, run_calculation
 from cadmetrics.gui.results_model import DISPLAY_FIELDS, ResultsTableModel, header_label
 from cadmetrics.gui.results_panel import ResultsPanel
+from cadmetrics.samples import samples_dir
 from cadmetrics.types import MeasurementRow, ModelData
 
 _RIGHT = QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
@@ -376,7 +377,14 @@ def test_file_menu_actions_and_shortcuts(window, monkeypatch) -> None:
     file_menu = window.menuBar().actions()[0]
     assert file_menu.text() == "File"
     texts = [action.text() for action in file_menu.menu().actions() if not action.isSeparator()]
-    assert texts == ["Open…", "Run Sweep", "Cancel", "Save CSV…", "Save View Image…"]
+    assert texts == [
+        "Open…",
+        "Open Sample…",
+        "Run Sweep",
+        "Cancel",
+        "Save CSV…",
+        "Save View Image…",
+    ]
     assert window.open_action.shortcut() == QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Open)
     assert window.run_action.shortcut() == QtGui.QKeySequence("Ctrl+R")
     assert window.save_csv_action.shortcut() == QtGui.QKeySequence(
@@ -389,6 +397,25 @@ def test_file_menu_actions_and_shortcuts(window, monkeypatch) -> None:
     window.controls.browse_button.clicked.connect(lambda: opened.append(True))
     window.open_action.trigger()
     assert opened == [True]
+
+
+def test_open_sample_starts_in_sample_directory_and_loads_selection(window, monkeypatch) -> None:
+    sample = samples_dir() / "unit_cube" / "unit_cube.step"
+    directories = []
+
+    def choose(parent, caption, directory, file_filter):
+        directories.append(directory)
+        return [str(sample)], ""
+
+    monkeypatch.setattr(QtWidgets.QFileDialog, "getOpenFileNames", choose)
+    loads = []
+    monkeypatch.setattr(window.controller, "load_only", loads.append)
+
+    window.open_sample_action.trigger()
+
+    assert directories == [str(samples_dir())]
+    assert window.controls.file_paths == (sample,)
+    assert len(loads) == 1
 
 
 def test_run_action_clicks_only_enabled_run_button(window) -> None:
