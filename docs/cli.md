@@ -1,11 +1,12 @@
 # CLI Usage
 
-`cadmetrics` provides four CLI commands:
+`cadmetrics` provides five CLI commands:
 
 - `measure`: volume and surface area
 - `project`: projected area for one attitude or direction
 - `sweep`: projected area for angle sweeps or one vector direction
 - `inspect`: loaded model information
+- `samples`: bundled sample geometry files
 
 Install the base package for STL support:
 
@@ -247,6 +248,19 @@ Inspect a multi-file assembly before calculating:
 ```bash
 cadmetrics inspect body.step wing.step tail.step
 ```
+
+## samples
+
+List the sample geometry bundled with the installed package, or print its directory:
+
+```bash
+cadmetrics samples
+cadmetrics inspect "$(cadmetrics samples --path)/satellite/satellite.step"
+```
+
+The wheel bundles every STEP file and binary STL but only one ASCII STL; see
+[Sample geometry](samples.md#installed-packages). The `samples/...` paths in the examples on this
+page are relative to a repository checkout.
 
 ## CSV Columns
 

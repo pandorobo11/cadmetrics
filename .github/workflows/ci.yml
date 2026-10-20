@@ -90,7 +90,10 @@ jobs:
           WHEEL="$(ls dist/cadmetrics-*.whl)"
           python -m venv /tmp/cadmetrics-smoke-step
           /tmp/cadmetrics-smoke-step/bin/python -m pip install "$WHEEL[step]"
-          /tmp/cadmetrics-smoke-step/bin/cadmetrics inspect samples/unit_cube/unit_cube.step
+          # Read the copy bundled in the wheel, not the checkout's samples/ directory.
+          SAMPLES="$(cd /tmp && /tmp/cadmetrics-smoke-step/bin/cadmetrics samples --path)"
+          case "$SAMPLES" in /tmp/cadmetrics-smoke-step/*) ;; *) echo "unexpected samples dir: $SAMPLES"; exit 1 ;; esac
+          /tmp/cadmetrics-smoke-step/bin/cadmetrics inspect "$SAMPLES/unit_cube/unit_cube.step"
 
       - name: Smoke install gui extra
         # Validate GUI packaging even if an earlier smoke check failed.

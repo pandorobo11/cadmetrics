@@ -143,6 +143,8 @@ below the viewer.
 
 1. Open one or more STL files, or one or more STEP files: click `Browse`, choose `File` >
    `Open…` (⌘O / Ctrl+O), drag the files onto the window, or type a path and press Enter.
+   To try the bundled [sample geometry](samples.md), choose `File` > `Open Sample…`, which opens
+   the same file dialog in the sample directory.
 2. Confirm input and output units.
 3. Adjust components or tessellation settings if needed.
 4. Choose the attitude input mode.
