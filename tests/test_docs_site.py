@@ -13,7 +13,11 @@ def test_mkdocs_site_contains_readme_docs_and_assets(tmp_path: Path) -> None:
     assert (site_dir / "index.html").is_file()
     assert (site_dir / "docs" / "gui.html").is_file()
     assert (site_dir / "docs" / "accuracy.html").is_file()
+    assert (site_dir / "docs" / "concepts.html").is_file()
+    assert (site_dir / "docs" / "results.html").is_file()
+    assert (site_dir / "docs" / "troubleshooting.html").is_file()
     assert (site_dir / "docs" / "assets" / "gui-main.png").is_file()
+    assert not (site_dir / "devdocs").exists()
     index = (site_dir / "index.html").read_text(encoding="utf-8")
     assert "cadmetrics" in index
     assert "docs/gui.html" in index

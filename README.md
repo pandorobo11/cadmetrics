@@ -1,271 +1,118 @@
 # cadmetrics
 
-`cadmetrics` calculates volume, surface area, Xmax base-face area, and projected area for STL and STEP files.
-It provides a CLI, Python API, and PySide6 desktop GUI for aerodynamic projected-area and
-drag-area checks.
+`cadmetrics` measures CAD models for aerodynamic and drag-area work. Give it an STL or STEP file
+and it calculates the model's volume, surface area, base area, and projected area from any
+direction, including sweeps over ranges of angles.
 
-## Features
-
-- Read STL ASCII/Binary and STEP (`.step`, `.stp`)
-- Combine multiple STL files or multiple STEP files into one calculation model
-- Calculate volume and surface area
-- Calculate Xmax base-face area
-- Calculate orthographic projected outline area with overlapping projected regions removed
-- Sweep alpha/beta or roll/pitch angle ranges
-- Report equivalent alpha/beta, roll/pitch, and unit-vector direction values
-- Report projected-area centroids in 2D projection coordinates and 3D model coordinates
-- Report model XYZ coordinate bounds in the selected output unit
-- Report the cadmetrics package version and git hash used for each calculation
-- Export CSV from CLI and GUI
-- Inspect geometry in a local PySide6/PyVista GUI
-- Toggle STEP solid components in the GUI advanced settings
-- Optionally subtract disabled STEP components from enabled geometry
-- Highlight surfaces newly exposed by component subtraction in the GUI
-
-## GUI Preview
+You can use it three ways: a desktop GUI, a command-line tool, and a Python library. All three give
+the same results.
 
 ![cadmetrics GUI showing a satellite STEP sweep](docs/assets/gui-main.png)
 
+## Features
+
+- Reads STL (ASCII and binary) and STEP (`.step`, `.stp`) files
+- Calculates volume, surface area, base area (the flat rear faces), and model bounds
+- Calculates projected area (the silhouette area) for any direction, counting overlapping parts
+  once, together with the silhouette's center
+- Sweeps angle of attack / sideslip or roll / pitch ranges
+- Treats several files as one model, and lets you include, exclude, or subtract STEP components
+- Shows the model and results in an interactive 3D view and chart
+- Saves results as CSV, including the settings and cadmetrics version used
+
 ## Install
 
-STL-only usage:
-
-```bash
-pip install cadmetrics
-```
-
-STEP support:
-
-```bash
-pip install "cadmetrics[step]"
-```
-
-PySide6 GUI:
-
-```bash
-pip install "cadmetrics[gui]"
-```
-
-STEP support and GUI together:
+cadmetrics needs Python 3.12 to 3.14.
 
 ```bash
 pip install "cadmetrics[step,gui]"
 ```
 
-From a local checkout with `uv`:
+This installs STEP support and the GUI. If you need less:
 
-```bash
-uv sync --extra step --extra gui
-```
+| command | what you get |
+|---|---|
+| `pip install cadmetrics` | CLI and Python API, STL files only |
+| `pip install "cadmetrics[step]"` | adds STEP files |
+| `pip install "cadmetrics[gui]"` | adds the GUI |
+| `pip install "cadmetrics[all]"` | everything, same as `[step,gui]` |
 
-cadmetrics targets Python 3.12–3.14.
+## Quick start
 
-For the macOS development app, build with
-`.venv/bin/python scripts/create_macos_app.py` and launch `open dist/Cadmetrics.app` from the
-checkout root. Xcode Command Line Tools are required; see [GUI launch instructions](docs/gui.md#launch)
-for rebuilding and Python environment selection.
-
-## Quickstart
-
-The STEP examples below require `cadmetrics[step]`.
-
-Measure a STEP file:
-
-```bash
-cadmetrics measure samples/unit_cube/unit_cube.step
-```
-
-Calculate projected area from angle of attack and sideslip:
-
-```bash
-cadmetrics project samples/satellite/satellite.step \
-  --output-unit mm \
-  --attitude alpha-beta \
-  --alpha 60 \
-  --beta 0
-```
-
-Calculate projected area from roll and pitch:
-
-```bash
-cadmetrics project samples/satellite/satellite.step \
-  --output-unit mm \
-  --attitude roll-pitch \
-  --roll 0 \
-  --pitch 60
-```
-
-Calculate projected area from an explicit direction vector:
-
-```bash
-cadmetrics project samples/satellite/satellite.step \
-  --output-unit mm \
-  --attitude vector \
-  --direction 0.5,0,0.8660254
-```
-
-Sweep every combination of attitude ranges and write CSV:
-
-```bash
-cadmetrics sweep samples/satellite/satellite.step \
-  --output-unit mm \
-  --attitude alpha-beta \
-  --alpha 0:90:5 \
-  --beta -10:10:5 \
-  --out sweep.csv
-```
-
-Combine same-format files as one model:
-
-```bash
-cadmetrics project fuselage.step wing.step tail.step \
-  --attitude alpha-beta \
-  --alpha 10
-```
-
-STEP files are boolean-unioned before measurement when possible. STL files are concatenated as
-meshes without boolean repair, so overlapping STL parts can double-count volume and surface area.
-STEP and STL files cannot be mixed in one calculation.
-
-Launch the desktop GUI:
+### GUI
 
 ```bash
 cadmetrics-gui
 ```
 
-## Coordinate and Attitude Convention
+1. Click `Browse` and open a model.
+2. Check `Input unit` and `Output unit`.
+3. Enter the angles in `Attitude` and click `Run Sweep`.
+4. Click a result row to see it in 3D, then click `Save CSV`.
 
-The default coordinate convention is:
+See [Using the GUI](docs/gui.md).
 
-```text
-X aft, Y right, Z up
-```
-
-`alpha`, `beta`, `roll`, and `pitch` describe the projection direction attitude, not the
-model rotation.
-
-If the source model axes do not match this convention, remap them before calculation:
+### Command line
 
 ```bash
-cadmetrics project model.step --axis-map x,-z,y --alpha 10
+# volume, surface area, and base area
+cadmetrics measure model.step
+
+# projected area at 10° angle of attack, in millimeters
+cadmetrics project model.step --alpha 10 --output-unit mm
+
+# projected area for alpha 0–90° and beta −10–10° in 5° steps, saved as CSV
+cadmetrics sweep model.step --alpha 0:90:5 --beta -10:10:5 --out sweep.csv
 ```
 
-`--axis-map` lists the source axes used as cadmetrics `X,Y,Z`.
+See [Using the CLI](docs/cli.md).
 
-Use `--direction x,y,z` when you want the least ambiguous input.
-
-See [Attitude Definition](docs/attitude.md) for formulas and examples.
-
-## Units
-
-`--unit` describes the input model length unit. Its default is `auto`:
-
-- STEP units are read from the file
-- STL is assumed to be meters
-
-`--output-unit` controls reported coordinates, areas, and volumes. Supported explicit units are
-`m`, `mm`, `cm`, `in`, and `ft`.
-
-## Python API
+### Python
 
 ```python
-from cadmetrics import inspect_model, measure, project, sweep
+from cadmetrics import measure, project, sweep
 
-metrics = measure("model.stl")
-single = project("model.stl", attitude="alpha-beta", alpha_deg=10)
-rows = sweep(
-    "model.stl",
-    attitude="alpha-beta",
-    alpha_deg="-10:20:1",
-    beta_deg="-5:5:1",
-)
-
-roll_pitch = project(
-    "model.stl",
-    attitude="roll-pitch",
-    roll_deg=30,
-    pitch_deg=10,
-)
-
-assembly = project(
-    ["fuselage.step", "wing.step", "tail.step"],
-    attitude="alpha-beta",
-    alpha_deg=10,
-)
-components = inspect_model(["fuselage.step", "wing.step"]).component_names
-filtered = project(["fuselage.step", "wing.step"], step_components=(1, 3))
-cut = measure(
-    "assembly.step",
-    step_components=(1, 3),
-    step_component_mode="subtract",
-)
+metrics = measure("model.step")
+row = project("model.step", attitude="alpha-beta", alpha_deg=10)
+rows = sweep("model.step", attitude="alpha-beta", alpha_deg="0:90:5", beta_deg="-10:10:5")
+print(row.projected_area)
 ```
 
-The Python API uses the same explicit `alpha-beta`, `roll-pitch`, and `vector` input modes as the
-CLI and GUI. API angle names end in `_deg` to make their unit explicit.
-For multi-file STEP component filtering, `step_components` uses the 1-based global order reported
-by `inspect_model([...]).component_names`.
+See [Using Python](docs/api.md).
 
-`step_component_mode="filter"` (the default) measures the union of enabled components.
-`step_component_mode="subtract"` instead measures `Union(enabled) - Union(disabled)`. Its
-`surface_area` excludes faces newly exposed by subtraction;
-`newly_exposed_surface_area` reports those faces
-separately. The CLI exposes the same behavior with repeatable `--step-component INDEX` options
-and `--component-mode subtract`.
-Newly exposed surfaces are also excluded from `base_area`; if they make up the entire final Xmax
-plane, `base_area` is `0`.
+## Before you start
+
+- cadmetrics uses **X aft, Y right, Z up**. If your model uses other axes, set the axis map.
+- STL files have no unit and are read as **meters** by default. Set the input unit to `mm` if
+  your STL was exported in millimeters.
+- Projected area is calculated from a triangle mesh. The default is tuned for speed; use the
+  precise setting for final numbers.
+
+[Key Concepts](docs/concepts.md) explains these in a few minutes.
 
 ## Documentation
 
-- [CLI Usage](docs/cli.md)
-- [Python API](docs/api.md)
-- [GUI Usage](docs/gui.md)
-- [Attitude Definition](docs/attitude.md)
-- [Accuracy Notes](docs/accuracy.md)
-- [Sample Geometry](docs/samples.md)
-- [Fusion 360 Validation Notes](docs/fusion_validation.md)
-- [Requirements](docs/requirements.md)
-- [Release Process](docs/release.md)
+Guides:
 
-## Accuracy Notes
+- [Key Concepts](docs/concepts.md): what cadmetrics measures, axes, units, and components
+- [Using the GUI](docs/gui.md)
+- [Using the CLI](docs/cli.md)
+- [Using Python](docs/api.md)
 
-STL measurements are mesh-based. STEP volume, surface area, and Xmax base-face area use the
-OCP/OpenCascade CAD kernel when the `step` extra is installed. Multi-file STEP inputs are
-boolean-unioned before measurement when possible. Multi-file STL inputs are mesh-concatenated
-without boolean repair, so overlapping STL parts can double-count volume, surface area, and base
-area. For STL-like comparisons, STEP volume and surface area can be calculated from the
-tessellated mesh with `--step-metrics mesh`.
-STEP projected area is always calculated from a tessellated mesh, so the result depends on
-tessellation quality.
-Open, invalid, or surface-only STEP shapes keep calculable area results but report no volume and
-set `is_watertight` to false.
-Open or non-watertight STL meshes likewise report `volume=None` with a warning while retaining
-calculable surface, base, and projected areas.
-For faster large STEP checks, default B-Rep `measure` and CLI `inspect` skip tessellation when a
-display/projected-area mesh is not needed. The GUI reuses the loaded display mesh when running a
-sweep.
+Reference:
 
-The default `--mesh-deflection auto` uses the STEP bounding-box diagonal times `1e-3` in the
-selected output length unit, including for models whose dimensions are smaller than one input
-unit, with a `0.3` rad angular deflection. It is meant for quick sweeps and has a small
-projected-area error that can be an over- or underestimate depending on shape and attitude.
-`--mesh-deflection auto-precise` uses `1e-4` and `0.1` rad, the default of earlier versions; use
-it when you need higher accuracy. Because the default changed, mesh-based results change slightly;
-on the user's own production models the largest projected-area difference observed was `0.12%`.
-Mesh accuracy affects projected area, display, `--step-metrics mesh` volume and surface area, and
-the base-area fallback, but not the default B-Rep volume and surface area. Xmax base-face
-detection uses `--base-tolerance 1e-6` by default, applied as a relative tolerance to the model
-bounding-box diagonal. The current validation target is within `0.1%` against Fusion 360 for
-representative closed solids, using `auto-precise` for projected area.
+- [Attitude Angles](docs/attitude.md)
+- [Result Columns](docs/results.md)
+- [Accuracy and Mesh Settings](docs/accuracy.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Sample Models](docs/samples.md)
 
-See [Accuracy Notes](docs/accuracy.md) for details.
+In the GUI, `Help` > `Documentation` opens these pages offline.
 
-## Project Status
+## Development
 
-The first milestone focuses on a practical local workflow for one combined calculation model at a
-time. Multiple input files are treated as one combined model. Excel/HTML reports and geometry
-repair are out of scope; use CSV output and repair invalid CAD or mesh geometry in CAD/mesh tools
-before using cadmetrics.
+Developer documentation, including the macOS development app, release steps, and internal
+design notes, is in the `devdocs/` folder of the source repository.
 
 ## License
 

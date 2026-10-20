@@ -1,302 +1,120 @@
-# Accuracy Notes
+# Accuracy and Mesh Settings
 
-cadmetrics combines exact CAD-kernel calculations and mesh-based projected-area calculations.
-Understanding the difference is important when comparing results with CAD software.
+This page explains how accurate cadmetrics results are and which settings change them.
 
-## Geometry Backends
+## Short version
 
-STL files are mesh geometry. Volume, surface area, and projected area are calculated from the
-mesh. Self-intersecting or overlapping STL components are not repaired automatically; in those
-cases volume and surface area can double-count overlaps or otherwise become unreliable.
-When multiple STL files are passed in one command, their meshes are concatenated into one
-calculation model with the same limitation.
+- For STEP files, **volume, surface area, and base area** are calculated from the exact CAD
+  geometry. Mesh settings do not change them.
+- **Projected area** is always calculated from a triangle mesh, so it carries a small error that
+  depends on how fine the mesh is.
+- The default mesh setting (`auto`, GUI `Fast`) is meant for quickly exploring many directions.
+  Its projected-area error is usually a few tenths of a percent or less.
+- For final numbers, rerun the directions that matter with `auto-precise` (GUI `Precise`).
+- **STL** results are always mesh-based, and depend on how the STL file was exported.
 
-STEP files use the optional `step` extra:
+## Why projected area depends on the mesh
 
-```bash
-pip install "cadmetrics[step]"
-```
+To calculate the silhouette, cadmetrics turns curved CAD surfaces into many small flat triangles
+(a mesh). Flat triangles cannot follow a curve exactly, so the outline of a curved part comes out
+very slightly different from the true shape. Finer meshes are closer to the true shape but take
+longer to calculate.
 
-For STEP input:
+The error can go either way. For a convex shape such as a sphere, the mesh sits slightly inside the
+true outline, so projected area comes out a little low. Around a round hole the mesh cuts into the
+hole, so the area comes out a little high. A coarse mesh is therefore not a safe upper or lower
+limit.
 
-- volume uses OCP/OpenCascade `VolumePropertiesGK` after boolean-unioning multiple solids
-- surface area uses the OCP/OpenCascade B-Rep model after boolean-unioning multiple solids
-- base area uses B-Rep face area for exterior faces at cadmetrics-coordinate `Xmax`
-- `--step-metrics mesh` can instead calculate STEP volume and surface area from the
-  tessellated mesh after boolean union
-- projected area uses a tessellated mesh generated from the B-Rep
-- the GUI can exclude selected STEP solid components before boolean union and measurement
+Flat-faced shapes, such as boxes, have no mesh error.
 
-Before reporting STEP volume, cadmetrics validates that the shape contains valid closed solids
-and no loose non-solid faces. Open, invalid, or surface-only STEP shapes report `volume=None` and
-`is_watertight=False`; surface, base, and projected areas remain available when calculable.
+## Mesh settings
 
-When multiple STEP files are passed in one command, cadmetrics loads their solids into one
-compound and applies the same boolean-union step before measurement. STEP and STL files cannot
-be mixed in one calculation model.
+These settings only apply to STEP files.
 
-OCP does not expose a separate `SurfacePropertiesGK` function. Surface area uses
-`SurfaceProperties`; OCP's Python binding also exposes an adaptive-integration overload that
-accepts an error tolerance, but cadmetrics currently keeps the default exact-surface call.
+| CLI `--mesh-deflection` | GUI `Mesh quality` | use it for |
+|---|---|---|
+| `auto` (default) | `Fast (default)` | exploring many directions quickly |
+| `auto-precise` | `Precise` | final numbers, comparisons with CAD software |
+| a number | `Mesh deflection` with `Auto` unchecked | full control, reproducible validation |
 
-`base_area` is the sum of exterior face areas whose coordinates lie on `Xmax` after applying the
-selected axis map. Curved bodies that only touch `Xmax` at a point or line report `0` with a
-warning because they do not have a finite base face there. For STL input, the same definition is
-approximated by summing triangle faces on the `Xmax` plane.
+`auto` and `auto-precise` scale the mesh to the size of the model, so they work for small and
+large models alike.
 
-In STEP `subtract` component mode, surfaces newly exposed by subtraction are excluded from
-`base_area`. The Xmax position still comes from the final subtracted shape; if all faces at that
-position are newly exposed, `base_area` is `0` and cadmetrics does not search inward for another
-plane.
+On a test model with many curved parts, `auto` was about 5 to 9 times faster than `auto-precise`,
+with a projected-area error of 0.2% to 0.4% (about 0.04% with `auto-precise`). These numbers are
+for that model only; your results will differ with the shape.
 
-The Xmax face test uses `--base-tolerance`, a relative tolerance applied as
-`max(bounding-box diagonal * value, 1e-12)` in the output length unit. The default is `1e-6`.
-Increase it for noisy or slightly non-planar exported meshes; decrease it when nearby but
-distinct faces must not be grouped into the base face.
+There are two fine-tuning options:
 
-## STEP B-Rep vs STL-Like Mesh Values
+- **Mesh deflection** (`--mesh-deflection`): the largest gap allowed between the true surface and
+  the mesh, in the output unit. Smaller is finer.
+- **Angular deflection** (`--angular-deflection`): the largest angle allowed between neighboring
+  triangles, in radians. Smaller is finer. With `auto`, it is `0.3` (or `0.1` with
+  `auto-precise`). This setting usually has the bigger effect on speed.
 
-It is possible to tessellate a STEP model and then calculate volume and surface area from the
-triangle mesh, as if the model had been converted to STL. Use `--step-metrics mesh` for this
-mode. cadmetrics keeps B-Rep volume and surface area as the default for STEP because those
-values avoid tessellation error.
-
-The mesh-based values are useful for debugging STL comparisons, but they are approximations.
-Planar solids usually match exactly because their faces can be represented by triangles without
-geometric approximation. Curved solids depend on `--mesh-deflection` and
-`--angular-deflection`.
-
-Representative local comparisons against B-Rep values:
-
-| sample | mesh deflection | volume difference | surface-area difference |
-|---|---:|---:|---:|
-| cube / box / frame | `auto` to coarse explicit values | about `0%` | about `0%` |
-| `sphere_r1` | `D*1e-4` (`auto-precise`) | `-0.0507%` | `-0.0272%` |
-| `sphere_r1` | `D*3e-5` | `-0.0153%` | `-0.0083%` |
-| `sphere_r1` | `D*1e-5` | `-0.0051%` | `-0.0028%` |
-| `cylinder_x_r1_l2` | `D*1e-4` (`auto-precise`) | `-0.0230%` | `-0.0115%` |
-| `cylinder_x_r1_l2` | `D*3e-5` | `-0.0069%` | `-0.0034%` |
-| `satellite` | `D*1e-4` (`auto-precise`) | `-0.0379%` | `-0.0148%` |
-| `satellite` | `D*3e-5` | `-0.0130%` | `-0.0052%` |
-
-For intersecting STEP solids, tessellate after the STEP boolean union if mesh-based comparison
-is needed. Tessellating or exporting components independently and then summing STL metrics can
-double-count overlap volume and area.
-
-## Multi-Component STEP Files
-
-cadmetrics treats multiple STEP solids as one geometric model by default. The selected solids
-are boolean-unioned before B-Rep volume and surface-area measurement, so intersections between
-enabled solids are not double-counted when the union succeeds.
-
-### Boolean union checks
-
-OpenCascade's general fuse can return a shape that passes its own validity checks but has a
-badly wrong volume. This is known to happen where curved solids touch tangentially, for example
-a torus resting against a cylinder. cadmetrics guards the union in two ways:
-
-- The fuse runs with an absolute fuzzy tolerance of `1e-5` mm (in the kernel's millimetre units),
-  which handles these near-coincidences. Gaps and overlaps smaller than this between solids may be
-  treated as touching. The tolerance does not grow with the model size, so adding a distant part
-  does not close real gaps between nearby parts.
-- The result must pass OpenCascade's shape validity check and is then compared with the input
-  solids at a few points per solid. Each solid contributes up to two points that its own classifier
-  puts inside it. They are found along lines through points on its faces, so thin walls are
-  sampled too. The union is rejected if it loses all of a solid's interior points, or if no
-  interior point can be found for a solid. Each solid also contributes four random points in its
-  bounding box, compared against all inputs, and more than 1% disagreement overall rejects the
-  union. If either check fails or cannot run, the union is retried once with `1e-4` mm. If that
-  also fails, the solids are measured without the union, with a "Could not boolean-union" warning:
-  volume and surface area may then double-count overlaps. In `subtract` mode the load fails
-  instead.
-
-The check is probabilistic. Each solid is probed at only a few points, so the check reliably
-catches a solid that disappears from the union and large misclassified regions, but it cannot prove
-the union is exact. A solid that is only partly lost, small misclassified regions, or a
-surface-area-only change such as faces wrongly merged across a gap below the fuzzy tolerance can
-pass. It does not bound the measurement error.
-
-The GUI's component filters operate before that union step. Turning off a component removes it
-from display, volume, surface-area, and projected-area calculations. Component labels use
-STEP/XCAF names when available and otherwise fall back to solid order in the loaded STEP file.
-Full assembly hierarchy is not preserved yet.
-
-The optional `subtract` component mode treats disabled solids as boolean-cut tools. The measured
-shape is `Union(enabled) - Union(disabled)`, so overlap with disabled geometry is removed rather
-than restored. Boolean history separates surviving enabled faces from surfaces newly exposed by
-subtraction: `surface_area` reports the former and `newly_exposed_surface_area` reports the latter.
-If OpenCascade cannot
-provide usable face history, `surface_area` is left unset with a warning instead of silently
-including generated faces.
-
-The same geometry rule applies to multi-file STEP input. Each STEP file contributes its detected
-solids to one combined model. Python API component filtering uses the global 1-based component
-order reported by `inspect_model([...]).component_names`; the GUI shows the same order grouped by
-file name. With `--unit auto`, all detected STEP units must match; otherwise, specify a common
-`--unit` explicitly after confirming the files use the same source unit.
-
-## Projected Area Definition
-
-Projected area is the orthographic 2D outline area for the selected projection direction.
-Overlapping projected regions are counted once.
-
-Positive projected polygons are retained without an absolute area cutoff, including areas
-below `1e-15` in the output area unit. Degenerate projections report zero area and no centroid.
-Angles that are exact multiples of 90 degrees use exact sine/cosine values, so axis-aligned
-edge-on projections agree with equivalent explicit direction vectors. Nearby angles and small
-nonzero vector components are not snapped to an axis; their positive projected areas are kept.
-This does not remove floating-point precision limits or change STL import's vertex merging,
-which can collapse very small features before projection.
-
-Projection performance can be measured reproducibly from a checkout with:
-
-```bash
-uv run python scripts/benchmark_projection.py samples/satellite/satellite.step
-```
-
-The JSON result includes mesh vertex/triangle counts, median and minimum duration, peak Python
-memory observed by `tracemalloc`, and projected area.
-
-This is intended for aerodynamic projected-area and drag-area screening, where the silhouette
-area matters more than the sum of all visible facets.
-
-## Tessellation Controls
-
-STEP mesh accuracy is set by two options. `--mesh-deflection` is the maximum distance between
-the surface and its tessellation, in the output length unit. `--angular-deflection` is the
-maximum angle between facets, in radians; it is an angular tolerance, so cadmetrics does not
-scale it with model size. Both default to `auto`.
-
-| `--mesh-deflection` | linear deflection | angle with `--angular-deflection auto` |
-|---|---|---:|
-| `auto` (default) | STEP bounding-box diagonal * `1e-3` | `0.3` rad |
-| `auto-precise` | STEP bounding-box diagonal * `1e-4` | `0.1` rad |
-
-`auto-fast` is still accepted as another name for `auto`.
-
-With `--angular-deflection auto`, the angle follows the selected preset, and is `0.3` when
-`--mesh-deflection` is an explicit number. An explicit `--angular-deflection` always wins, so
-`--angular-deflection 0.5` gives an even faster preview. The `mesh_deflection` and
-`angular_deflection` result columns always record the effective values that were used. STL input
-is not affected.
-
-The actual diagonal is used even when every model dimension is smaller than one input unit. The
-value is expressed in the selected output length unit and only the final deflection is floored at
-`1e-9`. Smaller values usually improve projected-area accuracy for curved geometry but increase
-calculation time.
-
-For reproducible validation runs, pass explicit values:
-
-```bash
-cadmetrics project model.step --mesh-deflection 0.001 --angular-deflection 0.1
-```
-
-### What Mesh Accuracy Affects
-
-The tessellation is used for:
-
-- projected area (`project`, `sweep`, and GUI sweeps)
-- the GUI 3D display
-- STEP volume and surface area with `--step-metrics mesh`
-- the rare base-area fallback used when the exact B-Rep base-area calculation fails
-
-With the default `--step-metrics brep`, volume and surface area come from the CAD kernel and do
-not depend on the mesh settings.
-
-### Default Change: `auto` Is Now the Faster Preset
-
-Earlier versions used diagonal * `1e-4` and `0.1` rad for `auto`; that preset is now called
-`auto-precise`. Mesh-based results with default settings therefore change slightly compared with
-those versions. Use `--mesh-deflection auto-precise` (GUI: `Mesh quality` `Precise`) when you need
-the higher accuracy or want to reproduce earlier results. On the user's own production models,
-the largest projected-area difference observed between the new and the old `auto` was `0.12%`.
-That is an observation for those models, not a general bound.
-
-### Speed and Accuracy
-
-Projected-area run time is roughly proportional to the triangle count. In the reference benchmark
-below, the angular limit, not the linear one, set the triangle count: changing only the linear
-factor from `1e-4` to `1e-3` did not change it. This is an observation for that model, not a rule
-for every curved surface, but it is why the default preset mainly relaxes the angle.
-
-Reference measurements on a synthetic 64-part curved assembly, per projection direction, against
-a fine reference mesh. They describe that model and those conditions only; they are not a general
-error bound:
-
-| angular deflection | triangles | time per direction | projected-area error |
-|---:|---:|---:|---:|
-| `0.1` (`auto-precise`) | about 800k | about 21 s | about 0.04% |
-| `0.3` (`auto`) | 100k to 160k | about 2.4 to 4 s | 0.2% to 0.4% |
-| `0.5` | about 40k | about 1 s | about 1% |
-
-The error comes from approximating curved surfaces and edges with chords, and its sign depends on
-the shape and attitude. In the benchmark above, and for a convex solid such as a sphere, the chords
-cut inside the outline and projected area is underestimated. Around a curved hole the chords cut
-into the opening instead, so the material's projected area is overestimated: for a 10 x 10 x 1 mm
-plate with a 4 mm radius through hole viewed along the hole axis, `auto-precise` reported
-`+0.024%` and `auto` `+0.24%` against the exact `100 - 16π` mm². A coarse mesh is therefore
-neither a lower nor an upper bound in general. Use `auto` to explore attitudes, then rerun the
-attitudes that matter with `auto-precise` or tighter settings.
-
-## Large STEP Performance Notes
-
-Large STEP files with curved faces can spend most of their load time in tessellation. cadmetrics
-therefore avoids STEP mesh generation for `measure` and CLI `inspect` when `--step-metrics brep`
-is used. In that path, volume, surface area, base area, and coordinate bounds come from the
-B-Rep/OpenCascade shape.
-
-Mesh generation is still required for:
-
-- `project` and `sweep`, because projected area is mesh-based
-- `--step-metrics mesh`, because STEP volume and surface area are intentionally measured from
-  the tessellated mesh
-- GUI model display, because the PyVista viewer needs triangles
-- rare exact base-area fallback cases
-
-The GUI reuses the already loaded display model for `Run Sweep`, so browsing a STEP file and then
-calculating projected area does not reload and tessellate the same model a second time. If you
-change Advanced settings that affect geometry, click `Apply & Reload` or run the calculation to
-load the updated model.
-
-The default `auto` preset is meant for quick sweeps; use `--mesh-deflection auto-precise` or
-tighter explicit values for final projected-area validation.
-
-## Watertightness
-
-Open or non-watertight STL meshes are accepted with warnings. Surface area and projected area
-can still be useful, but volume is unavailable.
-
-STEP surface-only geometry may load if tessellation succeeds. In that case, volume may be zero
-or unavailable.
-
-## Validation Target
-
-The current target is within `0.1%` against Fusion 360 for representative closed solids, with
-`--mesh-deflection auto-precise` for projected area. The faster default `auto` is not held to
-this target.
-
-The satellite sample has been manually checked against Fusion 360:
-
-- volume and surface area match Fusion's rounded physical properties
-- projected-area sweep values match Fusion's rounded displayed values
-
-See [Fusion 360 Validation Notes](fusion_validation.md) for details.
-
-## Practical Guidance
-
-Use the default settings for exploratory sweeps. Use `auto-precise`, or tighter explicit values,
-when:
-
-- validating against CAD software
-- evaluating small curved features
-- comparing close projected-area differences
-
-Typical settings:
+The values actually used are saved in the `mesh_deflection` and `angular_deflection` columns of
+every result.
 
 | use case | `--mesh-deflection` | `--angular-deflection` |
-|---|---:|---:|
-| Fast preview / exploratory sweeps | `auto` (diagonal * `1e-3`) | `auto` (`0.3`) to `0.5` |
-| Precise projected-area work | `auto-precise` (diagonal * `1e-4`) | `auto` (`0.1`) |
-| CAD comparison / final validation | bounding-box diagonal * `3e-5` to `1e-5` | `0.05` to `0.1` |
+|---|---|---|
+| Quick preview | `auto` | `auto` (`0.3`) to `0.5` |
+| Precise projected area | `auto-precise` | `auto` (`0.1`) |
+| Comparison with CAD software | model size × `3e-5` to `1e-5` | `0.05` to `0.1` |
 
-Keep the deflection fixed when comparing many versions of similar geometry.
+Here, "model size" is the length of the diagonal of the model's bounding box.
+
+Keep the settings the same when you compare several versions of a design, so that differences in
+the results come from the design and not from the mesh.
+
+### Changed default in recent versions
+
+In earlier versions, `auto` meant what is now called `auto-precise`. If you compare results with
+those versions, projected areas with default settings can differ slightly (up to 0.12% on the
+production models that were checked). Use `auto-precise` to reproduce the earlier results.
+
+## What the mesh affects
+
+| value | depends on mesh settings? |
+|---|---|
+| Projected area and centroid | yes |
+| 3D view in the GUI | yes |
+| STEP volume and surface area | no (yes with `--step-metrics mesh` / `STEP metrics` `Mesh`) |
+| STEP base area | no (except in rare cases where cadmetrics falls back to the mesh, with a warning) |
+| STL values | no; the STL triangles are used as they are |
+
+## Comparing STEP with STL
+
+An STL file is itself a mesh made when it was exported, so its volume and surface area are
+slightly different from the exact STEP values, especially for curved shapes. If you want STEP
+results that behave like STL results, set `--step-metrics mesh` (GUI: `STEP metrics` > `Mesh`).
+For curved shapes the difference is typically a few hundredths of a percent with `auto-precise`.
+
+If parts overlap, compare against a STEP model that was merged before export. Exporting parts to
+separate STL files and adding their values counts the overlaps twice.
+
+## Several solids and overlaps
+
+When a STEP model has several solids, cadmetrics merges them into one before measuring, so
+overlapping volume and surface are counted only once. In rare cases the merge fails. cadmetrics
+then measures the solids without merging and adds the warning `Could not boolean-union`: volume and
+surface area may count overlaps twice. Projected area is not affected. In `Subtract unchecked`
+mode, a failed merge stops loading with an error instead.
+
+STL files are never merged, so overlapping STL parts always count their overlap twice in volume and
+surface area.
+
+## Base area
+
+Base area is the area of the flat faces at the very rear of the model (the largest X). A shape
+that only touches its rearmost point with a curve, such as a sphere, has no base face, so its base
+area is `0` with a warning.
+
+`Base tolerance` (`--base-tolerance`) decides how close to the rear end a face must be to count.
+The default rarely needs changing. Increase it a little for slightly uneven meshes exported from
+other tools; decrease it if nearby faces that are not really at the rear end are being counted.
+
+## Validation
+
+cadmetrics aims to agree within 0.1% with Fusion 360 for typical closed solids, using
+`auto-precise` for projected area. The `satellite` sample was checked by hand: its volume, surface
+area, and projected areas from 0° to 90° all match Fusion 360's displayed values.
