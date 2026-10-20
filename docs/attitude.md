@@ -1,143 +1,108 @@
-# Attitude Definition
+# Attitude Angles
 
-cadmetrics describes projected area by the direction of orthographic projection.
+This page defines the angles cadmetrics uses to describe the projection direction: the direction
+you look along when measuring projected area.
 
-The default model coordinate convention is:
+## Coordinate system
 
 ```text
-X aft
-Y right
-Z up
+X: aft (toward the rear)
+Y: right
+Z: up
 ```
 
-The projection direction is represented as a normalized vector in model coordinates:
+If your model uses other axes, set the axis map first (see
+[Coordinate system](concepts.md#coordinate-system)).
+
+The projection direction is written as a vector of length 1:
 
 ```text
 d = (d_x, d_y, d_z)
 ```
 
-Projected area is the 2D outline area seen when looking along `d`.
+Projected area is the silhouette area seen when looking along `d`. Looking along `d` and along
+`-d` gives the same projected area.
 
-If the source CAD axes do not match this convention, apply an axis map before calculating
-attitudes. For example, `x,-z,y` means:
+The angles describe the direction you look from. They do not rotate the model.
 
-```text
-cadmetrics X = input X
-cadmetrics Y = input -Z
-cadmetrics Z = input Y
-```
+## Three ways to give the direction
 
-The CLI option is `--axis-map`; the GUI exposes the same setting as `Axis map` in `Setup`.
+| mode | GUI | CLI / Python | sweep |
+|---|---|---|---|
+| Alpha / Beta | `Alpha / Beta` | `alpha-beta` | yes |
+| Roll / Pitch | `Roll / Pitch` | `roll-pitch` | yes |
+| Unit vector | `Unit vector` | `vector` | no, one direction only |
 
-## Input Modes
-
-The CLI and GUI expose three input modes:
-
-| mode | meaning | sweep support |
-|---|---|---|
-| `alpha-beta` | angle of attack and sideslip | yes |
-| `roll-pitch` | azimuth around +X and pitch away from +X | yes |
-| `vector` | explicit projection direction vector | no, one direction only |
-
-The output CSV always reports all equivalent representations:
-
-- `alpha_deg`, `beta_deg`
-- `roll_deg`, `pitch_deg`
-- `direction_x`, `direction_y`, `direction_z`
-
-The `attitude` column names the input mode. That mode's own angle pair keeps the requested values
-exactly as given, without normalization: an `alpha-beta` sweep reports `alpha_deg=360` for alpha
-360, and its `beta_deg=-90` rows keep their requested alpha values even though they share one
-direction. The other mode's pair and the direction vector are recovered from the projection
-direction with the formulas below, so they are normalized (`alpha` in -180..180, `beta` in
--90..90, `pitch` in 0..180). In `vector` mode, both angle pairs are recovered.
+Each mode uses only its own inputs; there is no hidden extra rotation.
 
 ## Alpha and Beta
 
-In `alpha-beta` mode, cadmetrics builds the projection direction from angle of attack and
-sideslip:
+`alpha` is the angle of attack and `beta` is the sideslip angle, in degrees:
 
 ```text
 d = (cos(alpha) cos(beta), -sin(beta), sin(alpha) cos(beta))
 ```
 
-When alpha/beta are not the input mode, they are recovered from a unit vector as:
+| input | direction |
+|---|---|
+| `alpha=0`, `beta=0` | `(1, 0, 0)`: from the front |
+| `alpha=90`, `beta=0` | `(0, 0, 1)`: from below, looking up |
+| `alpha=0`, `beta=90` | `(0, -1, 0)`: from the right side |
+
+## Roll and Pitch
+
+`pitch` is how far the direction tilts away from +X. `roll` is the angle around the X axis that
+decides which way it tilts. Positive roll turns from +Z toward −Y (a right-hand rotation about
++X).
+
+Think of a cone around +X: `pitch` sets how wide the cone is, and `roll` sets where on the cone
+the direction lies.
+
+| input | direction |
+|---|---|
+| `roll=0`, `pitch=0` | `(1, 0, 0)`: from the front |
+| `roll=0`, `pitch=90` | `(0, 0, 1)` |
+| `roll=90`, `pitch=90` | `(0, -1, 0)` |
+
+## Unit vector
+
+Give the direction directly as `x, y, z`. The vector does not need to have length 1: cadmetrics
+scales it for you. It cannot be `(0, 0, 0)`.
+
+## How results report the direction
+
+Every result row reports the direction in all three forms: `alpha_deg`/`beta_deg`,
+`roll_deg`/`pitch_deg`, and `direction_x/y/z`. The `attitude` column tells you which mode you
+used.
+
+- The angles of the mode you used are kept exactly as you entered them. For example, alpha 360
+  stays 360.
+- The other angles are calculated back from the direction, so they fall in fixed ranges: `alpha`
+  −180 to 180, `beta` −90 to 90, `pitch` 0 to 180.
+- In `vector` mode, both angle pairs are calculated from the direction.
+
+The formulas used to calculate angles from a direction are:
 
 ```text
 alpha = atan2(d_z, d_x)
 beta  = asin(-d_y)
-```
-
-Examples:
-
-| input | direction |
-|---|---|
-| `alpha=0`, `beta=0` | `(1, 0, 0)` |
-| `alpha=90`, `beta=0` | `(0, 0, 1)` |
-| `alpha=0`, `beta=90` | `(0, -1, 0)` |
-
-## Roll and Pitch
-
-In `roll-pitch` mode, `pitch` is the angle away from the +X direction. Positive `roll` is the
-right-hand rotation around the +X axis, measured from +Z toward -Y.
-
-When roll/pitch are not the input mode, they are recovered as:
-
-```text
 pitch = atan2(sqrt(d_y^2 + d_z^2), d_x)
 roll  = atan2(-d_y, d_z)
 ```
 
-This representation is useful when thinking of a direction cone from +X and a roll angle around
-that cone using the aircraft-style positive direction.
-
-## Unit Vector
-
-For explicit vector input:
-
-```bash
-cadmetrics project model.step --attitude vector --direction 1,0,0
-```
-
-cadmetrics normalizes the vector first, then recovers equivalent `alpha`/`beta` and
-`roll`/`pitch` values for CSV and GUI display.
-
-## CLI Examples
-
-Single projected-area calculations:
+## Examples
 
 ```bash
 cadmetrics project model.step --attitude alpha-beta --alpha 10 --beta 0
 cadmetrics project model.step --attitude roll-pitch --roll 0 --pitch 10
 cadmetrics project model.step --attitude vector --direction 1,0,0
-```
-
-For convenience, `--attitude` can be omitted:
-
-- `--direction` implies `vector`
-- `--pitch` implies `roll-pitch`
-- otherwise cadmetrics uses `alpha-beta`
-
-## Sweep Behavior
-
-For `alpha-beta`, the CLI sweep command accepts `alpha` and `beta` ranges:
-
-```bash
 cadmetrics sweep model.step --attitude alpha-beta --alpha -5:5:5 --beta -2:2:2
 ```
 
-For `roll-pitch`, it accepts `roll` and `pitch` ranges:
+```python
+from cadmetrics import project
 
-```bash
-cadmetrics sweep model.step --attitude roll-pitch --roll 0:20:10 --pitch 0:10:5
+project("model.step", attitude="alpha-beta", alpha_deg=10, beta_deg=0)
+project("model.step", attitude="roll-pitch", roll_deg=0, pitch_deg=10)
+project("model.step", attitude="vector", direction="1,0,0")
 ```
-
-For `vector`, the CLI accepts one explicit direction and returns one row:
-
-```bash
-cadmetrics sweep model.step --attitude vector --direction 1,0,0
-```
-
-The calculation evaluates every combination of the selected angle ranges. There is no hidden
-extra rotation order in the CLI modes: `alpha-beta` uses only alpha/beta, `roll-pitch` uses only
-roll/pitch, and `vector` uses only the normalized direction vector.

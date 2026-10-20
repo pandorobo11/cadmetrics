@@ -1,188 +1,82 @@
-# CLI Usage
+# Using the CLI
 
-`cadmetrics` provides five CLI commands:
+The `cadmetrics` command runs calculations from a terminal. It is handy for scripts and batch
+jobs, and gives the same results as the GUI.
 
-- `measure`: volume and surface area
-- `project`: projected area for one attitude or direction
-- `sweep`: projected area for angle sweeps or one vector direction
-- `inspect`: loaded model information
-- `samples`: bundled sample geometry files
+## Commands
 
-Install the base package for STL support:
+| command | what it does |
+|---|---|
+| `cadmetrics measure` | volume, surface area, base area, and bounds |
+| `cadmetrics project` | projected area for one direction |
+| `cadmetrics sweep` | projected area for a range of angles |
+| `cadmetrics inspect` | information about the model, such as its unit and components |
+| `cadmetrics samples` | the bundled sample models |
 
-```bash
-pip install cadmetrics
-```
+Run `cadmetrics COMMAND --help` to see every option of a command.
 
-Install STEP support when reading `.step` or `.stp` files:
+STL files work with the base package (`pip install cadmetrics`). STEP files need
+`pip install "cadmetrics[step]"`.
 
-```bash
-pip install "cadmetrics[step]"
-```
+## Output: terminal or CSV
 
-## Units
-
-`--unit` describes the input model length unit. The default is `auto`:
-
-- STEP: unit is read from the STEP file
-- STL: unit is assumed to be `m`
-
-`--output-unit` controls reported coordinate, area, and volume units.
-
-Example: read a millimeter model and report SI units:
+`measure` and `project` print a readable table in the terminal. Add `--out FILE.csv` (or
+`-o FILE.csv`) to save the results as CSV instead:
 
 ```bash
-cadmetrics measure model.stl --unit mm --output-unit m
+cadmetrics measure model.step --out measure.csv
 ```
 
-Supported explicit units are:
+`sweep` prints a progress bar while it runs. Without `--out`, it writes the CSV rows to the
+terminal, so you can also redirect them with `> sweep.csv`. After a sweep, a short summary of the
+smallest, largest, and average projected area is printed; add `--no-summary` to turn it off.
 
-```text
-m, mm, cm, in, ft
-```
-
-## Multi-File Assemblies
-
-`measure`, `project`, `sweep`, and `inspect` accept more than one input file. When multiple files
-are provided, cadmetrics treats them as one calculation model:
-
-```bash
-cadmetrics project fuselage.step wing.step tail.step \
-  --attitude alpha-beta \
-  --alpha 10
-```
-
-Only same-format inputs are supported in one command:
-
-- multiple STEP files are combined and boolean-unioned before STEP volume and surface-area
-  measurement when possible
-- multiple STL files are concatenated as triangle meshes
-- mixed STEP/STL input is rejected
-
-For STL assemblies, cadmetrics does not run mesh boolean repair. If STL parts overlap,
-volume and surface area can double-count the overlap. Projected area still uses the combined
-silhouette, so overlapping projected regions are counted once.
-
-## Axis Mapping
-
-Use `--axis-map` when the input model's axes do not match the cadmetrics convention. The value
-lists the input axes to use as cadmetrics `X,Y,Z`:
-
-```bash
-cadmetrics project model.step --axis-map x,-z,y --alpha 10
-```
-
-In this example, cadmetrics `X` is input `X`, cadmetrics `Y` is input `-Z`, and cadmetrics `Z`
-is input `Y`. Each source axis must be used exactly once. The default is `x,y,z`.
+`measure`, `project`, and `sweep` write the same CSV columns. See [Result Columns](results.md).
+`inspect` and `samples` print information only and do not have a CSV output option.
 
 ## measure
 
-Calculate volume and surface area:
+Calculate volume, surface area, base area, and bounds:
 
 ```bash
-cadmetrics measure samples/unit_cube/unit_cube_ascii.stl
+cadmetrics measure model.step
 ```
 
-Without `--out`, `measure` prints a readable table to the terminal.
-
-Write CSV:
+Report the results in millimeters:
 
 ```bash
-cadmetrics measure samples/unit_cube/unit_cube.step --out measure.csv
-```
-
-Useful STEP options:
-
-```bash
-cadmetrics measure model.step \
-  --step-metrics brep \
-  --mesh-deflection auto \
-  --angular-deflection auto \
-  --base-tolerance 1e-6
-```
-
-`--mesh-deflection auto` (the default) uses the STEP bounding-box diagonal times `1e-3` in the
-selected output length unit and is meant for quick projected-area sweeps.
-`--mesh-deflection auto-precise` uses the diagonal times `1e-4`. `auto-fast` is still accepted as
-another name for `auto`.
-
-`--angular-deflection auto` (the default) is `0.3` rad, or `0.1` rad with
-`--mesh-deflection auto-precise`. Pass a number in radians to override it.
-
-`auto` was the finer preset in earlier versions and is now `auto-precise`, so mesh-based results
-with default settings change slightly. On the user's own production models the largest
-projected-area difference observed between the new and the old `auto` was 0.12%. Use
-`auto-precise` when you need higher accuracy or want to reproduce earlier results. On a 64-part
-curved reference assembly, `auto` was about 5 to 9 times faster per direction than
-`auto-precise`, with a projected-area error of 0.2% to 0.4%. These are observations for those
-models; depending on shape and attitude the error can be an over- or underestimate. Recheck
-important attitudes with `auto-precise` or tighter settings.
-
-Mesh accuracy affects projected area, the GUI display, STEP volume and surface area with
-`--step-metrics mesh`, and the rare base-area fallback. With the default `--step-metrics brep`,
-volume and surface area do not depend on it. See
-[Accuracy: Tessellation Controls](accuracy.md#tessellation-controls).
-
-```bash
-cadmetrics sweep model.step \
-  --mesh-deflection auto-precise \
-  --attitude alpha-beta \
-  --alpha 0:180:5 \
-  --beta 0:90:5 \
-  --out sweep_precise.csv
-```
-
-`--step-metrics brep` is the default and reports STEP volume/surface area from the CAD kernel.
-Use `--step-metrics mesh` when you want STEP volume/surface area to be calculated from the
-tessellated mesh, for example when comparing with an exported STL.
-In B-Rep mode, STEP `measure` skips tessellation unless an exact base-area fallback is needed.
-
-`--base-tolerance` controls how close a face must be to cadmetrics-coordinate `Xmax` to count as
-`base_area`. It is a relative tolerance: cadmetrics uses `max(bounding-box diagonal * value,
-1e-12)` in the output length unit. The default is `1e-6`.
-
-Measure a same-format multi-file model:
-
-```bash
-cadmetrics measure body.step wing.step tail.step
+cadmetrics measure model.step --output-unit mm
 ```
 
 ## project
 
-Choose one of three attitude input modes:
+Calculate the projected area for one direction. Choose the attitude mode with `--attitude`:
 
-| mode | options |
+| `--attitude` | options |
 |---|---|
 | `alpha-beta` | `--alpha`, `--beta` |
 | `roll-pitch` | `--roll`, `--pitch` |
 | `vector` | `--direction x,y,z` |
 
-Calculate projected area with alpha and beta:
-
 ```bash
 cadmetrics project model.step --attitude alpha-beta --alpha 10 --beta 0
-```
-
-Without `--out`, `project` prints a readable table to the terminal. Use `--out` when CSV output
-is needed.
-
-Calculate projected area with roll and pitch:
-
-```bash
 cadmetrics project model.step --attitude roll-pitch --roll 0 --pitch 10
-```
-
-Calculate projected area from a unit-vector direction:
-
-```bash
 cadmetrics project model.step --attitude vector --direction 1,0,0
 ```
 
-The direction vector is normalized before calculation.
+Angles are in degrees and default to 0. The direction vector does not need to have length 1;
+cadmetrics scales it for you. Options from another mode cannot be mixed in, for example `--roll`
+with `--attitude alpha-beta`.
+
+You can leave out `--attitude`: `--direction` selects `vector`, `--pitch` selects `roll-pitch`,
+and otherwise `alpha-beta` is used.
+
+See [Attitude Angles](attitude.md) for what each angle means.
 
 ## sweep
 
-For `alpha-beta`, run every combination of `alpha` and `beta` values:
+Calculate projected area for every combination of two angle ranges. Write a range as
+`start:end:step`:
 
 ```bash
 cadmetrics sweep model.step \
@@ -192,8 +86,6 @@ cadmetrics sweep model.step \
   --out sweep.csv
 ```
 
-For `roll-pitch`, run every combination of `roll` and `pitch` values:
-
 ```bash
 cadmetrics sweep model.step \
   --attitude roll-pitch \
@@ -202,32 +94,64 @@ cadmetrics sweep model.step \
   --out sweep.csv
 ```
 
-For `vector`, `sweep` returns one row because a unit vector is a single direction:
+- `end` is included when the steps land on it exactly; `0:90:5` gives 0, 5, …, 90.
+- A single number is also allowed, for example `--beta 0`.
+- To count down, use a negative step, for example `90:0:-15`.
+- One sweep can have at most 10,000 combinations.
 
-```bash
-cadmetrics sweep model.step --attitude vector --direction 1,0,0
-```
-
-Ranges use inclusive `start:end:step` syntax. A single value is also valid. Inputs must be finite,
-and the Cartesian product is limited to 10,000 orientations per command. The sweep command prints
-a progress bar to stderr and writes CSV rows to stdout unless `--out` is provided. Use
-`--no-summary` to suppress the printed summary.
+With `--attitude vector`, `sweep` calculates the one given direction and returns one row.
 
 ## inspect
 
-Show loaded model information:
+Check a model before calculating:
 
 ```bash
 cadmetrics inspect model.step
 ```
 
-This is useful for checking detected units, vertex and face counts, watertightness, and loader
-warnings before running a sweep. For STEP files, it also reports the number of detected solid
-components and their numbered names. Use repeatable `--step-component INDEX` options with
-`measure`, `project`, `sweep`, or `inspect` to enable a subset.
+`inspect` prints the detected unit, bounds, volume, surface area, whether the shape is closed
+(watertight), warnings, and, for STEP files, the numbered list of components. For STEP files the
+vertex and face counts can show `0`, because `inspect` skips building a mesh to save time.
 
-The default `--component-mode filter` measures the union of enabled components. With
-`--component-mode subtract`, disabled components are boolean-subtracted from that union:
+## samples
+
+List the sample models that come with cadmetrics, or print the folder they are in:
+
+```bash
+cadmetrics samples
+cadmetrics samples --path
+```
+
+Use the folder path to try a command on a sample:
+
+```bash
+cadmetrics measure "$(cadmetrics samples --path)/satellite/satellite.step" --output-unit mm
+```
+
+See [Sample Models](samples.md) for what each sample shows and its expected values.
+
+## Several files
+
+`measure`, `project`, `sweep`, and `inspect` accept more than one file and treat them as one model:
+
+```bash
+cadmetrics project fuselage.step wing.step tail.step --alpha 10
+```
+
+All files must be the same format. See
+[Several files as one model](concepts.md#several-files-as-one-model).
+
+## STEP components
+
+Use `inspect` to see the component numbers, then pick components with `--step-component`. Repeat
+it for each component you want to keep:
+
+```bash
+cadmetrics measure assembly.step --step-component 1 --step-component 3
+```
+
+Add `--component-mode subtract` to cut the other components away from the selected ones instead
+of leaving them out:
 
 ```bash
 cadmetrics measure assembly.step \
@@ -235,103 +159,49 @@ cadmetrics measure assembly.step \
   --component-mode subtract
 ```
 
-In subtraction mode, `surface_area` includes only surviving faces from the enabled union;
-surfaces newly exposed by subtraction are reported separately as
-`newly_exposed_surface_area`.
+See [STEP components](concepts.md#step-components).
 
-For STEP files in default B-Rep metric mode, CLI `inspect` skips tessellation for faster loading.
-The reported vertex and face counts can therefore be `0`; use `project`, `sweep`, the GUI, or
-`--step-metrics mesh` when you need a tessellated mesh count.
+## Options
 
-Inspect a multi-file assembly before calculating:
+These options work with `measure`, `project`, `sweep`, and `inspect`, except where noted.
+They do not apply to `samples`, which only provides `--path` (and `--help`).
 
-```bash
-cadmetrics inspect body.step wing.step tail.step
-```
+| option | default | meaning |
+|---|---|---|
+| `--unit` | `auto` | Length unit of the model file. `auto` reads it from STEP files and uses `m` for STL. |
+| `--output-unit` | `m` | Unit for all results: `m`, `mm`, `cm`, `in`, or `ft`. |
+| `--axis-map` | `x,y,z` | Which of your model's axes become cadmetrics X, Y, Z, for example `x,-z,y`. See [Coordinate system](concepts.md#coordinate-system). |
+| `--step-component` | all | 1-based STEP component to include. Repeat for several. |
+| `--component-mode` | `filter` | `filter` leaves unselected components out; `subtract` cuts them away. |
+| `--step-metrics` | `brep` | Source of STEP volume and surface area: `brep` (exact CAD geometry) or `mesh` (generated triangle mesh, for comparing with STL). |
+| `--mesh-deflection` | `auto` | STEP mesh fineness: `auto` (fast), `auto-precise` (finer, slower), or a number in the output unit. |
+| `--angular-deflection` | `auto` | Largest angle between mesh triangles, in radians. `auto` follows `--mesh-deflection`. |
+| `--base-tolerance` | `1e-6` | How close to the rear end a face must be to count as base area, as a fraction of the model size. |
+| `--out`, `-o` | none | Save results to this CSV file (`measure`, `project`, `sweep`). |
 
-## samples
-
-List the sample geometry bundled with the installed package, or print its directory:
-
-```bash
-cadmetrics samples
-cadmetrics inspect "$(cadmetrics samples --path)/satellite/satellite.step"
-```
-
-The wheel bundles every STEP file and binary STL but only one ASCII STL; see
-[Sample geometry](samples.md#installed-packages). The `samples/...` paths in the examples on this
-page are relative to a repository checkout.
-
-## CSV Columns
-
-All calculation commands use the same CSV schema:
-
-| column | description |
-|---|---|
-| `file` | input path, or semicolon-separated paths for multi-file assemblies |
-| `step_components` | selected STEP component indexes, comma-separated; empty for STL or STEP files without solid component metadata |
-| `step_component_names` | selected STEP component names, semicolon-separated |
-| `input_unit` | unit used when reading the model |
-| `output_unit` | unit used for output values |
-| `attitude` | attitude input mode (`alpha-beta`, `roll-pitch`, or `vector`); empty without a projection |
-| `roll_deg` | roll angle; as requested in `roll-pitch` mode, otherwise recovered from the projection direction |
-| `pitch_deg` | pitch angle; as requested in `roll-pitch` mode, otherwise recovered from the projection direction |
-| `alpha_deg` | angle of attack; as requested in `alpha-beta` mode, otherwise recovered from the projection direction |
-| `beta_deg` | sideslip angle; as requested in `alpha-beta` mode, otherwise recovered from the projection direction |
-| `direction_x` | normalized projection-direction X component |
-| `direction_y` | normalized projection-direction Y component |
-| `direction_z` | normalized projection-direction Z component |
-| `x_min` | minimum model X coordinate in `output_unit` |
-| `x_max` | maximum model X coordinate in `output_unit` |
-| `y_min` | minimum model Y coordinate in `output_unit` |
-| `y_max` | maximum model Y coordinate in `output_unit` |
-| `z_min` | minimum model Z coordinate in `output_unit` |
-| `z_max` | maximum model Z coordinate in `output_unit` |
-| `surface_area` | surface area in `output_unit^2` |
-| `newly_exposed_surface_area` | surface area newly exposed and excluded in subtraction mode |
-| `base_area` | exterior face area at cadmetrics-coordinate `Xmax` in `output_unit^2`; `0` with a warning when no face is found |
-| `volume` | volume in `output_unit^3`; empty for non-watertight STL and open, invalid, or surface-only STEP shapes |
-| `projected_area` | orthographic projected outline area in `output_unit^2` |
-| `centroid_u` | projected 2D centroid U coordinate in the projection plane |
-| `centroid_v` | projected 2D centroid V coordinate in the projection plane |
-| `centroid_x` | corresponding 3D centroid-marker X coordinate |
-| `centroid_y` | corresponding 3D centroid-marker Y coordinate |
-| `centroid_z` | corresponding 3D centroid-marker Z coordinate |
-| `is_watertight` | mesh or STEP topology watertightness when known |
-| `mesh_deflection` | effective STEP tessellation deflection, if applicable |
-| `angular_deflection` | effective STEP angular deflection, if applicable |
-| `base_tolerance` | relative tolerance used to identify Xmax base faces |
-| `step_component_mode` | `filter` or `subtract` for STEP input |
-| `method` | calculation backend summary |
-| `load_elapsed_sec` | model preparation time, including file loading, validation, geometry operations, metrics, tessellation, and axis conversion |
-| `elapsed_sec` | calculation time for this result row after the model is prepared |
-| `cadmetrics_version` | package version used for the calculation |
-| `cadmetrics_hash` | git commit hash used for the calculation, with `-dirty` when tracked files differ |
-| `warnings` | semicolon-separated warnings |
-
-For an uncached API or CLI operation, add `load_elapsed_sec` and `elapsed_sec` to obtain the
-model-preparation plus row-calculation time. Sweep rows share the model preparation time and each
-record their own row-calculation time.
+The mesh options only affect STEP files. See [Accuracy and Mesh Settings](accuracy.md) for when
+to change them.
 
 ## Examples
 
-Measure the sample satellite model in millimeters:
+Convert an STL exported in millimeters and report in meters:
 
 ```bash
-cadmetrics measure samples/satellite/satellite.step --output-unit mm
+cadmetrics measure model.stl --unit mm --output-unit m
 ```
 
-Project from a direction equivalent to `alpha=60 deg`:
+A STEP model whose "up" is its Y axis:
 
 ```bash
-cadmetrics project samples/satellite/satellite.step \
-  --attitude vector \
-  --output-unit mm \
-  --direction 0.5,0,0.8660254
+cadmetrics project model.step --axis-map x,-z,y --alpha 10
 ```
 
-See also:
+A precise sweep for final numbers:
 
-- [Attitude definition](attitude.md)
-- [Accuracy notes](accuracy.md)
-- [Sample geometry](samples.md)
+```bash
+cadmetrics sweep model.step \
+  --mesh-deflection auto-precise \
+  --alpha 0:180:5 \
+  --beta 0:90:5 \
+  --out sweep_precise.csv
+```

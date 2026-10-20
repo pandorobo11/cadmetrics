@@ -5,18 +5,17 @@ theme:
   name: readthedocs
 nav:
   - Home: index.md
-  - User Guide:
-      - GUI Usage: docs/gui.md
-      - CLI Usage: docs/cli.md
-      - Python API: docs/api.md
-      - Attitude Definition: docs/attitude.md
-      - Accuracy Notes: docs/accuracy.md
-      - Sample Geometry: docs/samples.md
-      - Fusion 360 Validation: docs/fusion_validation.md
-  - Project:
-      - Requirements: docs/requirements.md
-      - Release Process: docs/release.md
-      - Documentation Assets: docs/assets/README.md
+  - Guides:
+      - Key Concepts: docs/concepts.md
+      - Using the GUI: docs/gui.md
+      - Using the CLI: docs/cli.md
+      - Using Python: docs/api.md
+  - Reference:
+      - Attitude Angles: docs/attitude.md
+      - Result Columns: docs/results.md
+      - Accuracy and Mesh Settings: docs/accuracy.md
+      - Troubleshooting: docs/troubleshooting.md
+      - Sample Models: docs/samples.md
 plugins: []
 extra_css:
   - docs/stylesheets/cadmetrics.css
