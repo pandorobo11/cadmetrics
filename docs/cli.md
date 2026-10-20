@@ -31,7 +31,8 @@ cadmetrics measure model.step --out measure.csv
 terminal, so you can also redirect them with `> sweep.csv`. After a sweep, a short summary of the
 smallest, largest, and average projected area is printed; add `--no-summary` to turn it off.
 
-All commands write the same CSV columns. See [Result Columns](results.md).
+`measure`, `project`, and `sweep` write the same CSV columns. See [Result Columns](results.md).
+`inspect` and `samples` print information only and do not have a CSV output option.
 
 ## measure
 
@@ -131,7 +132,7 @@ See [Sample Models](samples.md) for what each sample shows and its expected valu
 
 ## Several files
 
-Every command accepts more than one file and treats them as one model:
+`measure`, `project`, `sweep`, and `inspect` accept more than one file and treat them as one model:
 
 ```bash
 cadmetrics project fuselage.step wing.step tail.step --alpha 10
@@ -162,7 +163,8 @@ See [STEP components](concepts.md#step-components).
 
 ## Options
 
-These options work with every command:
+These options work with `measure`, `project`, `sweep`, and `inspect`, except where noted.
+They do not apply to `samples`, which only provides `--path` (and `--help`).
 
 | option | default | meaning |
 |---|---|---|
