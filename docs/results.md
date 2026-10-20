@@ -1,8 +1,9 @@
 # Result Columns
 
-Every result has the same columns, whether it comes from the GUI, the CLI, or the Python API. CSV
-files list them in the order below. Lengths, areas, and volumes use the output unit (`output_unit`),
-its square, and its cube. An empty cell means the value does not apply or could not be calculated.
+Every result has the same fields, whether it comes from the GUI, the CLI, or the Python API. The
+fields below are grouped by purpose, not by CSV column order. Use the CSV header to identify each
+column. Lengths, areas, and volumes use the output unit (`output_unit`), its square, and its cube.
+An empty cell means the value does not apply or could not be calculated.
 
 ## Input and settings
 

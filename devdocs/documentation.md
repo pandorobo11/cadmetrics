@@ -34,13 +34,15 @@ directory and builds it with `mkdocs.yml`. Keep the `nav` in `mkdocs.yml` in syn
   into a temporary directory, so edits are visible without reinstalling.
 - The release workflow also attaches the built site as `cadmetrics-docs-<tag>.zip`.
 
-Preview the site locally with:
+From the repository root, build the same site locally with:
 
 ```bash
-uv run mkdocs build -f mkdocs.yml
+uv run python -c "from pathlib import Path; from cadmetrics.docs_site import build_documentation_site; build_documentation_site(Path.cwd(), Path('site'))"
 ```
 
-or open `Help` > `Documentation` in a GUI started from the checkout.
+Open `site/index.html` in a browser, or open `Help` > `Documentation` in a GUI started from the
+checkout. Use this builder rather than calling `mkdocs build` directly: it stages the root README
+as `index.md` and keeps the `docs/` paths used by the navigation and links.
 
 ## Images
 

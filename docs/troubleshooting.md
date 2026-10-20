@@ -4,11 +4,13 @@ Warnings appear in the `warnings` column, in the GUI's `Model Details`, and in t
 `cadmetrics inspect`. A warning does not stop the calculation; it tells you that a value may be
 missing or less reliable.
 
-## Values look 1000 times too large or too small
+## Values are off by large scale factors
 
-The input unit is probably wrong. STL files do not store a unit, so cadmetrics assumes meters. If
+The input unit may be wrong. STL files do not store a unit, so cadmetrics assumes meters. If
 the STL was exported in millimeters, set the input unit to `mm` (GUI `Input unit`, CLI
-`--unit mm`). Also check the output unit.
+`--unit mm`). With the same output unit, reading millimeter coordinates as meters makes lengths
+1000 times too large, areas 1,000,000 times too large, and volumes 1,000,000,000 times too large.
+Also check the output unit; its square is used for areas and its cube for volumes.
 
 ## Projected area is for the wrong side of the model
 
@@ -57,8 +59,11 @@ surface area. See [Several files as one model](concepts.md#several-files-as-one-
 - `STEP length unit '...' is not available as an input unit; OpenCascade converted it to mm.` The
   file uses a unit cadmetrics does not list. The values have been converted correctly; you do not
   need to do anything.
-- `Cannot assemble STEP files with different detected units` The files use different units. Check
-  that this is intended, then set one input unit for all of them.
+- `Cannot assemble STEP files with different detected units` The files declare different units.
+  If those units are correct, re-export the files from your CAD tool in a common unit, preserving
+  their physical sizes and positions, then use `auto`. Set one explicit input unit only when the
+  numeric coordinates already use that same unit and the declarations are wrong: an override
+  reinterprets the numbers rather than converting each file from its declared unit.
 
 ## Other warnings
 

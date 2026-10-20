@@ -70,9 +70,10 @@ See [Attitude Angles](attitude.md) for the exact definitions and formulas.
 
 Supported units are `m`, `mm`, `cm`, `in`, and `ft`.
 
-STL files exported in millimeters are common. In that case, set the input unit to `mm`, or every
-value will be 1000 times too large. For STEP files, keep `auto` unless you know the unit stored in
-the file is wrong: an explicit input unit reinterprets the numbers in the file.
+STL files exported in millimeters are common. In that case, set the input unit to `mm`. Otherwise,
+with the same output unit, lengths will be 1000 times too large, areas 1,000,000 times too large,
+and volumes 1,000,000,000 times too large. For STEP files, keep `auto` unless you know the unit
+stored in the file is wrong: an explicit input unit reinterprets the numbers in the file.
 
 ## STEP and STL files
 
