@@ -41,4 +41,21 @@ meter-based expected values as the STL fixtures.
 | `frame_with_hole` | hole and concave outline behavior | volume `0.8`, surface `17.6`, +Z projection `8` |
 | `satellite` | manually added Fusion 360 validation model | see [Fusion validation notes](fusion_validation.md) |
 
+## Installed Packages
+
+The wheel bundles a subset of `samples/`: every STEP file and binary STL, `metadata.json`, and
+`unit_cube/unit_cube_ascii.stl` as the one ASCII STL example. The other ASCII STL files hold the
+same meshes as their binary STL counterparts, so they stay in the repository and source
+distribution only.
+
+List the bundled files, or print their directory for use in other commands:
+
+```bash
+cadmetrics samples
+cadmetrics measure "$(cadmetrics samples --path)/unit_cube/unit_cube.step"
+```
+
+From Python, `cadmetrics.samples.samples_dir()` returns the same directory. In a source checkout
+both point to the repository's full `samples/` directory.
+
 The authoritative machine-readable list is [samples/metadata.json](../samples/metadata.json).

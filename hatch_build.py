@@ -14,9 +14,15 @@ class CustomBuildHook(BuildHookInterface):
         root = Path(self.root)
         force_include = build_data.setdefault("force_include", {})
         docs_site = root / ".hatch-build" / "cadmetrics-docs-site"
-        docs_builder = _load_docs_builder(root / "src" / "cadmetrics" / "docs_site.py")
+        docs_builder = _load_module(root / "src" / "cadmetrics" / "docs_site.py")
         docs_builder.build_documentation_site(root, docs_site)
         force_include[str(docs_site)] = "cadmetrics/_docs_site"
+        if self.target_name == "wheel":
+            samples = root / "samples"
+            sample_module = _load_module(root / "src" / "cadmetrics" / "samples.py")
+            for path in sample_module.packaged_sample_files(samples):
+                relative = path.relative_to(samples).as_posix()
+                force_include[str(path)] = f"cadmetrics/_samples/{relative}"
 
         git_hash = _git_hash(root) or _existing_build_hash(root) or "unknown"
         source_build_file = root / "src" / "cadmetrics" / "_build.py"
@@ -38,10 +44,10 @@ class CustomBuildHook(BuildHookInterface):
         force_include[str(generated)] = target
 
 
-def _load_docs_builder(path: Path):
-    spec = importlib.util.spec_from_file_location("cadmetrics_docs_builder", path)
+def _load_module(path: Path):
+    spec = importlib.util.spec_from_file_location(f"cadmetrics_build_{path.stem}", path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load documentation builder: {path}")
+        raise RuntimeError(f"Could not load build helper: {path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)

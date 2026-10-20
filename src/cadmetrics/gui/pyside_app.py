@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from cadmetrics.docs_site import build_documentation_site
+from cadmetrics.samples import samples_dir
 
 try:
     from PySide6 import QtCore as _QtCore
@@ -103,6 +104,8 @@ if QtWidgets is not None:
             self.open_action = QtGui.QAction("Open…", self)
             self.open_action.setShortcut(QtGui.QKeySequence.StandardKey.Open)
             self.open_action.triggered.connect(self._open_file)
+            self.open_sample_action = QtGui.QAction("Open Sample…", self)
+            self.open_sample_action.triggered.connect(self._open_sample)
             self.run_action = QtGui.QAction("Run Sweep", self)
             # Qt maps Ctrl to Command on macOS.
             self.run_action.setShortcut(QtGui.QKeySequence("Ctrl+R"))
@@ -118,6 +121,7 @@ if QtWidgets is not None:
             self.save_image_action.triggered.connect(self.viewer.choose_and_save_image)
             self.save_image_action.setEnabled(False)
             file_menu.addAction(self.open_action)
+            file_menu.addAction(self.open_sample_action)
             file_menu.addSeparator()
             file_menu.addAction(self.run_action)
             file_menu.addAction(self.cancel_action)
@@ -273,6 +277,7 @@ if QtWidgets is not None:
         def _sync_actions(self) -> None:
             idle = self.controller.state is OperationState.IDLE
             self.open_action.setEnabled(idle)
+            self.open_sample_action.setEnabled(idle)
             self.run_action.setEnabled(idle)
             self.cancel_action.setEnabled(self.controller.state is OperationState.CALCULATING)
             self.save_csv_action.setEnabled(self.results.can_save)
@@ -280,6 +285,20 @@ if QtWidgets is not None:
         def _open_file(self) -> None:
             if self.controls.browse_button.isEnabled():
                 self.controls.browse_button.click()
+
+        def _open_sample(self) -> None:
+            try:
+                directory = samples_dir()
+            except FileNotFoundError as exc:
+                QtWidgets.QMessageBox.warning(self, "Open Sample", str(exc))
+                return
+            names, _ = QtWidgets.QFileDialog.getOpenFileNames(
+                self,
+                "Open sample file(s)",
+                str(directory),
+                "CAD Files (*.stl *.step *.stp);;All Files (*)",
+            )
+            self.load_dropped_files(tuple(Path(name) for name in names))
 
         def _run_sweep(self) -> None:
             if self.controls.run_button.isEnabled():
