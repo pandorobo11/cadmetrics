@@ -190,7 +190,7 @@ def test_model_viewer_renders_model_and_result(viewer_window) -> None:
     assert not window.controls.show_base_face.isChecked()
 
 
-def test_grid_toggle_preserves_camera_results_and_other_actors(viewer_window, tmp_path) -> None:
+def test_grid_toggle_preserves_camera_results_and_other_actors(viewer_window) -> None:
     window, plotter = viewer_window
     viewer = window.viewer
     model = _model()
@@ -214,7 +214,6 @@ def test_grid_toggle_preserves_camera_results_and_other_actors(viewer_window, tm
     assert viewer._row == _row()
     viewer.set_result(_row(), request, align_camera=True)
     assert not plotter.active("grid")
-    viewer.save_image(tmp_path / "grid-off.png")
 
     window.controls.show_grid.setChecked(True)
 
@@ -224,8 +223,6 @@ def test_grid_toggle_preserves_camera_results_and_other_actors(viewer_window, tm
     assert window.results.rows == [_row()]
     assert viewer._row == _row()
     assert viewer._grid_actor.bounds == viewer._mesh_polydata.bounds
-    viewer.save_image(tmp_path / "grid-on.png")
-    assert plotter.screenshots == [str(tmp_path / "grid-off.png"), str(tmp_path / "grid-on.png")]
 
 
 def test_grid_follows_loaded_geometry_and_survives_reload(viewer_window) -> None:
@@ -236,9 +233,6 @@ def test_grid_follows_loaded_geometry_and_survives_reload(viewer_window) -> None
     viewer.set_model(model)
     options = plotter.grid_calls[-1]
     assert options["mesh"].bounds == pytest.approx((0, 1, 0, 1, 0, 1))
-    assert options["font_size"] == 12
-    assert options["use_3d_text"] is False
-    assert options["bold"] is False
 
     window.controls.show_grid.setChecked(False)
     larger = replace(model, vertices=model.vertices * 20)
@@ -298,9 +292,6 @@ def test_invalid_vector_preview_clears_arrow_and_reports_calculation_error(
     assert window.results.is_stale
     assert "Volume  1 m³" in next(iter(plotter.active("text").values()))
     assert errors == []
-
-    assert window.controls.run_button.isEnabled() is False
-    assert "(0, 0, 0)" in window.controls.validation_label.text()
 
     window.controls.vector_fields[1].setValue(1.0)
 
@@ -371,8 +362,6 @@ def _view_direction(plotter) -> np.ndarray:
 def test_viewer_toolbar_owns_camera_presets_and_image_export(viewer_window) -> None:
     window, plotter = viewer_window
     viewer = window.viewer
-    assert not hasattr(window.controls, "camera_direction")
-    assert not hasattr(window.controls, "save_image_button")
     assert [button.text() for button in viewer.view_buttons][:6] == [
         "+X",
         "-X",

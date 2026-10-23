@@ -204,8 +204,10 @@ def test_gui_job_translates_request_to_calculation_api(
     monkeypatch, job_request, engine, expected_attitude
 ) -> None:
     loaded_model = _model()
+    row = _row()
     loads = []
     calls = []
+    streamed = []
 
     def load(path, options):
         loads.append((path, options))
@@ -213,14 +215,19 @@ def test_gui_job_translates_request_to_calculation_api(
 
     def calculate(model, **kwargs):
         calls.append((model, kwargs))
-        return _row() if engine == "project_model" else [_row()]
+        if engine == "project_model":
+            return row
+        kwargs["progress_callback"](1, 1, row)
+        return [row]
 
     monkeypatch.setattr("cadmetrics.gui.jobs._inspect_model_with_options", load)
     monkeypatch.setattr(f"cadmetrics.gui.jobs.{engine}", calculate)
 
-    rows = run_calculation(job_request)
+    rows = run_calculation(job_request, row_callback=streamed.append)
 
-    assert len(rows) == 1
+    assert rows == [row]
+    # Each computed row is streamed to the GUI as soon as it is available.
+    assert streamed == [row]
     assert len(loads) == len(calls) == 1
     assert loads[0][0] == job_request.file
     assert calls[0][0] is loaded_model

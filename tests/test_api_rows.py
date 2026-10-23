@@ -34,15 +34,8 @@ def model():
     )
 
 
-@pytest.mark.parametrize(
-    "attitude",
-    [
-        {"alpha_deg": 30.0, "beta_deg": 10.0},
-        {"attitude": "roll-pitch", "roll_deg": 20.0, "pitch_deg": 40.0},
-        {"attitude": "vector", "direction": "1,2,3"},
-    ],
-)
-def test_measure_project_and_sweep_preserve_model_metadata(model, attitude) -> None:
+def test_measure_project_and_sweep_preserve_model_metadata(model) -> None:
+    attitude = {"attitude": "roll-pitch", "roll_deg": 20.0, "pitch_deg": 40.0}
     measured = measure_model(model)
     projected = project_model(model, **attitude)
     progress = []

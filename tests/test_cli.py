@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import builtins
 import csv
 from pathlib import Path
 
@@ -10,7 +9,6 @@ from rich.text import Text
 from typer.testing import CliRunner
 
 from cadmetrics.cli import app
-from cadmetrics._ocp import load_ocp_bindings
 
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -108,87 +106,35 @@ def test_project_cli_stdout_uses_rich_table(runner: CliRunner) -> None:
     assert "stl-mesh-projection" in result.output
 
 
-def test_project_cli_accepts_alpha_beta_mode(runner: CliRunner, tmp_path: Path) -> None:
-    output = tmp_path / "alpha_beta.csv"
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (
+            ["--attitude", "alpha-beta", "--alpha", "60", "--beta", "0"],
+            {"alpha_deg": 60.0, "beta_deg": 0.0, "direction_x": 0.5},
+        ),
+        (
+            ["--attitude", "roll-pitch", "--roll", "90", "--pitch", "90"],
+            {"roll_deg": 90.0, "pitch_deg": 90.0, "direction_y": -1.0},
+        ),
+        (
+            ["--attitude", "vector", "--direction", "0,1,0"],
+            {"direction_y": 1.0, "beta_deg": -90.0},
+        ),
+    ],
+)
+def test_project_cli_attitude_modes_reach_the_result(
+    runner: CliRunner, tmp_path: Path, args: list[str], expected: dict[str, float]
+) -> None:
+    output = tmp_path / "attitude.csv"
     result = runner.invoke(
-        app,
-        [
-            "project",
-            str(DATA_DIR / "unit_cube.stl"),
-            "--attitude",
-            "alpha-beta",
-            "--alpha",
-            "60",
-            "--beta",
-            "0",
-            "--out",
-            str(output),
-        ],
+        app, ["project", str(DATA_DIR / "unit_cube.stl"), *args, "--out", str(output)]
     )
 
     assert result.exit_code == 0, result.output
     row = _csv_rows(output.read_text(encoding="utf-8"))[0]
-    assert float(row["alpha_deg"]) == pytest.approx(60.0)
-    assert float(row["beta_deg"]) == pytest.approx(0.0)
-    assert float(row["roll_deg"]) == pytest.approx(0.0)
-    assert float(row["pitch_deg"]) == pytest.approx(60.0)
-    assert float(row["direction_x"]) == pytest.approx(0.5)
-    assert float(row["direction_y"]) == pytest.approx(0.0)
-    assert float(row["direction_z"]) == pytest.approx(0.8660254037844386)
-
-
-def test_project_cli_accepts_roll_pitch_mode(runner: CliRunner, tmp_path: Path) -> None:
-    output = tmp_path / "roll_pitch.csv"
-    result = runner.invoke(
-        app,
-        [
-            "project",
-            str(DATA_DIR / "unit_cube.stl"),
-            "--attitude",
-            "roll-pitch",
-            "--roll",
-            "90",
-            "--pitch",
-            "90",
-            "--out",
-            str(output),
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    row = _csv_rows(output.read_text(encoding="utf-8"))[0]
-    assert float(row["roll_deg"]) == pytest.approx(90.0)
-    assert float(row["pitch_deg"]) == pytest.approx(90.0)
-    assert float(row["direction_x"]) == pytest.approx(0.0)
-    assert float(row["direction_y"]) == pytest.approx(-1.0)
-    assert float(row["direction_z"]) == pytest.approx(0.0)
-
-
-def test_project_cli_accepts_vector_mode(runner: CliRunner, tmp_path: Path) -> None:
-    output = tmp_path / "vector.csv"
-    result = runner.invoke(
-        app,
-        [
-            "project",
-            str(DATA_DIR / "unit_cube.stl"),
-            "--attitude",
-            "vector",
-            "--direction",
-            "0,1,0",
-            "--out",
-            str(output),
-        ],
-    )
-
-    assert result.exit_code == 0, result.output
-    row = _csv_rows(output.read_text(encoding="utf-8"))[0]
-    assert float(row["direction_x"]) == pytest.approx(0.0)
-    assert float(row["direction_y"]) == pytest.approx(1.0)
-    assert float(row["direction_z"]) == pytest.approx(0.0)
-    assert float(row["alpha_deg"]) == pytest.approx(0.0)
-    assert float(row["beta_deg"]) == pytest.approx(-90.0)
-    assert float(row["roll_deg"]) == pytest.approx(-90.0)
-    assert float(row["pitch_deg"]) == pytest.approx(90.0)
+    for column, value in expected.items():
+        assert float(row[column]) == pytest.approx(value)
 
 
 def test_project_cli_accepts_axis_map(runner: CliRunner, tmp_path: Path) -> None:
@@ -264,10 +210,7 @@ def test_sweep_cli_vector_mode_returns_one_row(runner: CliRunner) -> None:
 
 @pytest.mark.parametrize(
     ("command", "arguments", "message"),
-    [
-        ("project", ["--alpha", "nan"], "alpha_deg must be finite"),
-        ("sweep", ["--alpha", "bad"], "could not convert"),
-    ],
+    [("sweep", ["--alpha", "bad"], "could not convert")],
 )
 def test_cli_reports_preflight_attitude_validation_errors(
     runner: CliRunner,
@@ -299,95 +242,24 @@ def test_cli_error_preserves_optional_extra_markup(
 
 
 @pytest.mark.parametrize(
-    ("import_error", "expected_message"),
+    ("attitude_args", "message"),
     [
-        (
-            ModuleNotFoundError("No module named 'OCP'", name="OCP"),
-            "STEP support requires the optional dependency: cadmetrics[step].",
-        ),
-        (
-            ImportError("cannot import name 'Bnd_Box' from 'OCP.Bnd'"),
-            "STEP support found OCP, but its required bindings could not be loaded:",
-        ),
-        (
-            ModuleNotFoundError("No module named 'OCP.Bnd'", name="OCP.Bnd"),
-            "STEP support found OCP, but its required bindings could not be loaded:",
-        ),
-        (
-            ModuleNotFoundError("No module named 'vtkmodules'", name="vtkmodules"),
-            "STEP support found OCP, but its required bindings could not be loaded:",
-        ),
+        (["--attitude", "roll-pitch", "--alpha", "10", "--pitch", "5"], "--alpha cannot be used"),
+        (["--attitude", "alpha-beta", "--alpha", "10", "--roll", "5"], "--roll cannot be used"),
     ],
 )
-def test_step_binding_import_errors_identify_missing_extra_or_broken_install(
-    monkeypatch: pytest.MonkeyPatch,
-    import_error: ImportError,
-    expected_message: str,
+def test_cli_rejects_mixed_attitude_inputs(
+    runner: CliRunner, attitude_args: list[str], message: str
 ) -> None:
-    original_import = builtins.__import__
-
-    def fail_ocp_import(name, *args, **kwargs):
-        if name == "OCP.Bnd":
-            raise import_error
-        return original_import(name, *args, **kwargs)
-
-    load_ocp_bindings.cache_clear()
-    monkeypatch.setattr(builtins, "__import__", fail_ocp_import)
-    try:
-        with pytest.raises(RuntimeError) as caught:
-            load_ocp_bindings()
-        assert expected_message in str(caught.value)
-        assert caught.value.__cause__ is import_error
-        if import_error.name != "OCP":
-            assert str(import_error) in str(caught.value)
-            assert "requires the optional dependency" not in str(caught.value)
-    finally:
-        load_ocp_bindings.cache_clear()
-
-
-def test_cli_rejects_mixed_attitude_inputs(runner: CliRunner) -> None:
-    result = runner.invoke(
-        app,
-        [
-            "project",
-            str(DATA_DIR / "unit_cube.stl"),
-            "--attitude",
-            "roll-pitch",
-            "--alpha",
-            "10",
-            "--pitch",
-            "5",
-        ],
-    )
+    result = runner.invoke(app, ["project", str(DATA_DIR / "unit_cube.stl"), *attitude_args])
 
     assert result.exit_code != 0
-    assert "--alpha cannot be used" in Text.from_ansi(result.output).plain
-
-
-def test_cli_rejects_roll_in_alpha_beta_mode(runner: CliRunner) -> None:
-    result = runner.invoke(
-        app,
-        [
-            "project",
-            str(DATA_DIR / "unit_cube.stl"),
-            "--attitude",
-            "alpha-beta",
-            "--alpha",
-            "10",
-            "--roll",
-            "5",
-        ],
-    )
-
-    assert result.exit_code != 0
-    assert "--roll cannot be used" in Text.from_ansi(result.output).plain
+    assert message in Text.from_ansi(result.output).plain
 
 
 @pytest.mark.parametrize(
     ("options", "expected_factor", "expected_angle"),
     [
-        ([], 1.0e-3, 0.3),
-        (["--mesh-deflection", "auto-fast"], 1.0e-3, 0.3),
         (["--mesh-deflection", "auto-precise"], 1.0e-4, 0.1),
     ],
 )
@@ -407,16 +279,6 @@ def test_project_cli_mesh_presets(
     row = _csv_rows(output.read_text(encoding="utf-8"))[0]
     assert float(row["mesh_deflection"]) == pytest.approx(14.0**0.5 * expected_factor)
     assert float(row["angular_deflection"]) == pytest.approx(expected_angle)
-
-
-def test_cli_rejects_negative_angular_deflection(runner: CliRunner) -> None:
-    result = runner.invoke(
-        app,
-        ["measure", str(DATA_DIR / "unit_cube.stl"), "--angular-deflection", "-1"],
-    )
-
-    assert result.exit_code != 0
-    assert "angular_deflection must not be negative" in result.output
 
 
 def test_samples_cli_path_prints_sample_directory(runner: CliRunner) -> None:

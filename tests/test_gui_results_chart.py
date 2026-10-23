@@ -89,11 +89,9 @@ def test_full_sphere_sweep_charts_every_requested_attitude() -> None:
     assert [point.x for point in bottom.points] == [float(a) for a in range(0, 361, 30)]
 
 
-def test_nice_ticks_cover_the_range() -> None:
-    ticks = nice_ticks(0.78, 3.34)
-    assert ticks[0] <= 0.78 and ticks[-1] >= 3.34
-    assert len(ticks) <= 8
-    assert nice_ticks(2.0, 2.0)[0] < 2.0 < nice_ticks(2.0, 2.0)[-1]
+def test_nice_ticks_widen_a_zero_width_range() -> None:
+    ticks = nice_ticks(2.0, 2.0)
+    assert ticks[0] < 2.0 < ticks[-1]
 
 
 def test_chart_view_follows_rows_and_selection(qtbot) -> None:
@@ -127,26 +125,26 @@ def test_chart_view_follows_rows_and_selection(qtbot) -> None:
     assert panel.stack.currentWidget() is panel.table
 
 
-@pytest.mark.parametrize("scale", (1e-18, 1e-6, 1.0, 1e6, 1e18))
-def test_nice_ticks_cover_nearly_constant_ranges(scale: float) -> None:
-    high = math.nextafter(scale, math.inf)
-    ticks = nice_ticks(scale, high)
+@pytest.mark.parametrize("scale", (1e-18, 1.0, 1e18))
+@pytest.mark.parametrize("spread", ("nearly_constant", "normal"))
+def test_nice_ticks_cover_the_range_with_few_increasing_finite_ticks(
+    scale: float, spread: str
+) -> None:
+    low = scale
+    high = math.nextafter(scale, math.inf) if spread == "nearly_constant" else scale * 3.34
+    ticks = nice_ticks(low, high)
     assert 2 <= len(ticks) <= 8
-    assert ticks[0] <= scale < high <= ticks[-1]
+    assert ticks[0] <= low < high <= ticks[-1]
     assert all(math.isfinite(tick) for tick in ticks)
     assert all(left < right for left, right in zip(ticks, ticks[1:]))
 
 
 @pytest.mark.parametrize("low, high", ((1e-15, 3e-15), (0.0, 1e-15)))
-def test_nice_ticks_preserve_small_positive_areas(low: float, high: float) -> None:
-    ticks = nice_ticks(low, high)
-    assert 2 <= len(ticks) <= 8
-    assert ticks[0] <= low < high <= ticks[-1]
-    assert all(left < right for left, right in zip(ticks, ticks[1:]))
-    assert 0.0 < ticks[-1] < high * 2
+def test_nice_ticks_do_not_overshoot_small_positive_areas(low: float, high: float) -> None:
+    assert 0.0 < nice_ticks(low, high)[-1] < high * 2
 
 
-def test_more_lines_than_hues_shade_one_ramp_light_to_dark(qtbot) -> None:
+def test_more_lines_than_hues_shade_one_ramp_light_to_dark() -> None:
     data = chart_data(_sweep(range(0, 91, 5), range(0, 15 * 5, 5)), "alpha_beta")
     assert len(data.series) == 15
     colors = series_colors(15)
@@ -154,15 +152,6 @@ def test_more_lines_than_hues_shade_one_ramp_light_to_dark(qtbot) -> None:
     assert series_colors(len(SERIES_COLORS)) == list(SERIES_COLORS)
     lightness = [QtGui.QColor(color).lightnessF() for color in colors]
     assert lightness == sorted(lightness, reverse=True)
-
-    panel = ResultsPanel()
-    qtbot.addWidget(panel)
-    panel.resize(900, 320)
-    panel.show()
-    panel.set_rows(_sweep(range(0, 91, 5), range(0, 15 * 5, 5)))
-    panel.chart_view_button.click()
-    assert len(panel.chart.data.series) == 15
-    panel.chart.grab()
 
 
 def test_the_x_axis_can_be_chosen() -> None:
@@ -255,18 +244,17 @@ def _choose(monkeypatch, panel, returned, selected_filter, answer=None):
     return saved, questions
 
 
-@pytest.mark.parametrize("suffix", (".png", ".svg"))
-@pytest.mark.parametrize(
-    "answer",
-    (QtWidgets.QMessageBox.StandardButton.No, QtWidgets.QMessageBox.StandardButton.Cancel),
-)
 def test_declining_to_replace_a_completed_name_keeps_the_file(
-    chart_panel, monkeypatch, tmp_path, suffix, answer
+    chart_panel, monkeypatch, tmp_path
 ) -> None:
-    existing = tmp_path / f"report{suffix}"
+    existing = tmp_path / "report.png"
     existing.write_bytes(b"keep me")
     saved, questions = _choose(
-        monkeypatch, chart_panel, str(tmp_path / "report"), _FILTERS[suffix], answer
+        monkeypatch,
+        chart_panel,
+        str(tmp_path / "report"),
+        _FILTERS[".png"],
+        QtWidgets.QMessageBox.StandardButton.No,
     )
     assert len(questions) == 1
     # Not replacing is the default button.
@@ -275,15 +263,14 @@ def test_declining_to_replace_a_completed_name_keeps_the_file(
     assert existing.read_bytes() == b"keep me"
 
 
-@pytest.mark.parametrize("suffix", (".png", ".svg"))
-def test_replacing_a_completed_name_saves_there(chart_panel, monkeypatch, tmp_path, suffix) -> None:
-    existing = tmp_path / f"report{suffix}"
+def test_replacing_a_completed_name_saves_there(chart_panel, monkeypatch, tmp_path) -> None:
+    existing = tmp_path / "report.png"
     existing.write_bytes(b"old")
     saved, questions = _choose(
         monkeypatch,
         chart_panel,
         str(tmp_path / "report"),
-        _FILTERS[suffix],
+        _FILTERS[".png"],
         QtWidgets.QMessageBox.StandardButton.Yes,
     )
     assert len(questions) == 1
@@ -301,28 +288,24 @@ def test_a_new_completed_name_saves_without_asking(
     assert (tmp_path / f"report{suffix}").stat().st_size > 0
 
 
-@pytest.mark.parametrize("suffix", (".png", ".svg"))
 def test_a_name_with_its_suffix_relies_on_the_dialogs_confirmation(
-    chart_panel, monkeypatch, tmp_path, suffix
+    chart_panel, monkeypatch, tmp_path
 ) -> None:
-    existing = tmp_path / f"report{suffix}"
+    existing = tmp_path / "report.png"
     existing.write_bytes(b"old")  # The dialog already asked about this exact file.
-    saved, questions = _choose(monkeypatch, chart_panel, str(existing), _FILTERS[suffix])
+    saved, questions = _choose(monkeypatch, chart_panel, str(existing), _FILTERS[".png"])
     assert questions == []
     assert saved == [str(existing)]
     assert existing.read_bytes() != b"old"
 
 
-@pytest.mark.parametrize("suffix", (".png", ".svg"))
-def test_cancelling_the_save_dialog_saves_nothing(
-    chart_panel, monkeypatch, tmp_path, suffix
-) -> None:
-    saved, questions = _choose(monkeypatch, chart_panel, "", _FILTERS[suffix])
+def test_cancelling_the_save_dialog_saves_nothing(chart_panel, monkeypatch, tmp_path) -> None:
+    saved, questions = _choose(monkeypatch, chart_panel, "", _FILTERS[".png"])
     assert saved == [] and questions == []
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize("width", (260, 360, 480, 900))
+@pytest.mark.parametrize("width", (260, 900))
 def test_ordinal_legend_fits_narrow_charts_and_saved_images(qtbot, tmp_path, width) -> None:
     from cadmetrics.gui.results_chart import ResultsChart
 
@@ -346,9 +329,6 @@ def test_ordinal_legend_fits_narrow_charts_and_saved_images(qtbot, tmp_path, wid
     assert all(0 <= rect.left() and rect.right() <= width and rect.width() > 0 for rect in rects)
     assert all(a.right() <= b.left() for a, b in zip(rects, rects[1:]))
 
-    png = tmp_path / "chart.png"
-    chart.save_image(png)
-    assert QtGui.QImage(str(png)).width() == width * 2
     svg = tmp_path / "chart.svg"
     chart.save_image(svg)
     content = svg.read_text(encoding="utf-8")

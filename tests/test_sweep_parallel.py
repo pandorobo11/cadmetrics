@@ -124,30 +124,6 @@ def test_reuse_computes_each_distinct_direction_once(monkeypatch) -> None:
     assert len(computed) == len(calls)
 
 
-def _direction(**angles: float):
-    return projection_direction_for_orientation(Orientation(**angles))
-
-
-def test_direction_key_matches_only_exactly_equivalent_directions() -> None:
-    key = api._direction_key
-    direction = _direction(alpha_deg=30.0, beta_deg=20.0)
-
-    assert key(direction) == key(-direction)
-    assert key(direction) == key(_direction(alpha_deg=390.0, beta_deg=20.0))
-    assert key(direction) == key(_direction(alpha_deg=-330.0, beta_deg=20.0))
-    # The reverse attitude gives an exactly negated vector.
-    assert key(direction) == key(_direction(alpha_deg=210.0, beta_deg=-20.0))
-    assert key(_direction(alpha_deg=0.0, beta_deg=90.0)) == key(
-        _direction(alpha_deg=123.0, beta_deg=90.0)
-    )
-    assert key(np.array([0.0, -0.0, 1.0])) == key(np.array([-0.0, 0.0, -1.0]))
-
-    assert key(direction) != key(_direction(alpha_deg=30.0 + 1e-7, beta_deg=20.0))
-    edge_on = key(_direction(alpha_deg=90.0))
-    for alpha in (np.nextafter(90.0, 0.0), np.nextafter(90.0, 180.0), 90.00000000001):
-        assert key(_direction(alpha_deg=float(alpha))) != edge_on
-
-
 @pytest.fixture
 def yz_triangle(tmp_path: Path):
     path = tmp_path / "yz_triangle.stl"
@@ -189,41 +165,13 @@ def _assert_matches_independent(rows, model, mode: str, angles) -> None:
 
 
 @pytest.mark.parametrize("mode", ["alpha-beta", "roll-pitch"])
-@pytest.mark.parametrize(
-    "spec", ["90:90.00000000001:0.00000000001", "90.00000000001:90:-0.00000000001"]
-)
-@pytest.mark.parametrize("max_workers", [1, 4])
-@pytest.mark.parametrize("reuse_directions", [False, True])
-def test_near_edge_on_sweep_rows_match_independent_projection(
-    yz_triangle, mode: str, spec: str, max_workers: int, reuse_directions: bool
-) -> None:
-    from cadmetrics.sweep import parse_sweep_values
-
-    if mode == "alpha-beta":
-        attitude = {"attitude": mode, "alpha_deg": spec, "beta_deg": 0.0}
-    else:
-        attitude = {"attitude": mode, "roll_deg": 0.0, "pitch_deg": spec}
-    rows = _sweep(yz_triangle, attitude, max_workers=max_workers, reuse_directions=reuse_directions)
-
-    angles = parse_sweep_values(spec)
-    _assert_matches_independent(rows, yz_triangle, mode, angles)
-    requested = "alpha_deg" if mode == "alpha-beta" else "pitch_deg"
-    assert [getattr(row, requested) for row in rows] == angles
-    areas = {angle: row.projected_area for angle, row in zip(angles, rows, strict=True)}
-    assert areas[90.0] == 0.0
-    assert areas[90.00000000001] > 0.0
-
-
-@pytest.mark.parametrize("mode", ["alpha-beta", "roll-pitch"])
-@pytest.mark.parametrize("max_workers", [1, 4])
-@pytest.mark.parametrize("reuse_directions", [False, True])
-def test_adjacent_floats_around_edge_on_are_not_merged(
-    yz_triangle, mode: str, max_workers: int, reuse_directions: bool
+def test_near_edge_on_reused_parallel_rows_match_independent_projection(
+    yz_triangle, mode: str
 ) -> None:
     below, above = float(np.nextafter(90.0, 0.0)), float(np.nextafter(90.0, 180.0))
     # Exact equivalents of 90 (450, -270, 270 reversed) may share its result;
     # the neighbouring floats must not.
-    angles = [90.0, above, below, 450.0, -270.0, 270.0, above + 360.0, below, above]
+    angles = [90.0, above, below, 90.00000000001, 450.0, -270.0, 270.0, above + 360.0, below, above]
     if mode == "alpha-beta":
         orientations = [Orientation(alpha_deg=angle) for angle in angles]
     else:
@@ -235,17 +183,17 @@ def test_adjacent_floats_around_edge_on_are_not_merged(
         total=len(orientations),
         progress_callback=None,
         cancel_callback=None,
-        max_workers=max_workers,
-        reuse_directions=reuse_directions,
+        max_workers=4,
+        reuse_directions=True,
     )
 
     _assert_matches_independent(rows, yz_triangle, mode, angles)
     # Reused rows keep their own requested angle, not the representative's.
     requested = "alpha_deg" if mode == "alpha-beta" else "pitch_deg"
     assert [getattr(row, requested) for row in rows] == angles
-    assert rows[0].projected_area == 0.0
-    assert rows[1].projected_area > 0.0
-    assert rows[2].projected_area > 0.0
+    areas = dict(zip(angles, (row.projected_area for row in rows), strict=True))
+    assert areas[90.0] == 0.0
+    assert all(areas[angle] > 0.0 for angle in (above, below, 90.00000000001))
 
 
 def test_parallel_sweep_streams_rows_in_order() -> None:

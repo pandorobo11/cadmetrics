@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QCheckBox,
     QPushButton,
     QTableWidget,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -22,7 +23,7 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-def test_stylesheet_has_no_parse_warnings(app):
+def _stylesheet_warnings(app, stylesheet: str) -> list[str]:
     messages: list[str] = []
 
     def handler(mode: QtMsgType, context, message: str) -> None:
@@ -30,50 +31,37 @@ def test_stylesheet_has_no_parse_warnings(app):
 
     previous = qInstallMessageHandler(handler)
     try:
-        app.setStyleSheet(application_stylesheet())
-        widgets = [QPushButton(), QCheckBox(), QTableWidget()]
-        for widget in widgets:
-            widget.grab()
+        # Style a local parent only: styling the whole QApplication re-polishes
+        # every live widget from other tests and is slow.
+        parent = QWidget()
+        parent.setStyleSheet(stylesheet)
+        layout = QVBoxLayout(parent)
+        for widget in (QPushButton(), QCheckBox(), QTableWidget()):
+            layout.addWidget(widget)
+        parent.grab()
     finally:
         qInstallMessageHandler(previous)
-        app.setStyleSheet("")
-    assert not [m for m in messages if "stylesheet" in m.lower()]
+    return [m for m in messages if "stylesheet" in m.lower() or "parse" in m.lower()]
 
 
-@pytest.mark.parametrize(
-    "selector",
-    [
-        "QPushButton#primaryButton:disabled",
-        "QPushButton#dangerButton:disabled",
-        "QPushButton#primaryButton:pressed",
-        "QTableView {",
-        'QTableView[stale="true"]',
-        "QCheckBox::indicator:checked:disabled",
-        "QLabel#resultsStaleLabel",
-        "QLabel#validationMessageLabel",
-        "QToolButton#sectionToggle:checked",
-    ],
-)
-def test_stylesheet_contains_selector(selector):
-    assert selector in application_stylesheet()
+def test_stylesheet_has_no_parse_warnings(app):
+    assert not _stylesheet_warnings(app, application_stylesheet())
 
 
-def test_stylesheet_has_no_table_widget_selector():
-    assert "QTableWidget" not in application_stylesheet()
+def test_parse_warning_check_detects_a_broken_stylesheet(app):
+    assert _stylesheet_warnings(app, "QPushButton { color: ; ")
 
 
 def test_disabled_primary_button_differs_from_enabled(app):
-    app.setStyleSheet(application_stylesheet())
-    try:
-        button = QPushButton("Run Sweep")
-        button.setObjectName("primaryButton")
-        button.resize(120, 34)
-        enabled = button.grab().toImage()
-        button.setEnabled(False)
-        disabled = button.grab().toImage()
-        assert enabled.pixelColor(4, 17) != disabled.pixelColor(4, 17)
-    finally:
-        app.setStyleSheet("")
+    parent = QWidget()
+    parent.setStyleSheet(application_stylesheet())
+    button = QPushButton("Run Sweep", parent)
+    button.setObjectName("primaryButton")
+    button.resize(120, 34)
+    enabled = button.grab().toImage()
+    button.setEnabled(False)
+    disabled = button.grab().toImage()
+    assert enabled.pixelColor(4, 17) != disabled.pixelColor(4, 17)
 
 
 def test_buttonless_spinbox_text_field_fills_the_box(app):

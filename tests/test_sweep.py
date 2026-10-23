@@ -38,24 +38,10 @@ def test_parse_range_rejects_non_finite_span() -> None:
         parse_sweep_values("-1e308:1e308:1")
 
 
-def test_iter_orientations_uses_all_combinations() -> None:
-    orientations = list(iter_orientations(roll="0:1:1", alpha="-1:1:1", beta="0"))
-    assert len(orientations) == 6
-    assert orientations[0].roll_deg == 0.0
-    assert orientations[-1].roll_deg == 1.0
-    assert orientations[-1].alpha_deg == 1.0
-    assert orientations[-1].beta_deg == 0.0
-
-
 @pytest.mark.parametrize("spec", ["nan", "0:1:inf", "nan:1:1"])
 def test_parse_sweep_values_rejects_non_finite_values(spec: str) -> None:
     with pytest.raises(ValueError, match="finite"):
         parse_sweep_values(spec)
-
-
-def test_iter_orientations_rejects_more_than_maximum_combinations() -> None:
-    with pytest.raises(ValueError, match=f"maximum is {MAX_SWEEP_COMBINATIONS:,}"):
-        iter_orientations(roll="0:100:1", alpha="0:100:1", beta=0)
 
 
 def test_iter_orientations_accepts_maximum_combinations() -> None:

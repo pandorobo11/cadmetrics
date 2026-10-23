@@ -17,7 +17,7 @@ import cadmetrics.gui.pyside_app as pyside_app
 import cadmetrics.gui.results_panel as results_panel
 from cadmetrics.gui.calculation_controller import CalculationController
 from cadmetrics.gui.gui_types import OperationState
-from cadmetrics.gui.jobs import CalculationRequest, run_calculation
+from cadmetrics.gui.jobs import CalculationRequest
 from cadmetrics.gui.results_model import DISPLAY_FIELDS, ResultsTableModel, header_label
 from cadmetrics.gui.results_panel import ResultsPanel
 from cadmetrics.samples import samples_dir
@@ -231,39 +231,6 @@ def test_progress_message_is_shown_only_in_action_bar(window, monkeypatch) -> No
 
 
 # 5. Rows stream into the table while the sweep runs.
-
-
-def test_run_calculation_reports_each_row(monkeypatch) -> None:
-    rows = [replace(_row(), alpha_deg=float(index)) for index in range(3)]
-
-    def fake_sweep(model, *, progress_callback, cancel_callback, **_kwargs):
-        for index, row in enumerate(rows, start=1):
-            progress_callback(index, len(rows), row)
-        return rows
-
-    monkeypatch.setattr("cadmetrics.gui.jobs.sweep_model", fake_sweep)
-    received = []
-
-    result = run_calculation(
-        CalculationRequest(file=Path("model.stl")), model=_model(), row_callback=received.append
-    )
-
-    assert result == rows
-    assert received == rows
-
-
-def test_run_calculation_reports_vector_row(monkeypatch) -> None:
-    row = _row()
-    monkeypatch.setattr("cadmetrics.gui.jobs.project_model", lambda *args, **kwargs: row)
-    received = []
-
-    run_calculation(
-        CalculationRequest(file=Path("model.stl"), attitude_mode="vector"),
-        model=_model(),
-        row_callback=received.append,
-    )
-
-    assert received == [row]
 
 
 @pytest.mark.parametrize(("interval", "expected_batches"), [(0.0, 3), (60.0, 1)])
@@ -544,8 +511,8 @@ def test_csv_export_keeps_full_precision(qtbot, tmp_path) -> None:
     assert float(saved["projected_area"]) == pytest.approx(1.0 / 3.0, rel=1e-15)
 
 
-@pytest.mark.parametrize(("unit", "suffix"), [("m", "m"), ("mm", "mm")])
-def test_headers_include_units_from_output_unit(unit: str, suffix: str) -> None:
+def test_headers_include_units_from_output_unit() -> None:
+    unit = suffix = "mm"
     model = ResultsTableModel()
     horizontal = QtCore.Qt.Orientation.Horizontal
     area = DISPLAY_FIELDS.index("projected_area")

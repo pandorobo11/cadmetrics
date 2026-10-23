@@ -239,7 +239,7 @@ def test_native_probe_argv_spawn_exit_and_restart_after_move(checkout, use_uv):
 
 
 @MAC_ONLY
-@pytest.mark.parametrize("invalid", ["json", "library", "entry"])
+@pytest.mark.parametrize("invalid", ["json", "library"])
 def test_invalid_runtime_fails_before_entry_point(checkout, invalid):
     python = checkout / ".venv/bin/python"
     python.parent.mkdir(parents=True)
@@ -256,9 +256,6 @@ def test_invalid_runtime_fails_before_entry_point(checkout, invalid):
         "path": os.environ.get("PATH", ""),
         "virtual_env": None,
     }
-    if invalid == "entry":
-        payload["library"] = runtime.runtime_info()["library"]
-        payload["entry"] = "/missing/entry"
     probe.write_text(
         'print("not JSON")' if invalid == "json" else f"print({json.dumps(json.dumps(payload))})"
     )

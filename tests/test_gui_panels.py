@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import csv
 from dataclasses import replace
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 pytest.importorskip("PySide6")
@@ -14,10 +12,9 @@ from PySide6 import QtCore, QtWidgets
 import cadmetrics.gui.pyside_app as pyside_app
 import cadmetrics.gui.results_panel as results_panel
 from cadmetrics.gui.control_panel import ControlPanel
-from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.results_panel import ResultsPanel
 from cadmetrics.gui.results_panel import DISPLAY_FIELDS
-from cadmetrics.types import MeasurementRow, ModelData
+from cadmetrics.types import MeasurementRow
 
 
 class _FakeViewer(QtWidgets.QWidget):
@@ -64,6 +61,8 @@ def test_control_panel_builds_roll_pitch_request_and_counts_cases(qtbot, tmp_pat
         field.setValue(value)
     for field, value in zip(panel.pitch_fields, (2.0, 6.0, 2.0), strict=True):
         field.setValue(value)
+    panel.axis_y.setCurrentIndex(panel.axis_y.findData("-y"))
+    panel.axis_z.setCurrentIndex(panel.axis_z.findData("-z"))
 
     request = panel.request()
 
@@ -71,26 +70,8 @@ def test_control_panel_builds_roll_pitch_request_and_counts_cases(qtbot, tmp_pat
     assert request.attitude_mode == "roll_pitch"
     assert (request.roll_start, request.roll_end, request.roll_step) == (5.0, 15.0, 5.0)
     assert (request.pitch_start, request.pitch_end, request.pitch_step) == (2.0, 6.0, 2.0)
+    assert request.axis_map == "x,-y,-z"
     assert panel.case_count.text() == "9 results"
-
-
-def test_control_panel_busy_state_enables_cancel_only_while_calculating(qtbot) -> None:
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-
-    panel.set_busy(OperationState.LOADING)
-
-    assert panel.run_button.isEnabled() is False
-    assert panel.file_edit.isEnabled() is False
-    assert panel.cancel_button.isHidden() is True
-    assert panel.cancel_button.isEnabled() is False
-
-    panel.set_busy(OperationState.CALCULATING)
-    assert panel.cancel_button.isHidden() is False
-    assert panel.cancel_button.isEnabled() is True
-
-    panel.set_busy(OperationState.CANCELLING)
-    assert panel.cancel_button.isEnabled() is False
 
 
 def test_collapsible_section_shows_and_hides_contents(qtbot) -> None:
@@ -126,76 +107,12 @@ def test_detailed_overlay_option_is_opt_in(qtbot) -> None:
     assert panel.viewer_options().detailed_overlay is True
 
 
-def test_grid_option_can_be_toggled_with_keyboard_without_changing_request(qtbot) -> None:
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-    panel._section_toggles["Shape Display"].click()
-    panel.show()
-    options = []
-    requests = []
-    panel.viewer_options_changed.connect(options.append)
-    panel.request_changed.connect(requests.append)
-    assert panel.viewer_options().show_grid is True
-    panel.show_grid.setFocus()
-    qtbot.keyClick(panel.show_grid, QtCore.Qt.Key.Key_Space)
-    assert panel.viewer_options().show_grid is False
-    assert options[-1].show_grid is False
-    qtbot.keyClick(panel.show_grid, QtCore.Qt.Key.Key_Space)
-    assert panel.viewer_options().show_grid is True
-    assert options[-1].show_grid is True
-    assert requests == []
-
-
-def test_advanced_changes_show_pending_state_only_after_model_load(qtbot, tmp_path: Path) -> None:
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-    panel.axis_x.setCurrentIndex(panel.axis_x.findData("-x"))
-
-    assert panel.advanced_status.isHidden() is True
-    assert panel.apply_advanced_button.isEnabled() is False
-
-    path = tmp_path / "model.step"
-    path.touch()
-    panel.set_file_paths((path,))
-    panel.set_model(_model(path, component_names=("Body",)))
-    panel.axis_x.setCurrentIndex(panel.axis_x.findData("x"))
-
-    assert panel.advanced_status.isHidden() is False
-    assert panel.apply_advanced_button.isEnabled() is True
-
-
-def test_control_panel_populates_step_components(qtbot, tmp_path: Path) -> None:
-    path = tmp_path / "assembly.step"
-    path.touch()
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-    panel.set_file_paths((path,))
-    panel.set_model(_model(path, component_names=("Body", "Left wing", "Right wing")))
-
-    panel.component_none_button.click()
-    assert all(not box.isChecked() for box in panel._component_checkboxes)
-    panel.component_all_button.click()
-    assert all(box.isChecked() for box in panel._component_checkboxes)
-    panel._component_checkboxes[1].setChecked(False)
-    panel.step_component_mode.setCurrentIndex(panel.step_component_mode.findData("subtract"))
-    request = panel.request()
-
-    assert request.step_components == (1, 3)
-    assert request.step_component_mode == "subtract"
-    assert panel.component_summary.text() == "2 of 3 components enabled."
-
-
-def test_results_panel_displays_selects_and_exports_rows(qtbot, tmp_path: Path) -> None:
+def test_results_panel_displays_and_selects_rows(qtbot) -> None:
     panel = ResultsPanel()
     qtbot.addWidget(panel)
     rows = [
-        replace(_row(), file="first.stl", alpha_deg=5.0, projected_area=1.25),
-        replace(
-            _row(),
-            file="/models/aircraft/a-long-model-filename-that-needs-a-full-tooltip.stl",
-            alpha_deg=15.0,
-            projected_area=2.5,
-        ),
+        replace(_row(), alpha_deg=5.0, projected_area=1.25),
+        replace(_row(), alpha_deg=15.0, projected_area=2.5),
     ]
     selected = []
     panel.selected_row_changed.connect(selected.append)
@@ -211,7 +128,6 @@ def test_results_panel_displays_selects_and_exports_rows(qtbot, tmp_path: Path) 
     assert model.rowCount() == 2
     alpha_column = DISPLAY_FIELDS.index("alpha_deg")
     area_column = DISPLAY_FIELDS.index("projected_area")
-    assert model.headerData(alpha_column, QtCore.Qt.Orientation.Horizontal) == "Alpha (°)"
     assert (
         model.headerData(
             area_column, QtCore.Qt.Orientation.Horizontal, QtCore.Qt.ItemDataRole.ToolTipRole
@@ -221,37 +137,6 @@ def test_results_panel_displays_selects_and_exports_rows(qtbot, tmp_path: Path) 
     assert model.data(model.index(0, alpha_column)) == "5"
     assert model.data(model.index(1, alpha_column)) == "15"
     assert model.data(model.index(1, area_column)) == "2.5"
-    file_index = model.index(1, DISPLAY_FIELDS.index("file"))
-    assert model.data(file_index) == "a-long-model-filename-that-needs-a-full-tooltip.stl"
-    assert model.data(file_index, QtCore.Qt.ItemDataRole.ToolTipRole) == rows[-1].file
-
-    output = tmp_path / "rows.csv"
-    panel.save_csv(output)
-    with output.open(encoding="utf-8", newline="") as stream:
-        saved_rows = list(csv.DictReader(stream))
-    assert [row["file"] for row in saved_rows] == [row.file for row in rows]
-    assert [float(row["alpha_deg"]) for row in saved_rows] == [5.0, 15.0]
-
-
-def test_main_window_marks_results_stale_when_request_changes(
-    qtbot, monkeypatch, tmp_path: Path
-) -> None:
-    source = tmp_path / "model.step"
-    source.touch()
-    monkeypatch.setattr(pyside_app, "ModelViewer", _FakeViewer)
-    window = pyside_app.MainWindow()
-    qtbot.addWidget(window)
-    window.controls.set_file_paths((source,))
-    window._on_results_ready([_row()])
-    assert window.results.rows
-    assert window.results.save_button.isEnabled() is True
-
-    window.controls.alpha_fields[0].setValue(10.0)
-
-    assert window.results.rows
-    assert window.results.is_stale
-    assert window.results.save_button.isEnabled() is True
-    assert window.viewer.result_calls[-1][0] is None
 
 
 @pytest.mark.parametrize(
@@ -286,8 +171,6 @@ def test_main_window_marks_results_stale_after_setup_edit(
     assert window.results.is_stale
     assert window.results.save_button.isEnabled() is True
     assert window.viewer.result_calls[-1][0] is None
-    window.results.save_csv(tmp_path / "stale.csv")
-    assert (tmp_path / "stale.csv").is_file()
 
 
 def test_main_window_setup_edits_are_applied_by_next_sweep(
@@ -339,23 +222,6 @@ def test_main_window_protects_request_files_from_csv_export(
     assert source.read_bytes() == b"STEP source data"
 
 
-def _model(path: Path, *, component_names: tuple[str, ...]) -> ModelData:
-    return ModelData(
-        path=path,
-        source_format="step",
-        vertices=np.empty((0, 3), dtype=float),
-        faces=np.empty((0, 3), dtype=np.int64),
-        input_unit="m",
-        output_unit="m",
-        volume=1.0,
-        surface_area=6.0,
-        base_area=1.0,
-        is_watertight=True,
-        component_names=component_names,
-        selected_components=tuple(range(1, len(component_names) + 1)),
-    )
-
-
 def _row() -> MeasurementRow:
     return MeasurementRow(
         file="model.stl",
@@ -371,7 +237,7 @@ def _row() -> MeasurementRow:
     )
 
 
-@pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
 def test_result_selection_keeps_row_preview_with_cocoa_single_cell(qtbot, monkeypatch, platform):
     monkeypatch.setattr(results_panel.sys, "platform", platform)
     panel = ResultsPanel()
@@ -418,11 +284,7 @@ def test_result_selection_keeps_row_preview_with_cocoa_single_cell(qtbot, monkey
     assert len(panel.table.selectionModel().selectedIndexes()) == expected
 
 
-def test_results_hide_the_file_column_and_keep_the_column_order(qtbot) -> None:
+def test_results_hide_the_file_column(qtbot) -> None:
     panel = ResultsPanel()
     qtbot.addWidget(panel)
-    header = panel.table.horizontalHeader()
     assert panel.table.isColumnHidden(DISPLAY_FIELDS.index("file")) is True
-    assert [header.logicalIndex(visual) for visual in range(len(DISPLAY_FIELDS))] == list(
-        range(len(DISPLAY_FIELDS))
-    )

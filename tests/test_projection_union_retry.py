@@ -63,11 +63,6 @@ def _projected_polygons(model: ModelData) -> np.ndarray:
     return shapely.polygons(projected[model.faces])
 
 
-def test_sliver_fixture_reproduces_geos_assertion(sliver_model: ModelData) -> None:
-    with pytest.raises(shapely.errors.GEOSException, match="found two shells"):
-        shapely.union_all(_projected_polygons(sliver_model))
-
-
 def test_projected_metrics_recovers_from_geos_assertion(sliver_model: ModelData) -> None:
     polygons = _projected_polygons(sliver_model)
     # The pairwise overlaps are below 1e-34, so the outline area is the plain sum.

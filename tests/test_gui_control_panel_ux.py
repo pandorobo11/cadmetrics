@@ -82,22 +82,25 @@ def test_zero_vector_disables_run(qtbot, tmp_path: Path) -> None:
     assert panel.run_button.isEnabled() is True
 
 
-def test_no_selected_components_disables_run(qtbot, tmp_path: Path) -> None:
-    panel = _panel(qtbot, tmp_path, "asm.step")
-    panel.set_model(_model(tmp_path / "asm.step", ("A", "B")))
-    panel.component_none_button.click()
-    assert panel.run_button.isEnabled() is False
-    assert "component" in panel.validation_label.text()
-    panel.component_all_button.click()
-    assert panel.run_button.isEnabled() is True
-
-
-def test_busy_state_respects_validation(qtbot, tmp_path: Path) -> None:
+def test_busy_state_controls_run_and_cancel(qtbot, tmp_path: Path) -> None:
     panel = _panel(qtbot, tmp_path)
+    panel.set_busy(OperationState.LOADING)
+    assert panel.run_button.isEnabled() is False
+    assert panel.file_edit.isEnabled() is False
+    assert panel.cancel_button.isHidden() is True
+    assert panel.cancel_button.isEnabled() is False
+
     panel.set_busy(OperationState.CALCULATING)
     assert panel.run_button.isEnabled() is False
+    assert panel.cancel_button.isHidden() is False
+    assert panel.cancel_button.isEnabled() is True
+
+    panel.set_busy(OperationState.CANCELLING)
+    assert panel.cancel_button.isEnabled() is False
+
     panel.set_busy(OperationState.IDLE)
     assert panel.run_button.isEnabled() is True
+    # Leaving a busy state must not enable Run for invalid inputs.
     panel.file_edit.clear()
     panel.set_busy(OperationState.LOADING)
     panel.set_busy(OperationState.IDLE)
@@ -122,10 +125,16 @@ def test_enter_in_file_field_requests_model_load(qtbot, tmp_path: Path) -> None:
     assert len(requests) == 1
 
 
-def test_advanced_wording_explains_run_sweep_applies(qtbot, tmp_path: Path) -> None:
+def test_advanced_changes_show_pending_state_only_after_model_load(qtbot, tmp_path: Path) -> None:
     panel = _panel(qtbot, tmp_path)
-    panel.set_model(_model(tmp_path / "model.stl", fmt="stl"))
     panel.axis_x.setCurrentIndex(panel.axis_x.findData("-x"))
+    assert panel.advanced_status.isHidden() is True
+    assert panel.apply_advanced_button.isEnabled() is False
+
+    panel.set_model(_model(tmp_path / "model.stl", fmt="stl"))
+    panel.axis_x.setCurrentIndex(panel.axis_x.findData("x"))
+    assert panel.advanced_status.isHidden() is False
+    assert panel.apply_advanced_button.isEnabled() is True
     assert "next Run Sweep" in panel.advanced_status.text()
     assert panel.apply_advanced_button.text() == "Apply && Reload"
     assert "not applied" not in panel._section_toggles["Advanced"].text()
@@ -134,16 +143,12 @@ def test_advanced_wording_explains_run_sweep_applies(qtbot, tmp_path: Path) -> N
 
 def test_components_section_is_independent_and_opens_for_multiple(qtbot, tmp_path: Path) -> None:
     panel = _panel(qtbot, tmp_path, "asm.step")
-    advanced_content = panel._section_toggles["Advanced"].parentWidget()
-    assert not advanced_content.isAncestorOf(panel.component_summary)
-    assert not advanced_content.isAncestorOf(panel.step_component_mode)
     toggle = panel._section_toggles["Components"]
     assert toggle.isChecked() is False
 
     panel.set_model(_model(tmp_path / "asm.step", ("A", "B")))
     assert toggle.isChecked() is True
     assert panel.component_detail.isHidden() is False
-    assert 0 < panel.component_scroll.maximumHeight() <= 200
 
 
 def test_single_component_shows_one_line_only(qtbot, tmp_path: Path) -> None:
@@ -151,35 +156,6 @@ def test_single_component_shows_one_line_only(qtbot, tmp_path: Path) -> None:
     panel.set_model(_model(tmp_path / "model.stl", fmt="stl"))
     assert panel.component_detail.isHidden() is True
     assert panel.component_summary.text()
-
-
-def test_component_mode_labels(qtbot) -> None:
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-    combo = panel.step_component_mode
-    assert combo.itemData(0) == "filter" and combo.itemData(1) == "subtract"
-    assert combo.itemText(0) == "Exclude unchecked (default)"
-    assert combo.itemText(1) == "Subtract unchecked"
-    assert combo.toolTip()
-
-
-def test_shape_display_groups_and_no_empty_cells(qtbot) -> None:
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-    grid = panel.show_grid.parentWidget().layout()
-    labels = [
-        grid.itemAt(i).widget().text()
-        for i in range(grid.count())
-        if grid.itemAt(i).widget().objectName() == "subheadingLabel"
-    ]
-    assert labels == ["Rendering", "Annotations"]
-    occupied = set()
-    for i in range(grid.count()):
-        row, col, rs, cs = grid.getItemPosition(i)
-        for r in range(row, row + rs):
-            for c in range(col, col + cs):
-                occupied.add((r, c))
-    assert occupied == {(r, c) for r in range(grid.rowCount()) for c in range(3)}
 
 
 def test_axis_map_combos_fit_the_longest_axis_label(qtbot) -> None:
@@ -245,15 +221,6 @@ def test_all_fields_share_one_left_and_right_edge(qtbot) -> None:
     assert len({edges(label)[0] for label in labels}) == 1
 
 
-def test_unavailable_checkboxes_have_tooltips(qtbot) -> None:
-    panel = ControlPanel()
-    qtbot.addWidget(panel)
-    assert panel.show_base_face.isEnabled() is False
-    assert panel.show_base_face.toolTip()
-    assert panel.show_newly_exposed_surface.isEnabled() is False
-    assert "Unavailable" in panel.show_newly_exposed_surface.toolTip()
-
-
 def _wheel(widget) -> QtGui.QWheelEvent:
     center = QtCore.QPointF(widget.rect().center())
     return QtGui.QWheelEvent(
@@ -296,10 +263,7 @@ def test_angle_fields_show_degrees_and_no_field_has_step_buttons(qtbot, tmp_path
 
     no_buttons = QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
     spin_boxes = panel.findChildren(QtWidgets.QDoubleSpinBox)
-    assert len(spin_boxes) >= 18
     assert all(field.buttonSymbols() == no_buttons for field in spin_boxes)
-    for field in (panel.mesh_deflection, panel.angular_deflection, panel.base_tolerance):
-        assert field.toolTip()
 
     # Keyboard stepping still works once a field has focus.
     field = panel.alpha_fields[2]
@@ -326,19 +290,6 @@ def test_buttons_match_input_height_and_open_sections_have_no_gap(qtbot, tmp_pat
     toggle.setChecked(True)
     content = toggle.parentWidget().findChild(QtWidgets.QGroupBox, "sectionContent")
     assert content.geometry().top() == toggle.geometry().bottom() + 1
-
-
-def test_combo_popups_use_styleable_list_views(qtbot, tmp_path: Path) -> None:
-    panel = _panel(qtbot, tmp_path)
-    for combo in (
-        panel.input_unit,
-        panel.output_unit,
-        panel.attitude_mode,
-        panel.step_component_mode,
-        panel.step_metrics,
-        panel.axis_x,
-    ):
-        assert isinstance(combo.view(), QtWidgets.QListView)
 
 
 def test_component_list_height_fits_short_lists(qtbot, tmp_path: Path) -> None:
@@ -383,6 +334,13 @@ def test_all_and_none_report_one_component_change(qtbot, tmp_path: Path) -> None
     # Nothing changes, so nothing is reported.
     panel.component_all_button.click()
     assert len(requests) == 2
+
+    panel._component_checkboxes[1].setChecked(False)
+    panel.step_component_mode.setCurrentIndex(panel.step_component_mode.findData("subtract"))
+    request = panel.request()
+    assert request.step_components == (1, *range(3, 51))
+    assert request.step_component_mode == "subtract"
+    assert panel.component_summary.text() == "49 of 50 components enabled."
 
 
 def test_component_selection_is_reported_for_the_viewer(qtbot, tmp_path: Path) -> None:

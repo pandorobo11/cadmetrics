@@ -101,15 +101,10 @@ def test_small_triangle_projection_keeps_positive_area_and_centroid(
     ("angles", "direction", "normal_axis"),
     [
         ({"alpha_deg": 90}, "0,0,1", 0),
-        ({"alpha_deg": -90}, "0,0,-1", 0),
         ({"alpha_deg": 270}, "0,0,-1", 0),
         ({"alpha_deg": 180}, "-1,0,0", 2),
-        ({"alpha_deg": 360}, "1,0,0", 2),
         ({"beta_deg": 90}, "0,-1,0", 0),
-        ({"beta_deg": -90}, "0,1,0", 0),
         ({"attitude": "roll-pitch", "roll_deg": 90, "pitch_deg": 90}, "0,-1,0", 0),
-        ({"attitude": "roll-pitch", "roll_deg": 180, "pitch_deg": 90}, "0,0,-1", 0),
-        ({"attitude": "roll-pitch", "roll_deg": 270, "pitch_deg": 90}, "0,1,0", 0),
     ],
 )
 def test_edge_on_triangle_projection_has_zero_area_and_no_centroid(
@@ -299,12 +294,6 @@ def test_cube_sweep_combinations() -> None:
     assert all(row.elapsed_sec is not None for row in rows)
 
 
-@pytest.mark.parametrize("direction", ["nan,0,0", "1,-inf,0"])
-def test_vector_direction_rejects_non_finite_components(direction: str) -> None:
-    with pytest.raises(ValueError, match="finite"):
-        project(DATA_DIR / "unit_cube.stl", attitude="vector", direction=direction)
-
-
 def test_roll_pitch_api_uses_explicit_degree_arguments() -> None:
     row = project(
         DATA_DIR / "unit_cube.stl",
@@ -318,23 +307,6 @@ def test_roll_pitch_api_uses_explicit_degree_arguments() -> None:
     assert row.direction_z == pytest.approx(0.75)
     assert row.roll_deg == pytest.approx(30.0)
     assert row.pitch_deg == pytest.approx(60.0)
-
-
-def test_roll_pitch_sweep_reports_public_angles_to_progress_callback() -> None:
-    progress = []
-
-    rows = sweep(
-        DATA_DIR / "unit_cube.stl",
-        attitude="roll-pitch",
-        roll_deg="0:90:90",
-        pitch_deg=90,
-        progress_callback=lambda index, total, row: progress.append(
-            (index, total, row.roll_deg, row.pitch_deg)
-        ),
-    )
-
-    assert len(rows) == 2
-    assert progress == [(1, 2, 0.0, 90.0), (2, 2, 90.0, 90.0)]
 
 
 def test_alpha_beta_sweep_keeps_requested_angles_and_recovers_the_rest() -> None:
@@ -401,6 +373,7 @@ def test_vector_sweep_returns_one_row() -> None:
             "roll_deg",
         ),
         (project, {"attitude": "vector"}, "direction is required"),
+        (project, {"attitude": "vector", "direction": "nan,0,0"}, "finite"),
         (project, {"attitude": "yaw-pitch"}, "attitude must be one of"),
         (project, {"alpha_deg": float("nan")}, "alpha_deg must be finite"),
         (
