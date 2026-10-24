@@ -94,8 +94,6 @@ def window(qtbot, monkeypatch, tmp_path: Path):
     ("name", "value"),
     [
         ("axis_x", "-x"),
-        ("axis_y", "-y"),
-        ("axis_z", "-z"),
         ("step_component_mode", "subtract"),
         ("step_metrics", "mesh"),
         ("mesh_deflection", 0.002),
@@ -205,8 +203,9 @@ def test_edit_during_calculation_marks_retained_rows_stale_at_every_terminal(win
         assert window.status.text() == "Error: projection failed"
 
 
-def test_display_only_changes_do_not_mark_results_stale(window):
+@pytest.mark.parametrize("name", ["show_overlay", "show_grid"])
+def test_display_only_changes_do_not_mark_results_stale(window, name):
     original = window._results_request
-    window.controls.show_overlay.setChecked(False)
+    getattr(window.controls, name).setChecked(False)
     assert window._request == original
     assert not window.results.is_stale

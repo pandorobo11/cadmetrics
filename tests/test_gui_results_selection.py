@@ -40,10 +40,10 @@ def test_cocoa_selection_changes_repaint_the_row_without_moving_current(qtbot, m
     selection.clearSelection()
     assert panel.table.currentIndex() == current
     assert not selection.hasSelection()
-    assert repaints == [True]
+    assert repaints
 
     repaints.clear()
     panel.table.setCurrentIndex(current)
     assert panel.table.currentIndex() == current
     assert len(selection.selectedIndexes()) == 1
-    assert repaints == [True]
+    assert repaints

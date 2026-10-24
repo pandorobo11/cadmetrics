@@ -28,6 +28,14 @@ def test_model_load_options_normalize_once() -> None:
         ({"base_tolerance": 0.0}, "base_tolerance must be greater than zero"),
         ({"angular_deflection": -1.0}, "angular_deflection must not be negative"),
         ({"step_metric_source": "unknown"}, "step_metric_source must be"),
+        ({"mesh_deflection": float("nan")}, "mesh_deflection must be finite"),
+        ({"angular_deflection": float("inf")}, "angular_deflection must be finite"),
+        ({"base_tolerance": float("nan")}, "base_tolerance must be finite"),
+        (
+            {"mesh_deflection": "fast"},
+            "mesh_deflection must be a number, 'auto', or 'auto-precise'",
+        ),
+        ({"angular_deflection": "coarse"}, "angular_deflection must be a number or 'auto'"),
     ],
 )
 def test_model_load_options_reject_invalid_values(
@@ -43,12 +51,9 @@ def test_model_load_options_reject_invalid_values(
     [
         ("auto", "auto", "auto", 0.3),
         ("AUTO-PRECISE", "auto", "auto-precise", 0.1),
-        ("auto_precise", "Auto", "auto-precise", 0.1),
-        ("auto-precise", 0.05, "auto-precise", 0.05),
         ("auto-precise", "0.4", "auto-precise", 0.4),
         # "auto-fast" is a compatibility alias for the default preset.
         ("AUTO-FAST", "auto", "auto", 0.3),
-        ("auto_fast", 0.2, "auto", 0.2),
         (0.01, "auto", 0.01, 0.3),
     ],
 )
@@ -73,18 +78,3 @@ def test_default_options_use_fast_auto_preset() -> None:
     assert options.mesh_deflection == "auto"
     assert options.angular_deflection == 0.3
     assert ModelLoadOptions().angular_deflection == 0.3
-
-
-@pytest.mark.parametrize(
-    ("kwargs", "message"),
-    [
-        (
-            {"mesh_deflection": "fast"},
-            "mesh_deflection must be a number, 'auto', or 'auto-precise'",
-        ),
-        ({"angular_deflection": "coarse"}, "angular_deflection must be a number or 'auto'"),
-    ],
-)
-def test_mesh_presets_reject_unknown_names(kwargs: dict[str, object], message: str) -> None:
-    with pytest.raises(ValueError, match=message):
-        ModelLoadOptions.resolve(**kwargs)  # type: ignore[arg-type]

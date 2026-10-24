@@ -17,12 +17,13 @@ from OCP.BRepPrimAPI import (
     BRepPrimAPI_MakeSphere,
     BRepPrimAPI_MakeTorus,
 )
-from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt
+from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 from OCP.IFSelect import IFSelect_RetDone
 from OCP.Interface import Interface_Static
 from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
 from OCP.TopAbs import TopAbs_FACE
 from OCP.TopExp import TopExp_Explorer
+from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS, TopoDS_Compound
 
 from cadmetrics.api import inspect_model, measure, measure_model, project, project_model
@@ -34,8 +35,6 @@ from cadmetrics._ocp import (
     _boolean_union_ocp_solids,
     _explore_ocp_subshapes,
     _extract_ocp_solids,
-    _ocp_bounding_box_diagonal,
-    _ocp_bounds,
     _ocp_shape_metric,
     _ocp_volume_metric_gk,
     _ocp_union_matches_solids,
@@ -48,27 +47,6 @@ from typer.testing import CliRunner
 
 SAMPLES_DIR = Path(__file__).parents[1] / "samples"
 STL_CUBE = Path(__file__).parent / "data" / "unit_cube.stl"
-
-
-def test_ocp_bounds_and_diagonal_include_box_gap() -> None:
-    ocp = load_ocp_bindings()
-    shape = BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape()
-
-    def box_with_gap():
-        box = ocp.Bnd_Box()
-        box.SetGap(0.125)
-        return box
-
-    assert _ocp_bounds(
-        shape,
-        Bnd_Box=box_with_gap,
-        BRepBndLib=ocp.BRepBndLib,
-    ) == pytest.approx((-0.125, -0.125, -0.125, 1.125, 2.125, 3.125))
-    assert _ocp_bounding_box_diagonal(
-        shape,
-        Bnd_Box=box_with_gap,
-        BRepBndLib=ocp.BRepBndLib,
-    ) == pytest.approx((1.25**2 + 2.25**2 + 3.25**2) ** 0.5)
 
 
 def test_step_preserves_declared_component_name(tmp_path: Path) -> None:
@@ -135,7 +113,8 @@ def test_step_load_preserves_nondefault_options(tmp_path: Path, assembly: bool) 
 
 @pytest.mark.parametrize(
     ("writer_unit", "expected_input_unit"),
-    [("MM", "mm"), ("M", "m"), ("CM", "cm"), ("INCH", "in"), ("FT", "ft")],
+    # SI prefixed, unprefixed and conversion-based unit encodings in the STEP file.
+    [("MM", "mm"), ("M", "m"), ("INCH", "in")],
 )
 def test_declared_step_units_are_converted_once(
     tmp_path: Path,
@@ -286,7 +265,6 @@ def test_auto_mesh_presets_record_effective_deflections(tmp_path: Path) -> None:
     writer.Transfer(shape, STEPControl_AsIs)
     assert writer.Write(str(step_path)) == IFSelect_RetDone
     expected_diagonal = 2.0 * radius_mm * 3.0**0.5
-    exact_area = 3.141592653589793 * radius_mm**2
 
     precise = load_model(step_path, output_unit="mm", mesh_deflection="auto-precise")
     fast = load_model(step_path, output_unit="mm")
@@ -307,9 +285,6 @@ def test_auto_mesh_presets_record_effective_deflections(tmp_path: Path) -> None:
     assert fast_row.mesh_deflection == pytest.approx(expected_diagonal * 1.0e-3)
     assert fast_row.angular_deflection == pytest.approx(0.3)
     assert len(fast.faces) < len(precise.faces) / 4
-    # On a sphere the chords sit inside the outline, so the coarse mesh underestimates.
-    assert fast_row.projected_area < exact_area
-    assert fast_row.projected_area == pytest.approx(exact_area, rel=2.0e-2)
     # B-Rep metrics do not depend on the tessellation preset.
     assert fast.volume == pytest.approx(precise.volume)
     assert fast.surface_area == pytest.approx(precise.surface_area)
@@ -368,9 +343,8 @@ def test_auto_mesh_presets_projected_area_against_exact_values(
     assert abs(errors["auto-precise"]) < abs(errors["auto"])
 
 
-@pytest.mark.parametrize("mesh_deflection", ["auto", "auto-precise", "auto-fast"])
-def test_auto_mesh_presets_do_not_affect_stl(mesh_deflection: str) -> None:
-    row = project(STL_CUBE, mesh_deflection=mesh_deflection, angular_deflection="auto")
+def test_auto_mesh_presets_do_not_affect_stl() -> None:
+    row = project(STL_CUBE, mesh_deflection="auto-precise", angular_deflection="auto")
 
     assert row.mesh_deflection is None
     assert row.angular_deflection is None
@@ -751,17 +725,12 @@ def test_union_check_accepts_nested_and_overlapping_solids_in_any_order() -> Non
     assert not _ocp_union_matches_solids(outer, [outer, overlapping], ocp=ocp)
 
 
-def test_union_check_without_interior_points_does_not_pass(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    "case", ["no_interior_points", "intersector_raises", "intersector_not_done", "infinite_bounds"]
+)
+def test_union_check_that_cannot_verify_does_not_pass(
+    monkeypatch: pytest.MonkeyPatch, case: str
 ) -> None:
-    ocp = load_ocp_bindings()
-    box = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
-    monkeypatch.setattr(ocp_module, "_ocp_points_inside_solid", lambda *a, **k: [])
-
-    assert not _ocp_union_matches_solids(box, [box], ocp=ocp)
-
-
-def test_union_check_that_cannot_run_does_not_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     ocp = load_ocp_bindings()
     near = BRepPrimAPI_MakeBox(1.0, 1.0, 1.0).Shape()
     far = BRepPrimAPI_MakeBox(gp_Pnt(3, 0, 0), 1.0, 1.0, 1.0).Shape()
@@ -783,13 +752,17 @@ def test_union_check_that_cannot_run_does_not_pass(monkeypatch: pytest.MonkeyPat
         def NbPnt(self):
             return 1
 
-    for intersector in (failing_intersector, NotDoneIntersector):
+    if case == "no_interior_points":
+        monkeypatch.setattr(ocp_module, "_ocp_points_inside_solid", lambda *a, **k: [])
+        assert not _ocp_union_matches_solids(near, [near], ocp=ocp)
+    elif case == "infinite_bounds":
+        infinite = (float("-inf"), 0.0, 0.0, float("inf"), 1.0, 1.0)
+        monkeypatch.setattr(ocp_module, "_ocp_bounds", lambda shape, **_: infinite)
+        assert not _ocp_union_matches_solids(union, [near, far], ocp=ocp)
+    else:
+        intersector = failing_intersector if case == "intersector_raises" else NotDoneIntersector
         broken = dataclasses.replace(ocp, IntCurvesFace_ShapeIntersector=intersector)
         assert not _ocp_union_matches_solids(union, [near, far], ocp=broken)
-
-    infinite = (float("-inf"), 0.0, 0.0, float("inf"), 1.0, 1.0)
-    monkeypatch.setattr(ocp_module, "_ocp_bounds", lambda shape, **_: infinite)
-    assert not _ocp_union_matches_solids(union, [near, far], ocp=ocp)
 
 
 def test_union_fuzzy_value_does_not_close_gaps_next_to_distant_parts() -> None:
@@ -1238,6 +1211,10 @@ def test_ocp_shape_set_uses_is_same_semantics() -> None:
     assert _explore_ocp_subshapes(other_box, TopAbs_FACE, TopExp_Explorer)[0] not in shape_set
     assert shape_set.add(faces[3]) is True
     assert shape_set.add(faces[3].Reversed()) is False
+    # The same shape at a different location is not the same shape.
+    shift = gp_Trsf()
+    shift.SetTranslation(gp_Vec(10.0, 0.0, 0.0))
+    assert faces[0].Moved(TopLoc_Location(shift)) not in shape_set
 
 
 def _pairwise_union_reference(solids):

@@ -204,8 +204,12 @@ def test_gui_job_translates_request_to_calculation_api(
     monkeypatch, job_request, engine, expected_attitude
 ) -> None:
     loaded_model = _model()
+    expected_rows = [_row()]
+    if engine == "sweep_model":
+        expected_rows.append(replace(_row(), projected_area=4.0))
     loads = []
     calls = []
+    streamed = []
 
     def load(path, options):
         loads.append((path, options))
@@ -213,14 +217,21 @@ def test_gui_job_translates_request_to_calculation_api(
 
     def calculate(model, **kwargs):
         calls.append((model, kwargs))
-        return _row() if engine == "project_model" else [_row()]
+        if engine == "project_model":
+            return expected_rows[0]
+        for index, row in enumerate(expected_rows, start=1):
+            kwargs["progress_callback"](index, len(expected_rows), row)
+            # Forward intermediate rows before the calculation completes.
+            assert streamed == expected_rows[:index]
+        return expected_rows
 
     monkeypatch.setattr("cadmetrics.gui.jobs._inspect_model_with_options", load)
     monkeypatch.setattr(f"cadmetrics.gui.jobs.{engine}", calculate)
 
-    rows = run_calculation(job_request)
+    rows = run_calculation(job_request, row_callback=streamed.append)
 
-    assert len(rows) == 1
+    assert rows == expected_rows
+    assert streamed == expected_rows
     assert len(loads) == len(calls) == 1
     assert loads[0][0] == job_request.file
     assert calls[0][0] is loaded_model
