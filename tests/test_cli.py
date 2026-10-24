@@ -210,7 +210,10 @@ def test_sweep_cli_vector_mode_returns_one_row(runner: CliRunner) -> None:
 
 @pytest.mark.parametrize(
     ("command", "arguments", "message"),
-    [("sweep", ["--alpha", "bad"], "could not convert")],
+    [
+        ("project", ["--alpha", "nan"], "alpha_deg must be finite"),
+        ("sweep", ["--alpha", "bad"], "could not convert"),
+    ],
 )
 def test_cli_reports_preflight_attitude_validation_errors(
     runner: CliRunner,
