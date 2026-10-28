@@ -118,14 +118,17 @@ class TableCopyActions:
         menu.addAction(self.copy_row)
         menu.addSeparator()
         menu.addAction(self.copy_all)
+        # Menu availability must not leave the table shortcuts disabled afterwards.
+        menu.aboutToHide.connect(self._enable_shortcuts)
         return menu
+
+    def _enable_shortcuts(self) -> None:
+        self.copy_row.setEnabled(True)
+        self.copy_all.setEnabled(True)
 
     def _show_menu(self, position: QtCore.QPoint) -> None:
         menu = self.menu(self._table.indexAt(position))
         menu.exec(self._table.viewport().mapToGlobal(position))
-        # Menu availability must not leave the table shortcuts disabled afterwards.
-        self.copy_row.setEnabled(True)
-        self.copy_all.setEnabled(True)
         menu.deleteLater()
 
     def _copy_clicked_value(self) -> None:

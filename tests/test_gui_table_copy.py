@@ -10,7 +10,7 @@ from cadmetrics.gui.table_copy import TableCopyActions
 
 
 @pytest.mark.parametrize("row_count", [0, 1])
-def test_dismissed_menu_does_not_disable_later_copy_shortcuts(qtbot, monkeypatch, row_count):
+def test_dismissed_menu_does_not_disable_later_copy_shortcuts(qtbot, row_count):
     table = QtWidgets.QTableView()
     qtbot.addWidget(table)
     model = QtGui.QStandardItemModel(row_count, 1, table)
@@ -28,15 +28,12 @@ def test_dismissed_menu_does_not_disable_later_copy_shortcuts(qtbot, monkeypatch
     # A reset or stale result can leave the visible table without a current row.
     table.setCurrentIndex(QtCore.QModelIndex())
 
-    def dismiss_menu(menu, position):
-        assert not actions.copy_value.isEnabled()
-        assert not actions.copy_row.isEnabled()
-        assert actions.copy_all.isEnabled() == bool(row_count)
-        return None
-
-    # Exercise the real menu lifecycle without a native popup/event loop in CI.
-    monkeypatch.setattr(QtWidgets.QMenu, "exec", dismiss_menu)
-    actions._show_menu(QtCore.QPoint(-1, -1))
+    menu = actions.menu(QtCore.QModelIndex())
+    assert not actions.copy_value.isEnabled()
+    assert not actions.copy_row.isEnabled()
+    assert actions.copy_all.isEnabled() == bool(row_count)
+    # Dismissing the menu, without opening a native popup that would block the test.
+    menu.aboutToHide.emit()
 
     model.setRowCount(1)
     table.setCurrentIndex(model.index(0, 0))
