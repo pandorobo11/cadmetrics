@@ -133,7 +133,13 @@ The number of sections usually matters more than the number of roll angles. Keep
 | Max area, at x | The largest section area, and where it is. |
 | ∫S dx | The area integrated along x. For a closed model it equals the model volume, so a large difference points to a problem, such as a hole in the mesh. A blunt nose or base makes it slightly smaller, because the area jumps between two planes there. |
 | Wave drag D/q | The zero-lift wave drag divided by the dynamic pressure, from slender-body theory, in the square of the output unit. Above Mach 1 it is averaged over the roll angles. Divide by a reference area to get a drag coefficient. |
-| Sears-Haack | The body with the lowest possible wave drag for the same length and volume. Its area curve is the dashed line in the chart, and its D/q is shown for comparison. A ratio close to 1 means the area distribution is close to ideal. |
+| Sears-Haack | The minimum-wave-drag slender body for the same length and volume with zero area at both ends. Its area curve is the dashed line in the chart, and its D/q is shown for comparison. |
+
+The Sears-Haack reference is not a lower bound for a body with a nonzero base area. Such a body
+has different end conditions and can have a ratio below 1 without a calculation error. For
+example, the von Karman ogive has one eighth of the Sears-Haack D/q for the same length and
+volume under this theory. Compare ratios as an optimality measure only when the end conditions
+match.
 
 The wave drag is an estimate for comparing designs, not a prediction of the real drag:
 
