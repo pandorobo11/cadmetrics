@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+import numpy as np
+
 from cadmetrics.gui.jobs import CalculationRequest
 from cadmetrics.load_options import ModelLoadOptions
 
@@ -41,3 +43,15 @@ class ModelLoadKey:
             files=tuple(Path(path).expanduser().resolve() for path in raw_files),
             options=request.load_options(),
         )
+
+
+@dataclass(frozen=True, eq=False)
+class SectionDisplay:
+    """One cutting plane to draw in the 3D view."""
+
+    # Closed outline polylines in model coordinates.
+    loops: tuple[np.ndarray, ...]
+    # The plane is ``direction . p = x0``.
+    direction: tuple[float, float, float]
+    x0: float
+    overlay_lines: tuple[str, ...] = ()

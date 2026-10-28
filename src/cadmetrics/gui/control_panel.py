@@ -12,9 +12,18 @@ from cadmetrics.gui.gui_formatters import (
     model_info_text,
 )
 from cadmetrics.gui.gui_types import OperationState, ViewerOptions
-from cadmetrics.gui.jobs import CalculationRequest, GuiModelPath
+from cadmetrics.gui.jobs import AnalysisMode, CalculationRequest, GuiModelPath
 from cadmetrics.gui.styles import disclosure_arrow_image_urls
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
+from cadmetrics.sections import (
+    DEFAULT_SECTION_COUNT,
+    DEFAULT_THETA_COUNT,
+    MAX_MACH,
+    MAX_SECTION_COUNT,
+    MAX_THETA_COUNT,
+    MIN_SECTION_COUNT,
+    theta_angles,
+)
 from cadmetrics.load_options import (
     AUTO_MESH_DEFLECTION,
     AUTO_PRECISE_MESH_DEFLECTION,
@@ -67,6 +76,21 @@ class FlexibleDoubleSpinBox(QtWidgets.QDoubleSpinBox):
         super().wheelEvent(event)
 
 
+class PanelSpinBox(QtWidgets.QSpinBox):
+    """Whole-number field styled like the decimal fields."""
+
+    def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+
+    def wheelEvent(self, event: QtGui.QWheelEvent) -> None:  # noqa: N802
+        if not self.hasFocus():
+            event.ignore()
+            return
+        super().wheelEvent(event)
+
+
 class PanelComboBox(QtWidgets.QComboBox):
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -105,6 +129,8 @@ class ControlPanel(QtWidgets.QWidget):
     component_selection_changed = QtCore.Signal(object)
     # Component index under the pointer in the list, or None.
     component_hovered = QtCore.Signal(object)
+    # "projection" or "sections"
+    analysis_changed = QtCore.Signal(str)
     error = QtCore.Signal(str)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
@@ -144,6 +170,24 @@ class ControlPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(content)
         layout.setContentsMargins(12, 8, 12, 12)
         layout.setSpacing(8)
+
+        analysis_row = QtWidgets.QHBoxLayout()
+        analysis_row.setContentsMargins(0, 0, 0, 0)
+        analysis_row.setSpacing(GRID_GAP)
+        self.projection_mode_button = self._analysis_button(
+            "Projected area", "Projected area for a sweep of attitudes."
+        )
+        self.sections_mode_button = self._analysis_button(
+            "Sections", "Cross-sectional area distribution along X, for area-rule studies."
+        )
+        self.projection_mode_button.setChecked(True)
+        self._analysis_group = QtWidgets.QButtonGroup(self)
+        self._analysis_group.setExclusive(True)
+        for button in (self.projection_mode_button, self.sections_mode_button):
+            self._analysis_group.addButton(button)
+            analysis_row.addWidget(button, 1)
+        self.sections_mode_button.toggled.connect(self._on_analysis_toggled)
+        layout.addLayout(analysis_row)
 
         setup = self._section(layout, "Setup")
         self.file_edit = PathLineEdit()
@@ -189,6 +233,57 @@ class ControlPanel(QtWidgets.QWidget):
         self.case_count.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
         attitude_layout.addWidget(self.case_count)
         layout.addWidget(self.attitude_box)
+
+        self.sections_box = QtWidgets.QGroupBox("Sections")
+        sections_layout = QtWidgets.QVBoxLayout(self.sections_box)
+        sections_layout.setContentsMargins(CARD_INSET, 2, CARD_INSET, CARD_INSET)
+        sections_layout.setSpacing(ROW_GAP)
+        self.section_count = PanelSpinBox()
+        self.section_count.setRange(MIN_SECTION_COUNT, MAX_SECTION_COUNT)
+        self.section_count.setSingleStep(10)
+        self.section_count.setValue(DEFAULT_SECTION_COUNT)
+        self.section_count.setToolTip(
+            "Number of cutting planes, equally spaced from the front to the rear of the model."
+        )
+        self.mach = FlexibleDoubleSpinBox()
+        self.mach.setRange(1.0, MAX_MACH)
+        self.mach.setDecimals(3)
+        self.mach.setSingleStep(0.1)
+        self.mach.setValue(1.0)
+        self.mach.setToolTip(
+            "1 cuts planes normal to X (transonic area rule). Above 1, the planes lean at the "
+            "Mach angle and are cut at each roll angle (supersonic area rule)."
+        )
+        self.theta_count = PanelSpinBox()
+        self.theta_count.setRange(1, MAX_THETA_COUNT)
+        self.theta_count.setValue(DEFAULT_THETA_COUNT)
+        self.theta_count.setToolTip(
+            "Number of equally spaced roll angles around X; the wave drag is averaged over them."
+        )
+        self.section_symmetric = self._check("Mirror-symmetric about XZ", False)
+        self.section_symmetric.setToolTip(
+            "Left and right halves are mirror images: calculate about half the roll angles."
+        )
+        sections_layout.addLayout(self._labelled_row("Sections", self.section_count))
+        sections_layout.addLayout(self._labelled_row("Mach", self.mach))
+        sections_layout.addLayout(self._labelled_row("Roll angles", self.theta_count))
+        sections_layout.addLayout(self._labelled_row("Symmetry", self.section_symmetric))
+        self.section_case_count = QtWidgets.QLabel()
+        self.section_case_count.setObjectName("caseCountLabel")
+        self.section_case_count.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        sections_layout.addWidget(self.section_case_count)
+        for field in (self.section_count, self.theta_count):
+            field.valueChanged.connect(self._sync_section_controls)
+            field.valueChanged.connect(self._emit_preview_request)
+            field.valueChanged.connect(self._refresh_validation)
+        self.mach.valueChanged.connect(self._sync_section_controls)
+        self.mach.valueChanged.connect(self._emit_preview_request)
+        self.mach.valueChanged.connect(self._refresh_validation)
+        self.section_symmetric.toggled.connect(self._sync_section_controls)
+        self.section_symmetric.toggled.connect(self._emit_preview_request)
+        self.section_symmetric.toggled.connect(self._refresh_validation)
+        self.sections_box.setVisible(False)
+        layout.addWidget(self.sections_box)
         self.attitude_mode.currentIndexChanged.connect(self._sync_attitude_controls)
         self.attitude_mode.currentIndexChanged.connect(self._emit_preview_request)
 
@@ -460,6 +555,7 @@ class ControlPanel(QtWidgets.QWidget):
 
         self.run_button.setToolTip("Run the configured attitude sweep.")
         self.cancel_button.setToolTip("Stop the sweep after the current case finishes.")
+        self._sync_section_controls()
         self.component_all_button.setToolTip("Check every listed component.")
         self.component_none_button.setToolTip("Clear every listed component.")
         self._connect_advanced_dirty_signals()
@@ -560,7 +656,20 @@ class ControlPanel(QtWidgets.QWidget):
             vector_x=vector_x,
             vector_y=vector_y,
             vector_z=vector_z,
+            analysis=self.analysis_mode,
+            section_count=self.section_count.value(),
+            mach=self.mach.value(),
+            theta_count=self.theta_count.value(),
+            symmetric=self.section_symmetric.isChecked(),
         )
+
+    @property
+    def analysis_mode(self) -> AnalysisMode:
+        return "sections" if self.sections_mode_button.isChecked() else "projection"
+
+    def set_analysis_mode(self, mode: AnalysisMode) -> None:
+        button = self.sections_mode_button if mode == "sections" else self.projection_mode_button
+        button.setChecked(True)
 
     def viewer_options(self) -> ViewerOptions:
         return ViewerOptions(
@@ -585,6 +694,9 @@ class ControlPanel(QtWidgets.QWidget):
             self.input_unit,
             self.output_unit,
             self.attitude_box,
+            self.sections_box,
+            self.projection_mode_button,
+            self.sections_mode_button,
             self.step_component_mode,
         ):
             widget.setEnabled(not busy)
@@ -599,7 +711,11 @@ class ControlPanel(QtWidgets.QWidget):
         self.cancel_button.setEnabled(state is OperationState.CALCULATING)
         messages = {
             OperationState.LOADING: "Loading model…",
-            OperationState.CALCULATING: "Calculating sweep… Cancel stops after the current case.",
+            OperationState.CALCULATING: (
+                "Calculating sections… Cancel stops after the current section."
+                if self.analysis_mode == "sections"
+                else "Calculating sweep… Cancel stops after the current case."
+            ),
             OperationState.CANCELLING: "Finishing the current geometry operation…",
         }
         self.operation_label.setText(messages.get(state, ""))
@@ -656,7 +772,14 @@ class ControlPanel(QtWidgets.QWidget):
             if not path.exists():
                 return f"File does not exist: {path}"
         mode = self.attitude_mode.currentData()
-        if mode == "vector":
+        if self.analysis_mode == "sections":
+            if (
+                self.mach.value() > 1.0
+                and self.section_symmetric.isChecked()
+                and self.theta_count.value() % 2
+            ):
+                return "Use an even number of roll angles for a mirror-symmetric model."
+        elif mode == "vector":
             if not any(field.value() for field in self.vector_fields):
                 return "Unit vector cannot be (0, 0, 0)."
         else:
@@ -898,6 +1021,54 @@ class ControlPanel(QtWidgets.QWidget):
     def _sync_component_controls(self, enabled: bool) -> None:
         self.component_all_button.setEnabled(enabled)
         self.component_none_button.setEnabled(enabled)
+
+    def _on_analysis_toggled(self, _checked: bool) -> None:
+        self._sync_analysis_controls()
+        self._refresh_validation()
+        self.analysis_changed.emit(self.analysis_mode)
+        self._emit_preview_request()
+
+    def _sync_analysis_controls(self) -> None:
+        sections = self.analysis_mode == "sections"
+        self.attitude_box.setVisible(not sections)
+        self.sections_box.setVisible(sections)
+        self.run_button.setText("Run Sections" if sections else "Run Sweep")
+        self.run_button.setToolTip(
+            "Calculate the cross-sectional area distribution."
+            if sections
+            else "Run the configured attitude sweep."
+        )
+        self.cancel_button.setToolTip(
+            "Stop after the current section."
+            if sections
+            else "Stop the sweep after the current case finishes."
+        )
+
+    def _sync_section_controls(self, *_args: object) -> None:
+        supersonic = self.mach.value() > 1.0
+        self.theta_count.setEnabled(supersonic)
+        self.section_symmetric.setEnabled(supersonic)
+        sections = self.section_count.value()
+        if not supersonic:
+            text = f"{sections:,} sections normal to X"
+            invalid = False
+        else:
+            try:
+                angles = len(
+                    theta_angles(
+                        self.theta_count.value(), symmetric=self.section_symmetric.isChecked()
+                    )
+                )
+            except ValueError:
+                text = "Use an even number of roll angles"
+                invalid = True
+            else:
+                text = f"{angles} roll angle{'s' if angles != 1 else ''} × {sections:,} sections"
+                invalid = False
+        self.section_case_count.setText(text)
+        self.section_case_count.setProperty("invalid", invalid)
+        self.section_case_count.style().unpolish(self.section_case_count)
+        self.section_case_count.style().polish(self.section_case_count)
 
     def _sync_attitude_controls(self) -> None:
         mode = self.attitude_mode.currentData()
@@ -1228,6 +1399,18 @@ class ControlPanel(QtWidgets.QWidget):
         label = QtWidgets.QLabel(text)
         label.setObjectName("subheadingLabel")
         return label
+
+    @staticmethod
+    def _analysis_button(text: str, tooltip: str) -> QtWidgets.QToolButton:
+        button = QtWidgets.QToolButton()
+        button.setObjectName("analysisButton")
+        button.setText(text)
+        button.setToolTip(tooltip)
+        button.setCheckable(True)
+        button.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed
+        )
+        return button
 
     def _check(self, text: str, checked: bool) -> QtWidgets.QCheckBox:
         checkbox = QtWidgets.QCheckBox(text)

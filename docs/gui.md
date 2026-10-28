@@ -22,8 +22,9 @@ cadmetrics-gui
 ## Window layout
 
 - **Left panel**: settings, from top to bottom:
+    - `Projected area` / `Sections`: which calculation to run
     - `Setup`: file and units
-    - `Attitude`: the directions to calculate
+    - `Attitude`: the directions to calculate (`Sections` with the `Sections` calculation)
     - `Components`: which STEP solids to include
     - `Shape Display`: what the 3D view shows
     - `Advanced`: axis map and mesh settings
@@ -148,6 +149,16 @@ when scaled.
 
 `Save CSV` (⌘S / Ctrl+S, also in the `File` menu) saves every result row with all columns, at full
 precision.
+
+## Cross sections
+
+Click `Sections` at the top of the left panel to calculate the cross-sectional area
+distribution for area-rule studies instead of projected area. The `Attitude` settings are
+replaced by `Sections`, `Mach`, and `Roll angles`, `Run Sweep` becomes `Run Sections`, and the
+results area shows the section chart and table. Click a point or row to see that cutting plane
+and the section outline in the 3D view. Each calculation keeps its own results when you switch.
+
+See [Cross Sections and the Area Rule](sections.md).
 
 ## Use the 3D view
 

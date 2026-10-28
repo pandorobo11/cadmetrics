@@ -43,9 +43,18 @@ def main() -> None:
 if QtWidgets is not None:
     from cadmetrics.gui.calculation_controller import CalculationController
     from cadmetrics.gui.control_panel import ControlPanel
-    from cadmetrics.gui.gui_types import OperationState
-    from cadmetrics.gui.jobs import CalculationRequest
+    from cadmetrics.gui.gui_types import OperationState, SectionDisplay
+    from cadmetrics.gui.jobs import AnalysisMode, CalculationRequest
     from cadmetrics.gui.results_panel import ResultsPanel
+    from cadmetrics.gui.sections_panel import SectionsPanel
+    from cadmetrics.sections import (
+        CrossSectionResult,
+        SectionMesh,
+        SectionRow,
+        cut_direction,
+        prepare_section_mesh,
+        section_outline,
+    )
     from cadmetrics.gui.styles import application_stylesheet
     from cadmetrics.gui.viewer import ModelViewer
     from cadmetrics.types import MeasurementRow, ModelData
@@ -60,6 +69,10 @@ if QtWidgets is not None:
             # Current inputs, and the inputs that produced the rows in the results panel.
             self._request: CalculationRequest | None = None
             self._results_request: CalculationRequest | None = None
+            self._section_results_request: CalculationRequest | None = None
+            # Model and its prepared slicing mesh, for drawing section outlines.
+            self._section_mesh: tuple[ModelData, SectionMesh] | None = None
+            self._running_analysis: AnalysisMode = "projection"
             self._calculation_running = False
             self._close_when_idle = False
             self._documentation_resources = ExitStack()
@@ -69,6 +82,7 @@ if QtWidgets is not None:
             self.controls = ControlPanel(self)
             self.viewer = ModelViewer(self)
             self.results = ResultsPanel(self)
+            self.sections = SectionsPanel(self)
             self._build_ui()
             self._build_menu()
             self._connect_components()
@@ -81,7 +95,10 @@ if QtWidgets is not None:
             root.addWidget(self.controls)
             right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
             right.addWidget(self.viewer)
-            right.addWidget(self.results)
+            self.results_stack = QtWidgets.QStackedWidget()
+            self.results_stack.addWidget(self.results)
+            self.results_stack.addWidget(self.sections)
+            right.addWidget(self.results_stack)
             right.setSizes([560, 260])
             root.addWidget(right)
             root.setSizes([440, 880])
@@ -153,6 +170,11 @@ if QtWidgets is not None:
             self.results.selected_row_changed.connect(self._show_result)
             self.results.rows_changed.connect(self._sync_actions)
             self.results.error.connect(self._show_error)
+            self.sections.selected_row_changed.connect(self._show_section)
+            self.sections.rows_changed.connect(self._sync_actions)
+            self.sections.error.connect(self._show_error)
+            self.controls.analysis_changed.connect(self._on_analysis_changed)
+            self.controller.sections_ready.connect(self._on_sections_ready)
             self.controller.model_loaded.connect(self._on_model_loaded)
             self.controller.rows_appended.connect(self._on_rows_appended)
             self.controller.results_ready.connect(self._on_results_ready)
@@ -165,6 +187,15 @@ if QtWidgets is not None:
 
         @QtCore.Slot(object)
         def _calculate(self, request: CalculationRequest) -> None:
+            self._running_analysis = request.analysis
+            if request.analysis == "sections":
+                self._request = request
+                self._invalidate_section_results()
+                self._section_results_request = request
+                self.viewer.set_request(request)
+                self._calculation_running = True
+                self.controller.calculate(request)
+                return
             self._request = request
             self._invalidate_results()
             self._results_request = request
@@ -178,6 +209,7 @@ if QtWidgets is not None:
         def _load_model(self, request: CalculationRequest) -> None:
             self._request = request
             self._invalidate_results()
+            self._invalidate_section_results()
             self.viewer.set_request(request)
             self.controller.load_only(request)
 
@@ -223,9 +255,73 @@ if QtWidgets is not None:
             # Inputs edited while the sweep was running make the new rows stale at once.
             self._sync_stale_results()
 
+        @QtCore.Slot(object)
+        def _on_sections_ready(self, result: CrossSectionResult) -> None:
+            self._calculation_running = False
+            if self._section_results_request is None:
+                self._section_results_request = self._request
+            request = self._section_results_request
+            self.sections.set_result(
+                result, protected_paths=_request_paths(request) if request is not None else ()
+            )
+            self.sections.select_max_area()
+            total = len(self.sections.rows)
+            self.progress_bar.setRange(0, max(total, 1))
+            self.progress_bar.setValue(total)
+            self.status.setText(f"Done: {total:,} section(s)")
+            self._sync_stale_results()
+
+        @QtCore.Slot(object)
+        def _show_section(self, row: SectionRow) -> None:
+            result = self.sections.result
+            if result is None or self.controls.analysis_mode != "sections":
+                return
+            model = result.model
+            if self._section_mesh is None or self._section_mesh[0] is not model:
+                self._section_mesh = (model, prepare_section_mesh(model))
+            mesh = self._section_mesh[1]
+            try:
+                loops = section_outline(mesh, mach=row.mach, theta_deg=row.theta_deg, x0=row.x)
+            except Exception as exc:
+                self._show_error(str(exc))
+                return
+            unit = row.output_unit
+            place = f"Section x {row.x:.6g} {unit}"
+            if row.theta_deg is not None:
+                place += f"  ·  Mach {row.mach:g}, θ {row.theta_deg:g}°"
+            direction = cut_direction(row.mach, row.theta_deg)
+            self.viewer.set_section(
+                SectionDisplay(
+                    loops=tuple(loops),
+                    direction=(float(direction[0]), float(direction[1]), float(direction[2])),
+                    x0=row.x,
+                    overlay_lines=(place, f"Section area  {row.area:.6g} {unit}²"),
+                )
+            )
+
+        @QtCore.Slot(str)
+        def _on_analysis_changed(self, mode: str) -> None:
+            sections = mode == "sections"
+            self.results_stack.setCurrentWidget(self.sections if sections else self.results)
+            self.viewer.set_section_mode(sections)
+            if sections:
+                self.viewer.set_result(None, self._request)
+                section = self.sections.selected_row()
+                if section is not None:
+                    self._show_section(section)
+            else:
+                row = self.results.selected_row()
+                if row is not None:
+                    self._show_result(row)
+            self._sync_actions()
+
         @QtCore.Slot()
         def _on_cancelled(self) -> None:
             self._calculation_running = False
+            if self._running_analysis == "sections":
+                self.status.setText("Cancelled")
+                self._sync_stale_results()
+                return
             count = len(self.results.rows)
             self.status.setText(
                 f"Cancelled: kept {count:,} completed row(s)" if count else "Cancelled"
@@ -249,6 +345,9 @@ if QtWidgets is not None:
             # only the progress bar so the same message is not shown twice.
             self.progress_bar.setRange(0, total)
             self.progress_bar.setValue(index)
+            if self._running_analysis == "sections":
+                self.controls.set_operation_message(f"Section {index:,} of {total:,}")
+                return
             self.controls.set_operation_message(f"Sweep {index:,} of {total:,} · {description}")
 
         @QtCore.Slot(object)
@@ -258,6 +357,7 @@ if QtWidgets is not None:
             self.progress_bar.setVisible(busy)
             loading_only = state is OperationState.LOADING and not self._calculation_running
             self.results.set_busy(busy, title="Loading model…" if loading_only else "Calculating…")
+            self.sections.set_busy(busy, title="Loading model…" if loading_only else "Calculating…")
             if state is OperationState.LOADING:
                 self.progress_bar.setRange(0, 0)
                 self.status.setText("Loading model")
@@ -280,7 +380,10 @@ if QtWidgets is not None:
             self.open_sample_action.setEnabled(idle)
             self.run_action.setEnabled(idle)
             self.cancel_action.setEnabled(self.controller.state is OperationState.CALCULATING)
-            self.save_csv_action.setEnabled(self.results.can_save)
+            sections = self.controls.analysis_mode == "sections"
+            self.run_action.setText("Run Sections" if sections else "Run Sweep")
+            panel = self.sections if sections else self.results
+            self.save_csv_action.setEnabled(panel.can_save)
 
         def _open_file(self) -> None:
             if self.controls.browse_button.isEnabled():
@@ -305,8 +408,9 @@ if QtWidgets is not None:
                 self.controls.run_button.click()
 
         def _save_csv(self) -> None:
-            if self.results.can_save:
-                self.results.choose_csv_path()
+            panel = self.sections if self.controls.analysis_mode == "sections" else self.results
+            if panel.can_save:
+                panel.choose_csv_path()
 
         def load_dropped_files(self, paths: tuple[Path, ...]) -> bool:
             if not paths or self.controller.state is not OperationState.IDLE:
@@ -382,10 +486,21 @@ if QtWidgets is not None:
             self.progress_bar.setRange(0, 1)
             self.progress_bar.setValue(0)
 
+        def _invalidate_section_results(self) -> None:
+            self.sections.clear()
+            self._section_results_request = None
+            if self.controls.analysis_mode == "sections":
+                self.viewer.set_section(None)
+
         def _sync_stale_results(self) -> None:
-            if self._calculation_running or not self.results.rows:
+            if self._calculation_running:
                 return
-            stale = self._request != self._results_request
+            self._sync_stale_sections()
+            if not self.results.rows:
+                return
+            stale = _inputs(self._request, "projection") != _inputs(
+                self._results_request, "projection"
+            )
             was_stale = self.results.is_stale
             self.results.mark_stale(stale)
             if stale and not was_stale:
@@ -395,6 +510,22 @@ if QtWidgets is not None:
                 self.status.setText("Inputs changed: results are out of date")
             elif was_stale and not stale:
                 self.status.setText(f"Inputs match the results: {len(self.results.rows):,} row(s)")
+
+        def _sync_stale_sections(self) -> None:
+            if not self.sections.rows:
+                return
+            stale = _inputs(self._request, "sections") != _inputs(
+                self._section_results_request, "sections"
+            )
+            was_stale = self.sections.is_stale
+            self.sections.mark_stale(stale)
+            if self.controls.analysis_mode != "sections":
+                return
+            if stale and not was_stale:
+                self.viewer.set_section(None)
+                self.status.setText("Inputs changed: sections are out of date")
+            elif was_stale and not stale:
+                self.status.setText("Inputs match the sections")
 
         def closeEvent(self, event: QtGui.QCloseEvent) -> None:  # noqa: N802
             if self.controller.state is not OperationState.IDLE:
@@ -417,6 +548,14 @@ if QtWidgets is not None:
             if self._close_when_idle:
                 self._close_when_idle = False
                 self.close()
+
+    def _inputs(
+        request: CalculationRequest | None, analysis: AnalysisMode
+    ) -> CalculationRequest | None:
+        """The parts of a request that change one analysis's results."""
+        if request is None:
+            return None
+        return request.section_inputs() if analysis == "sections" else request.projection_inputs()
 
     def _request_paths(request: CalculationRequest) -> tuple[Path, ...]:
         return request.file if isinstance(request.file, tuple) else (request.file,)

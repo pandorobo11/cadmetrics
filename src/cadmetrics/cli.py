@@ -27,15 +27,29 @@ from cadmetrics.attitude import (
 from cadmetrics.api import AttitudeMode, StepComponentMode, inspect_model
 from cadmetrics.api import measure as measure_api
 from cadmetrics.api import project as project_api
+from cadmetrics.api import sections as sections_api
 from cadmetrics.api import sweep as sweep_api
 from cadmetrics.coordinates import DEFAULT_AXIS_MAP
-from cadmetrics.csv_io import CSV_FIELDS, validate_csv_output_path, write_rows_csv
+from cadmetrics.csv_io import (
+    CSV_FIELDS,
+    SECTION_CSV_FIELDS,
+    validate_csv_output_path,
+    write_rows_csv,
+)
 from cadmetrics.io import DEFAULT_BASE_TOLERANCE
 from cadmetrics.load_options import normalize_step_metric_source
 from cadmetrics.samples import list_samples, samples_dir
+from cadmetrics.sections import (
+    DEFAULT_SECTION_COUNT,
+    DEFAULT_THETA_COUNT,
+    CrossSectionResult,
+    validate_section_options,
+)
 from cadmetrics.types import MeasurementRow
 
-app = typer.Typer(no_args_is_help=True, help="Calculate CAD volume, surface, and projected area.")
+app = typer.Typer(
+    no_args_is_help=True, help="Calculate CAD volume, surface, projected, and cross-sectional area."
+)
 console = Console()
 err_console = Console(stderr=True)
 T = TypeVar("T")
@@ -419,6 +433,129 @@ def sweep(
 
 
 @app.command()
+def sections(
+    file: list[Path] = typer.Argument(..., exists=True, readable=True, help="STL or STEP file(s)."),
+    section_count: int = typer.Option(
+        DEFAULT_SECTION_COUNT,
+        "--sections",
+        help="Number of cutting planes, from the front to the rear of the model.",
+    ),
+    mach: float = typer.Option(
+        1.0,
+        "--mach",
+        help="Mach number. 1 cuts planes normal to X; above 1 cuts Mach planes.",
+    ),
+    thetas: int = typer.Option(
+        DEFAULT_THETA_COUNT,
+        "--thetas",
+        help="Number of equally spaced roll angles for Mach planes (Mach above 1 only).",
+    ),
+    symmetric: bool = typer.Option(
+        False,
+        "--symmetric",
+        help="Treat the model as mirror-symmetric about the XZ plane and cut about half "
+        "the roll angles (Mach above 1 only; --thetas must be even).",
+    ),
+    unit: str = typer.Option(
+        "auto",
+        "--unit",
+        help="Input length unit. Use 'auto' to read STEP units and assume m for STL.",
+    ),
+    output_unit: str = typer.Option("m", "--output-unit", help="Output length unit."),
+    mesh_deflection: str = typer.Option(
+        "auto",
+        "--mesh-deflection",
+        help=(
+            "STEP tessellation tolerance in output length units, 'auto' for bbox diagonal * 1e-3, "
+            "or 'auto-precise' for bbox diagonal * 1e-4 (finer, slower projected area)."
+        ),
+    ),
+    angular_deflection: str = typer.Option(
+        "auto",
+        "--angular-deflection",
+        help=(
+            "STEP tessellation angular tolerance in radians, or 'auto' "
+            "(0.3, or 0.1 with --mesh-deflection auto-precise)."
+        ),
+    ),
+    axis_map: str = typer.Option(
+        DEFAULT_AXIS_MAP,
+        "--axis-map",
+        help="Map cadmetrics X,Y,Z to input axes, e.g. x,y,z or x,-z,y.",
+    ),
+    step_component: list[int] | None = typer.Option(
+        None,
+        "--step-component",
+        min=1,
+        help="1-based STEP component to enable; repeat for multiple components.",
+    ),
+    component_mode: str = typer.Option(
+        "filter",
+        "--component-mode",
+        help="STEP component handling: 'filter' hides disabled components; 'subtract' cuts them out.",
+    ),
+    out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
+    summary: bool = typer.Option(True, "--summary/--no-summary", help="Print section summary."),
+) -> None:
+    """Calculate the cross-sectional area distribution along X (area rule)."""
+
+    _validate_csv_output(out, file)
+    try:
+        validate_section_options(
+            section_count=section_count, mach=mach, theta_count=thetas, symmetric=symmetric
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    progress = Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=err_console,
+    )
+    task_id: TaskID | None = None
+
+    def on_progress(done: int, total: int) -> None:
+        nonlocal task_id
+        if task_id is None:
+            task_id = progress.add_task("sections", total=total)
+        progress.update(task_id, completed=done)
+
+    result = _run_or_exit(
+        lambda: _run_with_progress(
+            progress,
+            lambda: sections_api(
+                file,
+                section_count=section_count,
+                mach=mach,
+                theta_count=thetas,
+                symmetric=symmetric,
+                input_unit=unit,
+                output_unit=output_unit,
+                mesh_deflection=mesh_deflection,
+                angular_deflection=angular_deflection,
+                axis_map=axis_map,
+                step_components=_component_selection(step_component),
+                step_component_mode=cast(StepComponentMode, component_mode),
+                progress_callback=on_progress,
+            ),
+        )
+    )
+    rows = result.rows()
+    if out is None:
+        writer = csv.DictWriter(sys.stdout, fieldnames=SECTION_CSV_FIELDS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row.to_csv_row())
+    else:
+        write_rows_csv(out, rows, protected_paths=file, fields=SECTION_CSV_FIELDS)
+        console.print(f"Wrote {len(rows)} row(s) to {out}")
+    if summary:
+        _emit_section_summary(result)
+
+
+@app.command()
 def inspect(
     file: list[Path] = typer.Argument(..., exists=True, readable=True, help="STL or STEP file(s)."),
     unit: str = typer.Option(
@@ -672,6 +809,46 @@ def _emit_sweep_summary(rows: list[MeasurementRow]) -> None:
     err_console.print(table)
 
 
+def _emit_section_summary(result: CrossSectionResult) -> None:
+    unit = result.model.output_unit
+    table = Table(title=f"Section Summary (Mach {result.mach:g})")
+    table.add_column("theta")
+    table.add_column("weight")
+    table.add_column(f"length ({unit})")
+    table.add_column(f"volume ({unit}^3)")
+    table.add_column(f"max area ({unit}^2)")
+    table.add_column(f"at x ({unit})")
+    table.add_column(f"D/q ({unit}^2)")
+    table.add_column(f"Sears-Haack D/q ({unit}^2)")
+    for series in result.series:
+        table.add_row(
+            "-" if series.theta_deg is None else f"{series.theta_deg:g}",
+            f"{series.weight:.4g}",
+            _format_short(series.length),
+            _format_short(series.volume),
+            _format_short(series.max_area),
+            _format_short(series.max_area_x),
+            _format_short(series.wave_drag_area),
+            _format_short(series.sears_haack_drag_area),
+        )
+    if len(result.series) > 1:
+        table.add_row(
+            "mean",
+            "1",
+            "",
+            "",
+            "",
+            "",
+            _format_short(result.wave_drag_area),
+            _format_short(result.sears_haack_drag_area),
+        )
+    err_console.print(table)
+    if result.model.volume is not None:
+        err_console.print(f"Model volume: {_format_optional(result.model.volume)} {unit}^3")
+    for warning in result.warnings:
+        err_console.print(f"[yellow]Warning:[/yellow] {escape(warning)}")
+
+
 def _resolve_project_attitude(
     *,
     attitude: str | None,
@@ -820,6 +997,12 @@ def _format_optional(value: float | None) -> str:
     if value is None:
         return ""
     return f"{value:.12g}"
+
+
+def _format_short(value: float | None) -> str:
+    if value is None:
+        return ""
+    return f"{value:.6g}"
 
 
 def _run_or_exit(action: Callable[[], T]) -> T:

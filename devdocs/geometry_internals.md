@@ -87,6 +87,69 @@ which can collapse very small features before projection.
 The 3D centroid marker (`centroid_x/y/z`) is the projected 2D centroid placed on the projection
 plane through the model center.
 
+## Cross sections
+
+`cadmetrics.sections` cuts the same triangle mesh that projected area uses. The user-facing
+description is in [Cross Sections and the Area Rule](../docs/sections.md).
+
+### Cutting planes
+
+The planes are `n . p = x0` with `n = (1, -beta cos(theta), -beta sin(theta))` and
+`beta = sqrt(M^2 - 1)`, so `x0` is where a plane crosses the X axis and Mach 1 gives planes normal
+to X. A section's area is measured in YZ coordinates, which is the oblique cut projected along X
+as Jones' supersonic area rule requires. Projection along X is a shear with unit Jacobian, so the
+integral of every roll angle's S(x0) equals the model volume; the tests use that as a check.
+
+The planes are spaced evenly from the smallest to the largest `n . p` on the mesh. A vertex
+exactly on a plane counts as lying past it, which is symbolic perturbation of the plane toward
+smaller `x0`. Every crossed triangle then has exactly one lone vertex and cuts exactly two edges,
+coplanar faces are never cut, the first plane is empty, and the last plane gives the section just
+in front of a flat base.
+
+### Building a section without tracing loops
+
+Vertices are welded by exact coordinates first (OCC's per-face triangulations share identical
+boundary coordinates, as the projection's closed-surface check already relies on). Each crossing
+point is computed from its edge with the edge's vertices in a fixed order, so both neighbouring
+triangles produce bit-identical points.
+
+For all planes of one roll angle at once, the code finds each triangle's range of crossed planes
+with `searchsorted` on the per-face minimum and maximum, and expands them into (face, plane)
+pairs. Each pair gives one segment between the crossing points on the two cut edges, oriented
+from the triangle's winding: from the edge after the lone vertex to the edge before it when the
+lone vertex lies past the plane, the other way otherwise. For a closed mesh with outward
+counter-clockwise faces, that runs the section boundary counter-clockwise around +X.
+
+Per plane, the segments are noded with `shapely.union_all` and split into faces with
+`polygonize_full`. A face is inside the section when:
+
+- the mesh is closed and consistently oriented: the winding number of an interior point of the
+  face, from the oriented segments, is at least 1 (with the sign flipped for an inside-out mesh).
+  Overlapping or duplicated bodies then count once, which is what multi-file STL assemblies and
+  a STEP model whose union failed need;
+- otherwise: the even-odd crossing count against the closed linework, with GEOS's dangles and cut
+  edges removed. Sections with loose ends are flagged `open_section` and counted in a warning.
+
+If GEOS cannot node a section even with a snap-rounding retry, the area falls back to the signed
+shoelace sum of the segments and a warning says overlaps were not removed.
+
+Reference timing on an M-series Mac: a 500k-triangle sphere takes about 0.5 s for 101 planes at
+Mach 1 and about 4.5 s for 16 roll angles at Mach 1.5.
+
+### Wave drag
+
+`wave_drag_area` uses von Karman's slender-body formula in Fourier form: with
+`x = L (1 - cos phi) / 2` and `S'(x) = sum A_n sin(n phi)`, `D/q = pi/4 sum n A_n^2`. The
+coefficients are fitted to S(x) by least squares using the integrated basis, so S itself is
+fitted and no numerical derivative is taken. The basis forces S(0) = 0 and zero slope at both
+ends but allows a base area (A_1). The series is truncated at `min(30, (N - 1) / 4)` terms:
+term n is weighted by n, so the truncation is what keeps tessellation noise out of the result.
+A Sears-Haack body sampled on 101 stations reproduces `128 V^2 / (pi L^4)` to about 1e-5, and a
+128-segment revolved Sears-Haack mesh to about 1e-3.
+
+A nose whose second plane already has a quarter of the largest area is reported as blunt,
+because the formula assumes a pointed nose.
+
 ## Tessellation
 
 The `auto` linear deflection uses the actual STEP bounding-box diagonal, even when every model
