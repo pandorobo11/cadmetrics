@@ -88,15 +88,17 @@ APPLICATION_STYLESHEET = """
 QWidget { color: #202832; font-size: 13px; font-weight: 400; }
 QWidget#controlPanel, QWidget#controlContent { background: #f3f6f9; }
 /* Controls share one 34px height: min-height + vertical padding + 1px borders. */
-QLineEdit, QComboBox, QDoubleSpinBox {
+QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox {
     min-height: 28px; max-height: 28px; border: 1px solid #bcc6d0; border-radius: 6px;
     padding: 2px 7px; background: #ffffff; selection-background-color: #2f78c4;
 }
-QLineEdit:hover, QComboBox:hover, QDoubleSpinBox:hover { border-color: #93a2b2; }
-QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus {
+QLineEdit:hover, QComboBox:hover, QDoubleSpinBox:hover, QSpinBox:hover {
+    border-color: #93a2b2;
+}
+QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus, QSpinBox:focus {
     border: 2px solid #2f78c4; padding: 1px 6px;
 }
-QLineEdit:disabled, QComboBox:disabled, QDoubleSpinBox:disabled {
+QLineEdit:disabled, QComboBox:disabled, QDoubleSpinBox:disabled, QSpinBox:disabled {
     background: #f4f6f8; border-color: #d5dbe1; color: #7b8590;
 }
 QComboBox { padding-right: 26px; }
@@ -113,7 +115,7 @@ QComboBox QAbstractItemView {
 QComboBox QAbstractItemView::item { min-height: 26px; padding: 0 8px; border-radius: 4px; }
 QComboBox QAbstractItemView::item:hover { background: #eef3f8; }
 QComboBox QAbstractItemView::item:selected { background: #dcebfb; color: #10263d; }
-QDoubleSpinBox { padding-right: 7px; }
+QDoubleSpinBox, QSpinBox { padding-right: 7px; }
 QPushButton {
     min-height: 24px; border: 1px solid #bcc6d0; border-radius: 6px;
     padding: 4px 14px; background: #f8fafc; color: #1f2933; font-weight: 500;
@@ -232,6 +234,19 @@ QToolButton#viewButton:pressed { background: #e2eaf2; }
 QToolButton#viewButton:checked { background: #dcebfb; border-color: #2f78c4; color: #154f86; }
 QToolButton#viewButton:disabled { background: #f1f4f7; border-color: #dbe1e7; color: #66707b; }
 QPushButton#viewerSaveButton { min-height: 24px; padding: 1px 10px; font-size: 12px; }
+QToolButton#analysisButton {
+    min-height: 26px; padding: 2px 10px; border: 1px solid #bcc6d0; border-radius: 6px;
+    background: #ffffff; color: #1f2933; font-weight: 500;
+}
+QToolButton#analysisButton:hover { background: #eef3f8; border-color: #93a2b2; }
+QToolButton#analysisButton:checked {
+    background: #dcebfb; border-color: #2f78c4; color: #154f86; font-weight: 600;
+}
+QToolButton#analysisButton:disabled { background: #f1f4f7; border-color: #dbe1e7; color: #66707b; }
+QLabel#sectionSummaryLabel { color: #3b4754; font-size: 12px; padding: 0 2px; }
+QLabel#sectionWarningLabel {
+    color: #925c12; background: #fff4d8; border-radius: 5px; padding: 4px 7px; font-size: 12px;
+}
 QWidget#resultToolbar { background: #f7f9fb; border-top: 1px solid #d9dee4; }
 QLabel#resultCountLabel { color: #5f6872; font-weight: 500; }
 QLabel#emptyStateTitle { color: #344150; font-size: 16px; font-weight: 600; }

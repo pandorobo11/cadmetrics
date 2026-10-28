@@ -16,6 +16,8 @@ the same results.
 - Calculates projected area (the silhouette area) for any direction, counting overlapping parts
   once, together with the silhouette's center
 - Sweeps angle of attack / sideslip or roll / pitch ranges
+- Calculates the cross-sectional area distribution for area-rule studies, including Mach planes,
+  with a wave-drag estimate compared with the ideal Sears-Haack body
 - Treats several files as one model, and lets you include, exclude, or subtract STEP components
 - Shows the model and results in an interactive 3D view and chart
 - Saves results as CSV, including the settings and cadmetrics version used
@@ -63,6 +65,9 @@ cadmetrics project model.step --alpha 10 --output-unit mm
 
 # projected area for alpha 0–90° and beta −10–10° in 5° steps, saved as CSV
 cadmetrics sweep model.step --alpha 0:90:5 --beta -10:10:5 --out sweep.csv
+
+# cross-sectional area distribution for the area rule at Mach 1.6
+cadmetrics sections model.step --mach 1.6 --out sections.csv
 ```
 
 See [Using the CLI](docs/cli.md).
@@ -98,6 +103,7 @@ Guides:
 - [Using the GUI](docs/gui.md)
 - [Using the CLI](docs/cli.md)
 - [Using Python](docs/api.md)
+- [Cross Sections and the Area Rule](docs/sections.md)
 
 Reference:
 

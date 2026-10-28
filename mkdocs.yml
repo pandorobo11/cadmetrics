@@ -10,6 +10,7 @@ nav:
       - Using the GUI: docs/gui.md
       - Using the CLI: docs/cli.md
       - Using Python: docs/api.md
+      - Cross Sections and the Area Rule: docs/sections.md
   - Reference:
       - Attitude Angles: docs/attitude.md
       - Result Columns: docs/results.md

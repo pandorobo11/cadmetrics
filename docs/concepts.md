@@ -13,6 +13,7 @@ the Python API all follow the same rules.
 | Projected area | The area of the model's silhouette when you look at it along one direction. | `projected_area` |
 | Projected centroid | The center of that silhouette. | `centroid_u`, `centroid_v`, `centroid_x/y/z` |
 | Bounds | The smallest and largest X, Y, and Z coordinates of the model. | `x_min` … `z_max` |
+| Section area | The area of a cut through the model along the flow, for area-rule studies. See [Cross Sections and the Area Rule](sections.md). | separate section results |
 
 Projected area is the outline area only. Where parts of the model overlap in the view, that area
 is counted once, which is what you want for drag-area screening.
