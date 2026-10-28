@@ -14,7 +14,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 import cadmetrics.gui.calculation_controller as calculation_controller
 import cadmetrics.gui.pyside_app as pyside_app
-import cadmetrics.gui.results_panel as results_panel
+import cadmetrics.gui.table_copy as table_copy
 from cadmetrics.gui.calculation_controller import CalculationController
 from cadmetrics.gui.gui_types import OperationState
 from cadmetrics.gui.jobs import CalculationRequest
@@ -531,7 +531,7 @@ def test_headers_include_units_from_output_unit() -> None:
 
 @pytest.mark.parametrize("platform", ["darwin", "linux"])
 def test_sorting_keeps_selection_mapped_to_source_rows(qtbot, monkeypatch, platform) -> None:
-    monkeypatch.setattr(results_panel.sys, "platform", platform)
+    monkeypatch.setattr(table_copy.sys, "platform", platform)
     panel = ResultsPanel()
     qtbot.addWidget(panel)
     rows = [
@@ -579,8 +579,9 @@ def test_copy_selected_row_as_tsv(qtbot) -> None:
     clipboard = QtWidgets.QApplication.clipboard()
     clipboard.clear()
 
-    assert panel.copy_action.shortcut() == QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Copy)
-    panel.copy_action.trigger()
+    copy_row = panel.copy_actions.copy_row
+    assert copy_row.shortcut() == QtGui.QKeySequence(QtGui.QKeySequence.StandardKey.Copy)
+    copy_row.trigger()
 
     lines = clipboard.text().splitlines()
     assert len(lines) == 2
@@ -591,6 +592,44 @@ def test_copy_selected_row_as_tsv(qtbot) -> None:
     assert values[DISPLAY_FIELDS.index("file")] == "/models/second.stl"
     assert values[DISPLAY_FIELDS.index("alpha_deg")] == "7.5"
     assert values[DISPLAY_FIELDS.index("projected_area")] == "0.333333333333"
+
+
+def test_copy_value_and_all_rows_from_the_context_menu(qtbot) -> None:
+    panel = ResultsPanel()
+    qtbot.addWidget(panel)
+    panel.set_rows(
+        [
+            replace(_row(), file="/models/a.stl", alpha_deg=0.0, projected_area=2.0),
+            replace(_row(), file="/models/b.stl", alpha_deg=5.0, projected_area=1.0 / 3.0),
+        ]
+    )
+    # Sort by area so the copied order follows the table rather than calculation order.
+    panel.table.sortByColumn(
+        DISPLAY_FIELDS.index("projected_area"), QtCore.Qt.SortOrder.AscendingOrder
+    )
+    clipboard = QtWidgets.QApplication.clipboard()
+    actions = panel.copy_actions
+
+    area = panel.table.model().index(0, DISPLAY_FIELDS.index("projected_area"))
+    menu = actions.menu(area)
+    assert [action.text() for action in menu.actions() if not action.isSeparator()] == [
+        "Copy Value",
+        "Copy Row",
+        "Copy All Rows",
+    ]
+    actions.copy_value.trigger()
+    assert clipboard.text() == "0.333333333333"
+
+    actions.menu(panel.table.model().index(1, DISPLAY_FIELDS.index("file")))
+    actions.copy_value.trigger()
+    assert clipboard.text() == "/models/a.stl"
+
+    assert actions.copy_all.shortcut() == QtGui.QKeySequence("Ctrl+Shift+C")
+    actions.copy_all.trigger()
+    lines = clipboard.text().splitlines()
+    assert len(lines) == 3
+    column = DISPLAY_FIELDS.index("alpha_deg")
+    assert [line.split("\t")[column] for line in lines[1:]] == ["5", "0"]
 
 
 def _model() -> ModelData:

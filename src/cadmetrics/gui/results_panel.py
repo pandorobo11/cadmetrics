@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Iterable
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from cadmetrics.gui.export import write_rows_csv
 from cadmetrics.gui.results_chart import AXES, IMAGE_SUFFIXES, ResultsChart
 from cadmetrics.gui.results_model import DISPLAY_FIELDS
 from cadmetrics.gui.results_model import PRIMARY_DISPLAY_FIELDS as PRIMARY_DISPLAY_FIELDS
 from cadmetrics.gui.results_model import RESULT_HEADER_LABELS as RESULT_HEADER_LABELS
-from cadmetrics.gui.results_model import ResultsSortProxyModel, ResultsTableModel, rows_to_tsv
+from cadmetrics.gui.results_model import (
+    SORT_ROLE,
+    ResultsSortProxyModel,
+    ResultsTableModel,
+    rows_to_tsv,
+)
+from cadmetrics.gui.table_copy import TableCopyActions, configure_row_selection, full_precision
 from cadmetrics.types import MeasurementRow
 
 DEFAULT_COLUMN_WIDTH = 130
@@ -19,28 +24,6 @@ FILE_COLUMN_WIDTH = 180
 # Room for the sort indicator, which sectionSizeHint does not include.
 SORT_INDICATOR_ALLOWANCE = 18
 STALE_MESSAGE = "Results are out of date — Run Sweep to update."
-
-
-class _SelectedRowDelegate(QtWidgets.QStyledItemDelegate):
-    """Keep row highlighting when Cocoa must receive a single selected cell."""
-
-    def __init__(self, table: QtWidgets.QTableView) -> None:
-        super().__init__(table)
-        self._table = table
-
-    def paint(
-        self,
-        painter: QtGui.QPainter,
-        option: QtWidgets.QStyleOptionViewItem,
-        index: QtCore.QModelIndex | QtCore.QPersistentModelIndex,
-    ) -> None:
-        row_option = QtWidgets.QStyleOptionViewItem(option)
-        if (
-            self._table.selectionModel().hasSelection()
-            and index.row() == self._table.currentIndex().row()
-        ):
-            row_option.state |= QtWidgets.QStyle.StateFlag.State_Selected
-        super().paint(painter, row_option, index)
 
 
 class ResultsPanel(QtWidgets.QWidget):
@@ -155,32 +138,16 @@ class ResultsPanel(QtWidgets.QWidget):
         self.table.setSortingEnabled(True)
         header.setSortIndicatorShown(True)
         self.table.setAlternatingRowColors(True)
-        # Qt 6.11.1's Cocoa selectedChildren enumerator can invalidate sibling
-        # accessible cell pointers while materializing a whole selected row.
-        # Keep one native selected cell and paint the same full-row highlight.
-        self._cocoa_cell_selection = sys.platform == "darwin"
-        self.table.setSelectionBehavior(
-            QtWidgets.QAbstractItemView.SelectionBehavior.SelectItems
-            if self._cocoa_cell_selection
-            else QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        if self._cocoa_cell_selection:
-            self.table.setItemDelegate(_SelectedRowDelegate(self.table))
-            self.table.selectionModel().currentRowChanged.connect(
-                lambda *_: self.table.viewport().update()
-            )
-            self.table.selectionModel().selectionChanged.connect(
-                lambda *_: self.table.viewport().update()
-            )
+        self._cocoa_cell_selection = configure_row_selection(self.table)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(24)
         self.table.selectionModel().currentRowChanged.connect(self._emit_selected_row)
-        self.copy_action = QtGui.QAction("Copy", self.table)
-        self.copy_action.setShortcut(QtGui.QKeySequence.StandardKey.Copy)
-        self.copy_action.setShortcutContext(QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        self.copy_action.triggered.connect(self.copy_selection)
-        self.table.addAction(self.copy_action)
+        self.copy_actions = TableCopyActions(
+            self.table,
+            copy_value=self.copy_value,
+            copy_row=self.copy_selection,
+            copy_all=self.copy_all_rows,
+        )
         self.stack.addWidget(self.table)
         self.stack.addWidget(self.chart)
         layout.addWidget(self.stack)
@@ -288,17 +255,26 @@ class ResultsPanel(QtWidgets.QWidget):
         self._busy_title = title
         self._sync_rows()
 
+    def copy_value(self, index: QtCore.QModelIndex | QtCore.QPersistentModelIndex) -> None:
+        """Copy one cell at full precision; the file column copies the full path."""
+        if index.isValid():
+            QtWidgets.QApplication.clipboard().setText(full_precision(index.data(SORT_ROLE)))
+
     def copy_selection(self) -> None:
-        selection = self.table.selectionModel()
-        proxy_rows = sorted({index.row() for index in selection.selectedIndexes()})
-        if not proxy_rows:
-            source_row = self._current_source_row()
-            source_rows = [] if source_row is None else [source_row]
-        else:
-            source_rows = [
+        source_row = self._current_source_row()
+        if source_row is not None:
+            self._copy_rows([source_row])
+
+    def copy_all_rows(self) -> None:
+        """Copy every row in the table's current sort order."""
+        self._copy_rows(
+            [
                 self._sort_model.mapToSource(self._sort_model.index(row, 0)).row()
-                for row in proxy_rows
+                for row in range(self._sort_model.rowCount())
             ]
+        )
+
+    def _copy_rows(self, source_rows: list[int]) -> None:
         if not source_rows:
             return
         rows = [self._table_model.row(row) for row in source_rows]

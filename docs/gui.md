@@ -123,8 +123,11 @@ centroid, and the model values. Scroll sideways to see all columns.
 
 - Click a row to point the 3D view along that row's direction and show its values in the overlay.
 - Click a column header to sort.
-- Press ⌘C / Ctrl+C to copy the selected row as tab-separated text (for pasting into a
-  spreadsheet).
+- Press ⌘C / Ctrl+C to copy the selected row, or ⇧⌘C / Ctrl+Shift+C to copy every row in the
+  current sort order. Rows are copied with a header row as tab-separated text, ready to paste
+  into a spreadsheet.
+- Right-click a cell for `Copy Value` (just that value), `Copy Row`, and `Copy All Rows`.
+- Copied values keep 12 significant digits.
 - Numbers are shown with 6 significant digits. CSV files keep full precision.
 - Column headers include the unit, for example `Projected area (m²)`.
 
@@ -160,6 +163,7 @@ distribution for area-rule studies instead of projected area. The `Attitude` set
 replaced by `Sections`, `Mach`, `Alpha`, `Beta`, and `Roll angles`, `Run Sweep` becomes `Run Sections`, and the
 results area shows the section chart and table. Click a point or row to see that cutting plane
 and the section outline in the 3D view. Each calculation keeps its own results when you switch.
+The section table copies values and rows the same way as the [result table](#table).
 
 See [Cross Sections and the Area Rule](sections.md).
 

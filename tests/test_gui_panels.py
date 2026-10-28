@@ -10,7 +10,7 @@ pytest.importorskip("PySide6")
 from PySide6 import QtCore, QtWidgets
 
 import cadmetrics.gui.pyside_app as pyside_app
-import cadmetrics.gui.results_panel as results_panel
+import cadmetrics.gui.table_copy as table_copy
 from cadmetrics.gui.control_panel import ControlPanel
 from cadmetrics.gui.results_panel import ResultsPanel
 from cadmetrics.gui.results_panel import DISPLAY_FIELDS
@@ -239,7 +239,7 @@ def _row() -> MeasurementRow:
 
 @pytest.mark.parametrize("platform", ["darwin", "linux"])
 def test_result_selection_keeps_row_preview_with_cocoa_single_cell(qtbot, monkeypatch, platform):
-    monkeypatch.setattr(results_panel.sys, "platform", platform)
+    monkeypatch.setattr(table_copy.sys, "platform", platform)
     panel = ResultsPanel()
     qtbot.addWidget(panel)
     panel.resize(900, 250)
