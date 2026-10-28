@@ -256,8 +256,18 @@ SECTION_FIELD_SPECS = (
         label="Mach",
     ),
     _spec(
+        "alpha_deg",
+        "angle of attack of the freestream the sections are cut relative to",
+        label="Alpha (°)",
+    ),
+    _spec(
+        "beta_deg",
+        "sideslip angle of the freestream the sections are cut relative to",
+        label="Beta (°)",
+    ),
+    _spec(
         "theta_deg",
-        "roll angle of the Mach planes, from +Y toward +Z; empty at Mach 1",
+        "roll angle of the Mach planes around the flow, from +Y toward +Z; empty at Mach 1",
         label="Theta (°)",
         priority=0,
     ),
@@ -269,13 +279,13 @@ SECTION_FIELD_SPECS = (
     _spec("station", "1-based number of the cutting plane in its series", label="Station"),
     _spec(
         "x",
-        "where the cutting plane crosses the X axis (Y = Z = 0), in `output_unit`",
+        "where the cutting plane crosses the flow axis through the origin, in `output_unit`",
         label="X",
         priority=1,
     ),
     _spec(
         "area",
-        "section area projected onto the YZ plane, in `output_unit^2`",
+        "section area projected onto the plane normal to the flow, in `output_unit^2`",
         label="Area",
         priority=2,
     ),

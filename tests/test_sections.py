@@ -20,6 +20,11 @@ from cadmetrics.sections import (  # noqa: E402
     sears_haack_drag_area,
     theta_angles,
     wave_drag_area,
+    wind_axes,
+)
+from cadmetrics.orientation import (  # noqa: E402
+    Orientation,
+    projection_direction_for_orientation,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -158,6 +163,53 @@ def test_every_roll_angle_keeps_the_model_volume(tmp_path: Path) -> None:
         assert series.volume == pytest.approx(1.0, rel=1e-3)
 
 
+@pytest.mark.parametrize(("mach", "theta_count"), [(1.0, 1), (1.5, 4)])
+def test_sections_are_cut_relative_to_the_flow(
+    tmp_path: Path, mach: float, theta_count: int
+) -> None:
+    alpha, beta = 6.0, -4.0
+    axes = wind_axes(alpha, beta)
+    assert axes[0] == pytest.approx(
+        projection_direction_for_orientation(Orientation(alpha_deg=alpha, beta_deg=beta))
+    )
+    box = trimesh.creation.box(extents=(3.0, 1.0, 0.5))
+    # The same box, turned so that its long axis runs along the flow.
+    turned = trimesh.Trimesh(vertices=box.vertices @ axes, faces=box.faces, process=False)
+    kwargs = {"section_count": 21, "mach": mach, "theta_count": theta_count}
+
+    along_x = sections(_write_mesh(tmp_path / "box.stl", box), **kwargs)
+    along_flow = sections(
+        _write_mesh(tmp_path / "turned.stl", turned), alpha_deg=alpha, beta_deg=beta, **kwargs
+    )
+    misaligned = sections(_write_mesh(tmp_path / "turned.stl", turned), **kwargs)
+
+    for expected, series in zip(along_x.series, along_flow.series, strict=True):
+        # STL stores float32 vertices, so the base is normal to the flow only up to
+        # roundoff and the last plane no longer catches all of it.
+        assert series.x == pytest.approx(expected.x, abs=1e-6)
+        assert series.area[:-1] == pytest.approx(expected.area[:-1], abs=1e-6)
+    assert misaligned.series[0].length > along_flow.series[0].length
+    rows = along_flow.rows()
+    assert (rows[0].alpha_deg, rows[0].beta_deg) == (alpha, beta)
+
+    model = inspect_model(tmp_path / "turned.stl")
+    loops = section_outline(model, mach=1.0, theta_deg=None, x0=0.5, alpha_deg=alpha, beta_deg=beta)
+    points = np.vstack(loops)
+    assert points @ axes[0] == pytest.approx(np.full(points.shape[0], 0.5), abs=1e-6)
+
+
+def test_large_flow_angles_are_calculated_with_a_warning() -> None:
+    cube = DATA_DIR / "unit_cube.stl"
+    assert not any(
+        "off the X axis" in warning for warning in sections(cube, alpha_deg=15.0).warnings
+    )
+
+    # Flow straight up: the cube is cut along Z and the sections stay unit squares.
+    result = sections(cube, section_count=5, alpha_deg=90.0)
+    assert result.series[0].area[1:] == pytest.approx(np.ones(4))
+    assert "more than 15° off the X axis" in result.warnings[0]
+
+
 def test_sears_haack_body_matches_the_minimum_drag() -> None:
     length, radius = 10.0, 0.5
     x = np.linspace(0.0, length, 401)
@@ -234,6 +286,9 @@ def test_section_outline_is_drawn_on_the_cutting_plane() -> None:
         ({"mach": 0.8}, "Mach"),
         ({"mach": 1.5, "theta_count": 0}, "theta"),
         ({"mach": 1.5, "theta_count": 7, "symmetric": True}, "even"),
+        ({"alpha_deg": float("inf")}, "alpha"),
+        ({"beta_deg": float("nan")}, "beta"),
+        ({"mach": 1.5, "theta_count": 8, "symmetric": True, "beta_deg": 2.0}, "beta must be 0"),
     ],
 )
 def test_invalid_section_options_are_rejected(kwargs: dict[str, object], message: str) -> None:
@@ -255,6 +310,8 @@ def test_sections_cli_writes_csv_and_summary(tmp_path: Path) -> None:
             "--thetas",
             "4",
             "--symmetric",
+            "--alpha",
+            "3",
             "--out",
             str(output),
         ],
@@ -265,6 +322,7 @@ def test_sections_cli_writes_csv_and_summary(tmp_path: Path) -> None:
     # Four roll angles, symmetric: -90, 0, and 90 remain.
     assert len(rows) == 33
     assert {row["theta_deg"] for row in rows} == {"-90.0", "0.0", "90.0"}
+    assert {(row["alpha_deg"], row["beta_deg"]) for row in rows} == {("3.0", "0.0")}
     assert float(rows[5]["area"]) > 0.0
     assert rows[0]["mean_wave_drag_area"]
     assert "Section Summary" in result.output

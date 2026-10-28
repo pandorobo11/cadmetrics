@@ -63,6 +63,9 @@ class CalculationRequest:
     mach: float = 1.0
     theta_count: int = DEFAULT_THETA_COUNT
     symmetric: bool = False
+    # Freestream direction the sections are cut relative to.
+    section_alpha: float = 0.0
+    section_beta: float = 0.0
 
     def projection_inputs(self) -> CalculationRequest:
         """This request with only the inputs that change projected-area results."""
@@ -73,6 +76,8 @@ class CalculationRequest:
             mach=1.0,
             theta_count=DEFAULT_THETA_COUNT,
             symmetric=False,
+            section_alpha=0.0,
+            section_beta=0.0,
         )
 
     def section_inputs(self) -> CalculationRequest:
@@ -117,6 +122,8 @@ class CalculationRequest:
                 mach=self.mach,
                 theta_count=self.theta_count,
                 symmetric=self.symmetric,
+                alpha_deg=self.section_alpha,
+                beta_deg=self.section_beta,
             )
         else:
             self.resolved_attitude()
@@ -223,6 +230,8 @@ def run_sections(
         mach=request.mach,
         theta_count=request.theta_count,
         symmetric=request.symmetric,
+        alpha_deg=request.section_alpha,
+        beta_deg=request.section_beta,
         progress_callback=on_progress,
         cancel_callback=cancel_callback,
     )

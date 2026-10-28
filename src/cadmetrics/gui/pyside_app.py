@@ -71,7 +71,7 @@ if QtWidgets is not None:
             self._results_request: CalculationRequest | None = None
             self._section_results_request: CalculationRequest | None = None
             # Model and its prepared slicing mesh, for drawing section outlines.
-            self._section_mesh: tuple[ModelData, SectionMesh] | None = None
+            self._section_mesh: tuple[ModelData, tuple[float, float], SectionMesh] | None = None
             self._running_analysis: AnalysisMode = "projection"
             self._calculation_running = False
             self._close_when_idle = False
@@ -277,18 +277,35 @@ if QtWidgets is not None:
             if result is None or self.controls.analysis_mode != "sections":
                 return
             model = result.model
-            if self._section_mesh is None or self._section_mesh[0] is not model:
-                self._section_mesh = (model, prepare_section_mesh(model))
-            mesh = self._section_mesh[1]
+            mesh = self._section_mesh
+            if mesh is None or mesh[0] is not model or mesh[1] != (row.alpha_deg, row.beta_deg):
+                mesh = (
+                    model,
+                    (row.alpha_deg, row.beta_deg),
+                    prepare_section_mesh(model, alpha_deg=row.alpha_deg, beta_deg=row.beta_deg),
+                )
+                self._section_mesh = mesh
             try:
-                loops = section_outline(mesh, mach=row.mach, theta_deg=row.theta_deg, x0=row.x)
+                loops = section_outline(
+                    mesh[2],
+                    mach=row.mach,
+                    theta_deg=row.theta_deg,
+                    x0=row.x,
+                    alpha_deg=row.alpha_deg,
+                    beta_deg=row.beta_deg,
+                )
             except Exception as exc:
                 self._show_error(str(exc))
                 return
             unit = row.output_unit
             place = f"Section x {row.x:.6g} {unit}"
+            flow = []
             if row.theta_deg is not None:
-                place += f"  ·  Mach {row.mach:g}, θ {row.theta_deg:g}°"
+                flow.append(f"Mach {row.mach:g}, θ {row.theta_deg:g}°")
+            if row.alpha_deg or row.beta_deg:
+                flow.append(f"α {row.alpha_deg:g}°, β {row.beta_deg:g}°")
+            if flow:
+                place += "  ·  " + ", ".join(flow)
             direction = cut_direction(row.mach, row.theta_deg)
             self.viewer.set_section(
                 SectionDisplay(
@@ -296,6 +313,7 @@ if QtWidgets is not None:
                     direction=(float(direction[0]), float(direction[1]), float(direction[2])),
                     x0=row.x,
                     overlay_lines=(place, f"Section area  {row.area:.6g} {unit}²"),
+                    axes=mesh[2].axes,
                 )
             )
 

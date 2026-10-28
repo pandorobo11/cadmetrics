@@ -1146,7 +1146,9 @@ class ModelViewer(QtWidgets.QWidget):
             return
         import pyvista as pv
 
-        corners = section_plane_corners(self._model.vertices, section.direction, section.x0)
+        corners = section_plane_corners(
+            self._model.vertices, section.direction, section.x0, axes=section.axes
+        )
         plane = pv.PolyData(corners, np.array([4, 0, 1, 2, 3]))
         self._section_plane_actor = self._plotter.add_mesh(
             plane,

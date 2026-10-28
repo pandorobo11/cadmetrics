@@ -12,7 +12,7 @@ from cadmetrics import inspect_model, measure, project, sections, sweep
 | `measure(files, ...)` | volume, surface area, base area, and bounds | one `MeasurementRow` |
 | `project(files, ...)` | projected area for one direction | one `MeasurementRow` |
 | `sweep(files, ...)` | projected area for a range of angles | a list of `MeasurementRow` |
-| `sections(files, ...)` | cross-sectional area distribution along X | a `CrossSectionResult` |
+| `sections(files, ...)` | cross-sectional area distribution along the flow | a `CrossSectionResult` |
 | `inspect_model(files, ...)` | load the model and report its details | a `ModelData` |
 
 `files` is one path, or a list of paths that are treated as one model (see
@@ -102,11 +102,14 @@ with open("sweep.csv", "w", newline="", encoding="utf-8") as file:
 
 ## Cross sections
 
-`sections` cuts the model with planes along X and returns a `CrossSectionResult`. See
+`sections` cuts the model with planes along the flow and returns a `CrossSectionResult`.
+`alpha_deg` and `beta_deg` set the flow direction (default 0, along +X). See
 [Cross Sections and the Area Rule](sections.md) for the background.
 
 ```python
-result = sections("model.step", section_count=101, mach=1.6, theta_count=16, symmetric=True)
+result = sections(
+    "model.step", section_count=101, mach=1.6, theta_count=16, symmetric=True, alpha_deg=3.0
+)
 
 print(result.wave_drag_area)  # D/q averaged over the roll angles
 print(result.sears_haack_drag_area)  # D/q of the matching Sears-Haack bodies

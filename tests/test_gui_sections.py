@@ -19,7 +19,7 @@ from cadmetrics.gui.gui_types import OperationState  # noqa: E402
 from cadmetrics.gui.jobs import CalculationRequest  # noqa: E402
 from cadmetrics.gui.sections_panel import SectionsPanel, section_chart_data  # noqa: E402
 from cadmetrics.gui.viewer_geometry import section_plane_corners  # noqa: E402
-from cadmetrics.sections import calculate_sections  # noqa: E402
+from cadmetrics.sections import calculate_sections, wind_axes  # noqa: E402
 
 DATA_DIR = Path(__file__).parent / "data"
 CUBE = DATA_DIR / "unit_cube.stl"
@@ -107,6 +107,16 @@ def test_sections_mode_swaps_the_attitude_inputs(qtbot) -> None:
     panel.theta_count.setValue(7)
     assert not panel.run_button.isEnabled()
     assert "even" in panel.validation_label.text()
+    panel.theta_count.setValue(8)
+    panel.section_beta.setValue(2.0)
+    assert not panel.run_button.isEnabled()
+    assert "Beta" in panel.validation_label.text()
+    panel.section_beta.setValue(0.0)
+
+    panel.mach.setValue(1.0)
+    panel.section_alpha.setValue(3.0)
+    assert panel.section_case_count.text() == "101 sections normal to the flow"
+    assert panel.request().section_alpha == 3.0
 
     panel.projection_mode_button.click()
     assert panel.run_button.text() == "Run Sweep"
@@ -118,6 +128,8 @@ def test_each_analysis_ignores_the_other_analysis_inputs() -> None:
 
     assert replace(request, alpha_end=30.0).section_inputs() == request.section_inputs()
     assert replace(request, mach=2.0).projection_inputs() == request.projection_inputs()
+    assert replace(request, section_alpha=3.0).projection_inputs() == request.projection_inputs()
+    assert replace(request, section_alpha=3.0).section_inputs() != request.section_inputs()
     # Roll angles only matter above Mach 1.
     assert replace(request, theta_count=8).section_inputs() == request.section_inputs()
     supersonic = replace(request, mach=2.0)
@@ -162,6 +174,10 @@ def test_section_plane_corners_lie_on_the_cutting_plane() -> None:
 
     assert corners @ np.array([1.0, -0.5, 0.25]) == pytest.approx(np.ones(4))
     assert corners[:, 1].min() < -1.0 and corners[:, 2].max() > 2.0
+
+    axes = wind_axes(10.0, 5.0)
+    turned = section_plane_corners(vertices, (1.0, 0.0, 0.0), 1.0, axes=axes)
+    assert turned @ axes[0] == pytest.approx(np.ones(4))
 
 
 def test_main_window_runs_sections_without_touching_projection_results(window, qtbot) -> None:

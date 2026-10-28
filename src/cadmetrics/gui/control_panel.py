@@ -251,14 +251,23 @@ class ControlPanel(QtWidgets.QWidget):
         self.mach.setSingleStep(0.1)
         self.mach.setValue(1.0)
         self.mach.setToolTip(
-            "1 cuts planes normal to X (transonic area rule). Above 1, the planes lean at the "
-            "Mach angle and are cut at each roll angle (supersonic area rule)."
+            "1 cuts planes normal to the flow (transonic area rule). Above 1, the planes lean "
+            "at the Mach angle and are cut at each roll angle (supersonic area rule)."
+        )
+        self.section_alpha = self._flow_angle_field(
+            "Angle of attack at cruise. The sections are cut relative to the flow; "
+            "0 means the flow runs along +X."
+        )
+        self.section_beta = self._flow_angle_field(
+            "Sideslip angle. The sections are cut relative to the flow; "
+            "0 means the flow runs along +X."
         )
         self.theta_count = PanelSpinBox()
         self.theta_count.setRange(1, MAX_THETA_COUNT)
         self.theta_count.setValue(DEFAULT_THETA_COUNT)
         self.theta_count.setToolTip(
-            "Number of equally spaced roll angles around X; the wave drag is averaged over them."
+            "Number of equally spaced roll angles around the flow; the wave drag is averaged "
+            "over them."
         )
         self.section_symmetric = self._check("Mirror-symmetric about XZ", False)
         self.section_symmetric.setToolTip(
@@ -266,6 +275,8 @@ class ControlPanel(QtWidgets.QWidget):
         )
         sections_layout.addLayout(self._labelled_row("Sections", self.section_count))
         sections_layout.addLayout(self._labelled_row("Mach", self.mach))
+        sections_layout.addLayout(self._labelled_row("Alpha", self.section_alpha))
+        sections_layout.addLayout(self._labelled_row("Beta", self.section_beta))
         sections_layout.addLayout(self._labelled_row("Roll angles", self.theta_count))
         sections_layout.addLayout(self._labelled_row("Symmetry", self.section_symmetric))
         self.section_case_count = QtWidgets.QLabel()
@@ -276,9 +287,10 @@ class ControlPanel(QtWidgets.QWidget):
             field.valueChanged.connect(self._sync_section_controls)
             field.valueChanged.connect(self._emit_preview_request)
             field.valueChanged.connect(self._refresh_validation)
-        self.mach.valueChanged.connect(self._sync_section_controls)
-        self.mach.valueChanged.connect(self._emit_preview_request)
-        self.mach.valueChanged.connect(self._refresh_validation)
+        for decimal_field in (self.mach, self.section_alpha, self.section_beta):
+            decimal_field.valueChanged.connect(self._sync_section_controls)
+            decimal_field.valueChanged.connect(self._emit_preview_request)
+            decimal_field.valueChanged.connect(self._refresh_validation)
         self.section_symmetric.toggled.connect(self._sync_section_controls)
         self.section_symmetric.toggled.connect(self._emit_preview_request)
         self.section_symmetric.toggled.connect(self._refresh_validation)
@@ -661,6 +673,8 @@ class ControlPanel(QtWidgets.QWidget):
             mach=self.mach.value(),
             theta_count=self.theta_count.value(),
             symmetric=self.section_symmetric.isChecked(),
+            section_alpha=self.section_alpha.value(),
+            section_beta=self.section_beta.value(),
         )
 
     @property
@@ -773,12 +787,11 @@ class ControlPanel(QtWidgets.QWidget):
                 return f"File does not exist: {path}"
         mode = self.attitude_mode.currentData()
         if self.analysis_mode == "sections":
-            if (
-                self.mach.value() > 1.0
-                and self.section_symmetric.isChecked()
-                and self.theta_count.value() % 2
-            ):
-                return "Use an even number of roll angles for a mirror-symmetric model."
+            if self.mach.value() > 1.0 and self.section_symmetric.isChecked():
+                if self.theta_count.value() % 2:
+                    return "Use an even number of roll angles for a mirror-symmetric model."
+                if self.section_beta.value():
+                    return "Set Beta to 0 for a mirror-symmetric model."
         elif mode == "vector":
             if not any(field.value() for field in self.vector_fields):
                 return "Unit vector cannot be (0, 0, 0)."
@@ -1050,7 +1063,8 @@ class ControlPanel(QtWidgets.QWidget):
         self.section_symmetric.setEnabled(supersonic)
         sections = self.section_count.value()
         if not supersonic:
-            text = f"{sections:,} sections normal to X"
+            along_x = not self.section_alpha.value() and not self.section_beta.value()
+            text = f"{sections:,} sections normal to {'X' if along_x else 'the flow'}"
             invalid = False
         else:
             try:
@@ -1359,6 +1373,17 @@ class ControlPanel(QtWidgets.QWidget):
         label = self._field_label(text, LABEL_WIDTH)
         form.addRow(label, field)
         return label
+
+    @staticmethod
+    def _flow_angle_field(tooltip: str) -> FlexibleDoubleSpinBox:
+        field = FlexibleDoubleSpinBox()
+        field.setRange(-360.0, 360.0)
+        field.setDecimals(3)
+        field.setSingleStep(0.5)
+        field.setSuffix("°")
+        field.setValue(0.0)
+        field.setToolTip(tooltip)
+        return field
 
     @staticmethod
     def _labelled_row(text: str, field: QtWidgets.QWidget) -> QtWidgets.QHBoxLayout:

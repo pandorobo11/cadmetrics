@@ -153,9 +153,16 @@ def section_plane_corners(
     direction: tuple[float, float, float],
     x0: float,
     *,
+    axes: np.ndarray | None = None,
     padding: float = 0.08,
 ) -> np.ndarray:
-    """Corners of the cutting plane ``direction . p = x0`` over the model's YZ extent."""
+    """Corners of the cutting plane ``direction . q = x0`` over the model's extent.
+
+    ``q = axes @ p`` is a point in the wind axes the plane is defined in (the model axes
+    when ``axes`` is None); the corners are returned in model coordinates.
+    """
+    if axes is not None:
+        vertices = vertices @ axes.T
     low = vertices[:, 1:].min(axis=0)
     high = vertices[:, 1:].max(axis=0)
     margin = (high - low).max() * padding or 1.0e-6
@@ -164,7 +171,8 @@ def section_plane_corners(
     corners_yz = np.array([[y0, z0], [y1, z0], [y1, z1], [y0, z1]], dtype=float)
     _, dy, dz = direction
     x = x0 - dy * corners_yz[:, 0] - dz * corners_yz[:, 1]
-    return np.column_stack((x, corners_yz))
+    corners = np.column_stack((x, corners_yz))
+    return corners if axes is None else corners @ axes
 
 
 def fit_overlay_text(text: str, max_chars: int, *, max_lines_per_entry: int = 3) -> str:

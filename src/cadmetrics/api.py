@@ -326,6 +326,8 @@ def sections(
     mach: float = 1.0,
     theta_count: int = DEFAULT_THETA_COUNT,
     symmetric: bool = False,
+    alpha_deg: float = 0.0,
+    beta_deg: float = 0.0,
     input_unit: str = "auto",
     output_unit: str = "m",
     mesh_deflection: float | str = "auto",
@@ -337,14 +339,21 @@ def sections(
     base_tolerance: float = DEFAULT_BASE_TOLERANCE,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> CrossSectionResult:
-    """Calculate the cross-sectional area distribution along X for area-rule studies.
+    """Calculate the cross-sectional area distribution along the flow for area-rule studies.
 
-    At ``mach=1`` the sections are normal to X. Above Mach 1 they are Mach planes at
-    ``theta_count`` equally spaced roll angles, and the wave drag is averaged over them.
+    The flow comes from the angle of attack ``alpha_deg`` and sideslip ``beta_deg``; with
+    both at 0 it runs along +X. At ``mach=1`` the sections are normal to the flow. Above
+    Mach 1 they are Mach planes at ``theta_count`` equally spaced roll angles around the
+    flow, and the wave drag is averaged over them.
     """
 
     validate_section_options(
-        section_count=section_count, mach=mach, theta_count=theta_count, symmetric=symmetric
+        section_count=section_count,
+        mach=mach,
+        theta_count=theta_count,
+        symmetric=symmetric,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
     )
     options = ModelLoadOptions.resolve(
         input_unit=input_unit,
@@ -364,6 +373,8 @@ def sections(
         mach=mach,
         theta_count=theta_count,
         symmetric=symmetric,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
         progress_callback=progress_callback,
     )
 

@@ -51,7 +51,9 @@ class SectionDisplay:
 
     # Closed outline polylines in model coordinates.
     loops: tuple[np.ndarray, ...]
-    # The plane is ``direction . p = x0``.
+    # The plane is ``direction . q = x0`` for points ``q = axes @ p`` in wind axes.
     direction: tuple[float, float, float]
     x0: float
     overlay_lines: tuple[str, ...] = ()
+    # Rows are the wind axes in model coordinates; None for the model axes.
+    axes: np.ndarray | None = None

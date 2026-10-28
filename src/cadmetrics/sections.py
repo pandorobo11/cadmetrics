@@ -1,12 +1,14 @@
 """Cross-sectional area distributions for area-rule studies.
 
-Sections are cut through the triangle mesh by planes ``x - beta * (y cos(theta) +
-z sin(theta)) = x0`` with ``beta = sqrt(M^2 - 1)``. At Mach 1 these are the planes normal
-to the X axis (Whitcomb's transonic area rule). Above Mach 1 they are the Mach planes of
+Sections are cut in wind axes, whose x axis points along the freestream given by the
+angle of attack alpha and sideslip beta (see :func:`wind_axes`); with both at zero the
+wind axes are the model axes. The planes are ``x - beta_m * (y cos(theta) +
+z sin(theta)) = x0`` with ``beta_m = sqrt(M^2 - 1)``. At Mach 1 these are the planes normal
+to the flow (Whitcomb's transonic area rule). Above Mach 1 they are the Mach planes of
 Jones' supersonic area rule, and each roll angle theta gives one equivalent body. Every
-section area is measured after projecting the cut onto the YZ plane, which is the area
-the supersonic area rule uses, and ``x0`` is where the plane crosses the X axis
-(Y = Z = 0).
+section area is measured after projecting the cut onto the wind y-z plane, which is the
+area the supersonic area rule uses, and ``x0`` is where the plane crosses the wind x axis
+through the model origin.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
+from cadmetrics.orientation import Orientation, rotation_matrix
 from cadmetrics.result_schema import CsvValue, serialize_section_row
 from cadmetrics.types import FloatArray, IntArray, ModelData
 from cadmetrics.version import cadmetrics_hash, cadmetrics_version
@@ -30,6 +33,8 @@ MAX_SECTION_COUNT = 2001
 DEFAULT_THETA_COUNT = 16
 MAX_THETA_COUNT = 72
 MAX_MACH = 10.0
+# Above this alpha or beta the slender-body assumptions behind the area rule break down.
+FLOW_ANGLE_WARNING = 15.0
 
 # Snap-rounding grid for a section whose noded outline GEOS cannot build, relative to the
 # section's half-extent; see projection._UNION_RETRY_RELATIVE_GRIDS.
@@ -56,6 +61,8 @@ class SectionMesh:
     closed_oriented: bool
     # +1 for outward-facing triangles, -1 for an inside-out closed mesh.
     orientation: float
+    # Rows are the wind axes the vertices are expressed in, in model coordinates.
+    axes: FloatArray = field(default_factory=lambda: np.eye(3))
 
 
 @dataclass(frozen=True)
@@ -117,6 +124,8 @@ class SectionRow:
     input_unit: str
     output_unit: str
     mach: float
+    alpha_deg: float
+    beta_deg: float
     theta_deg: float | None
     theta_weight: float
     station: int
@@ -148,6 +157,8 @@ class CrossSectionResult:
 
     model: ModelData
     mach: float
+    alpha_deg: float
+    beta_deg: float
     section_count: int
     theta_count: int
     symmetric: bool
@@ -193,6 +204,8 @@ class CrossSectionResult:
                         input_unit=model.input_unit,
                         output_unit=model.output_unit,
                         mach=self.mach,
+                        alpha_deg=self.alpha_deg,
+                        beta_deg=self.beta_deg,
                         theta_deg=series.theta_deg,
                         theta_weight=series.weight,
                         station=index + 1,
@@ -219,7 +232,13 @@ class CrossSectionResult:
 
 
 def validate_section_options(
-    *, section_count: int, mach: float, theta_count: int, symmetric: bool
+    *,
+    section_count: int,
+    mach: float,
+    theta_count: int,
+    symmetric: bool,
+    alpha_deg: float = 0.0,
+    beta_deg: float = 0.0,
 ) -> None:
     if not MIN_SECTION_COUNT <= section_count <= MAX_SECTION_COUNT:
         raise ValueError(
@@ -228,6 +247,9 @@ def validate_section_options(
         )
     if not math.isfinite(mach) or not 1.0 <= mach <= MAX_MACH:
         raise ValueError(f"Mach number must be between 1 and {MAX_MACH:g}, got {mach!r}.")
+    for name, angle in (("alpha", alpha_deg), ("beta", beta_deg)):
+        if not math.isfinite(angle):
+            raise ValueError(f"{name} must be a finite angle in degrees, got {angle!r}.")
     if mach > 1.0:
         if not 1 <= theta_count <= MAX_THETA_COUNT:
             raise ValueError(
@@ -235,6 +257,24 @@ def validate_section_options(
             )
         if symmetric and theta_count % 2 != 0:
             raise ValueError("theta count must be even when the model is treated as symmetric.")
+        if symmetric and beta_deg != 0.0:
+            raise ValueError(
+                "beta must be 0 when the model is treated as symmetric: sideslip makes the "
+                "flow asymmetric."
+            )
+
+
+def wind_axes(alpha_deg: float = 0.0, beta_deg: float = 0.0) -> FloatArray:
+    """Return the wind axes as the rows of a rotation matrix, in model coordinates.
+
+    The first row is the freestream direction, the same direction as the projection
+    direction for these angles: ``(cos a cos b, -sin b, sin a cos b)``. The third row is
+    the lift direction, normal to the flow in the model's XZ plane, and the second row
+    completes a right-handed frame. ``axes @ p`` gives a model point in wind axes and
+    ``q @ axes`` takes a wind-axes point back.
+    """
+
+    return rotation_matrix(Orientation(alpha_deg=alpha_deg, beta_deg=beta_deg))
 
 
 def theta_angles(theta_count: int, *, symmetric: bool = False) -> list[tuple[float, float]]:
@@ -299,8 +339,16 @@ def _cos_sin_degrees(theta_deg: float, theta: float) -> tuple[float, float]:
     return math.cos(theta), math.sin(theta)
 
 
-def prepare_section_mesh(model: ModelData) -> SectionMesh:
+def prepare_section_mesh(
+    model: ModelData, *, alpha_deg: float = 0.0, beta_deg: float = 0.0
+) -> SectionMesh:
+    """Weld and index the model mesh, expressed in the wind axes of alpha and beta."""
+
+    axes = wind_axes(alpha_deg, beta_deg)
     vertices = np.asarray(model.vertices, dtype=float)
+    if alpha_deg != 0.0 or beta_deg != 0.0:
+        # A rotation keeps areas and face orientation.
+        vertices = vertices @ axes.T
     faces = np.asarray(model.faces, dtype=np.int64)
     if faces.size == 0:
         empty = np.zeros((0, 3), dtype=np.int64)
@@ -311,6 +359,7 @@ def prepare_section_mesh(model: ModelData) -> SectionMesh:
             face_edges=empty,
             closed_oriented=False,
             orientation=1.0,
+            axes=axes,
         )
     welded_vertices, welded = np.unique(vertices, axis=0, return_inverse=True)
     welded = welded.reshape(-1).astype(np.int64)
@@ -347,6 +396,7 @@ def prepare_section_mesh(model: ModelData) -> SectionMesh:
         face_edges=face_edges,
         closed_oriented=closed_oriented,
         orientation=orientation,
+        axes=axes,
     )
 
 
@@ -550,17 +600,23 @@ def _crossing_counts(points: FloatArray, start: FloatArray, end: FloatArray) -> 
 
 
 def section_outline(
-    model_or_mesh: ModelData | SectionMesh, *, mach: float, theta_deg: float | None, x0: float
+    model_or_mesh: ModelData | SectionMesh,
+    *,
+    mach: float,
+    theta_deg: float | None,
+    x0: float,
+    alpha_deg: float = 0.0,
+    beta_deg: float = 0.0,
 ) -> list[FloatArray]:
     """Return the outline of one section as closed 3D polylines in model coordinates."""
 
     import shapely
 
-    mesh = (
-        model_or_mesh
-        if isinstance(model_or_mesh, SectionMesh)
-        else prepare_section_mesh(model_or_mesh)
-    )
+    if isinstance(model_or_mesh, SectionMesh):
+        mesh = model_or_mesh
+        _require_axes(mesh, alpha_deg, beta_deg)
+    else:
+        mesh = prepare_section_mesh(model_or_mesh, alpha_deg=alpha_deg, beta_deg=beta_deg)
     direction = cut_direction(mach, theta_deg)
     cut = _cut_single_plane(mesh, direction, x0)
     region = section_region(mesh, cut, with_geometry=True)
@@ -572,8 +628,13 @@ def section_outline(
         for ring in rings:
             yz = np.asarray(ring.coords, dtype=float)
             x = x0 - direction[1] * yz[:, 0] - direction[2] * yz[:, 1]
-            loops.append(np.column_stack((x, yz)))
+            loops.append(np.column_stack((x, yz)) @ mesh.axes)
     return loops
+
+
+def _require_axes(mesh: SectionMesh, alpha_deg: float, beta_deg: float) -> None:
+    if not np.array_equal(mesh.axes, wind_axes(alpha_deg, beta_deg)):
+        raise ValueError("The section mesh was prepared for a different alpha or beta.")
 
 
 def _cut_single_plane(mesh: SectionMesh, direction: FloatArray, x0: float) -> _StationSegments:
@@ -608,18 +669,31 @@ def calculate_sections(
     mach: float = 1.0,
     theta_count: int = DEFAULT_THETA_COUNT,
     symmetric: bool = False,
+    alpha_deg: float = 0.0,
+    beta_deg: float = 0.0,
     progress_callback: Callable[[int, int], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
     mesh: SectionMesh | None = None,
 ) -> CrossSectionResult:
-    """Calculate the cross-sectional area distribution of a loaded model."""
+    """Calculate the cross-sectional area distribution of a loaded model.
+
+    ``alpha_deg`` and ``beta_deg`` give the freestream direction; the sections are cut
+    relative to it (see :func:`wind_axes`).
+    """
 
     validate_section_options(
-        section_count=section_count, mach=mach, theta_count=theta_count, symmetric=symmetric
+        section_count=section_count,
+        mach=mach,
+        theta_count=theta_count,
+        symmetric=symmetric,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
     )
     start = perf_counter()
     if mesh is None:
-        mesh = prepare_section_mesh(model)
+        mesh = prepare_section_mesh(model, alpha_deg=alpha_deg, beta_deg=beta_deg)
+    else:
+        _require_axes(mesh, alpha_deg, beta_deg)
     angles: list[tuple[float | None, float]]
     if mach > 1.0:
         angles = list(theta_angles(theta_count, symmetric=symmetric))
@@ -659,6 +733,12 @@ def calculate_sections(
         series.append(item)
 
     warnings: list[str] = []
+    if max(abs(alpha_deg), abs(beta_deg)) > FLOW_ANGLE_WARNING:
+        warnings.append(
+            f"The flow is more than {FLOW_ANGLE_WARNING:g}° off the X axis; the area rule and "
+            "the wave drag D/q assume flow nearly along the body, so treat them as a rough "
+            "reference."
+        )
     if any(_blunt_start(item) for item in series):
         warnings.append(
             "The body starts with a blunt face; the wave drag D/q assumes a slender body "
@@ -677,6 +757,8 @@ def calculate_sections(
     return CrossSectionResult(
         model=model,
         mach=float(mach),
+        alpha_deg=float(alpha_deg),
+        beta_deg=float(beta_deg),
         section_count=section_count,
         theta_count=theta_count if mach > 1.0 else 1,
         symmetric=bool(symmetric and mach > 1.0),

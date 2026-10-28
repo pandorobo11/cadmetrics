@@ -454,7 +454,17 @@ def sections(
         False,
         "--symmetric",
         help="Treat the model as mirror-symmetric about the XZ plane and cut about half "
-        "the roll angles (Mach above 1 only; --thetas must be even).",
+        "the roll angles (Mach above 1 only; --thetas must be even and --beta 0).",
+    ),
+    alpha: float = typer.Option(
+        0.0,
+        "--alpha",
+        help="Angle of attack of the flow in degrees; sections are cut relative to the flow.",
+    ),
+    beta: float = typer.Option(
+        0.0,
+        "--beta",
+        help="Sideslip angle of the flow in degrees; sections are cut relative to the flow.",
     ),
     unit: str = typer.Option(
         "auto",
@@ -497,12 +507,17 @@ def sections(
     out: Path | None = typer.Option(None, "--out", "-o", help="CSV output path."),
     summary: bool = typer.Option(True, "--summary/--no-summary", help="Print section summary."),
 ) -> None:
-    """Calculate the cross-sectional area distribution along X (area rule)."""
+    """Calculate the cross-sectional area distribution along the flow (area rule)."""
 
     _validate_csv_output(out, file)
     try:
         validate_section_options(
-            section_count=section_count, mach=mach, theta_count=thetas, symmetric=symmetric
+            section_count=section_count,
+            mach=mach,
+            theta_count=thetas,
+            symmetric=symmetric,
+            alpha_deg=alpha,
+            beta_deg=beta,
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -531,6 +546,8 @@ def sections(
                 mach=mach,
                 theta_count=thetas,
                 symmetric=symmetric,
+                alpha_deg=alpha,
+                beta_deg=beta,
                 input_unit=unit,
                 output_unit=output_unit,
                 mesh_deflection=mesh_deflection,
@@ -811,7 +828,10 @@ def _emit_sweep_summary(rows: list[MeasurementRow]) -> None:
 
 def _emit_section_summary(result: CrossSectionResult) -> None:
     unit = result.model.output_unit
-    table = Table(title=f"Section Summary (Mach {result.mach:g})")
+    flow = f"Mach {result.mach:g}"
+    if result.alpha_deg or result.beta_deg:
+        flow += f", alpha {result.alpha_deg:g}°, beta {result.beta_deg:g}°"
+    table = Table(title=f"Section Summary ({flow})")
     table.add_column("theta")
     table.add_column("weight")
     table.add_column(f"length ({unit})")

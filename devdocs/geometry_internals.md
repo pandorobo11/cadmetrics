@@ -94,6 +94,14 @@ description is in [Cross Sections and the Area Rule](../docs/sections.md).
 
 ### Cutting planes
 
+Everything below works in wind axes. `prepare_section_mesh` rotates the vertices with
+`wind_axes(alpha, beta)`, which is `orientation.rotation_matrix` for roll 0: its first row is the
+projection direction for the same alpha and beta, its third row the lift direction. Rotating
+before welding is safe because equal input coordinates rotate to equal output coordinates, and a
+rotation keeps areas and face orientation. Outlines are rotated back with `q @ axes`. With both
+angles at 0 the vertices are used as they are, so results are bit-identical to the unrotated
+code. Mirror symmetry about XZ survives a rotation about Y, so `symmetric` needs only beta = 0.
+
 The planes are `n . p = x0` with `n = (1, -beta cos(theta), -beta sin(theta))` and
 `beta = sqrt(M^2 - 1)`, so `x0` is where a plane crosses the X axis and Mach 1 gives planes normal
 to X. A section's area is measured in YZ coordinates, which is the oblique cut projected along X

@@ -154,7 +154,7 @@ precision.
 
 Click `Sections` at the top of the left panel to calculate the cross-sectional area
 distribution for area-rule studies instead of projected area. The `Attitude` settings are
-replaced by `Sections`, `Mach`, and `Roll angles`, `Run Sweep` becomes `Run Sections`, and the
+replaced by `Sections`, `Mach`, `Alpha`, `Beta`, and `Roll angles`, `Run Sweep` becomes `Run Sections`, and the
 results area shows the section chart and table. Click a point or row to see that cutting plane
 and the section outline in the 3D view. Each calculation keeps its own results when you switch.
 

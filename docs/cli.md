@@ -10,7 +10,7 @@ jobs, and gives the same results as the GUI.
 | `cadmetrics measure` | volume, surface area, base area, and bounds |
 | `cadmetrics project` | projected area for one direction |
 | `cadmetrics sweep` | projected area for a range of angles |
-| `cadmetrics sections` | cross-sectional area distribution along X, for the area rule |
+| `cadmetrics sections` | cross-sectional area distribution along the flow, for the area rule |
 | `cadmetrics inspect` | information about the model, such as its unit and components |
 | `cadmetrics samples` | the bundled sample models |
 
@@ -106,7 +106,7 @@ With `--attitude vector`, `sweep` calculates the one given direction and returns
 
 ## sections
 
-Calculate the cross-sectional area distribution along X. Like `sweep`, it shows a progress bar,
+Calculate the cross-sectional area distribution along the flow. Like `sweep`, it shows a progress bar,
 writes CSV rows to the terminal unless `--out` is given, and then prints a summary with the
 largest area, the wave drag D/q, and the matching Sears-Haack D/q (`--no-summary` turns it off).
 
@@ -118,11 +118,17 @@ cadmetrics sections model.step --sections 101 --out sections.csv
 cadmetrics sections model.step --mach 1.6 --thetas 16 --symmetric --out sections.csv
 ```
 
+```bash
+cadmetrics sections model.step --mach 1.6 --alpha 3 --out sections.csv
+```
+
 - `--sections`: number of cutting planes from the front to the rear, 5 to 2001 (default 101).
-- `--mach`: 1 (default) cuts planes normal to X; above 1 cuts Mach planes.
+- `--mach`: 1 (default) cuts planes normal to the flow; above 1 cuts Mach planes.
+- `--alpha`, `--beta`: angle of attack and sideslip of the flow in degrees (default 0, the flow
+  along +X). See [Flow direction](sections.md#flow-direction).
 - `--thetas`: number of roll angles for Mach planes (default 16).
 - `--symmetric`: the model is mirror-symmetric about the XZ plane; cut about half the roll
-  angles. `--thetas` must be even.
+  angles. `--thetas` must be even and `--beta` 0.
 
 See [Cross Sections and the Area Rule](sections.md) for what the values mean.
 
