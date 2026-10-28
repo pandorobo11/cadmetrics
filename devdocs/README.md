@@ -17,9 +17,10 @@ These pages are for people working on cadmetrics itself. User documentation live
 
 ```bash
 uv sync --extra step --extra gui
-uv run pytest
+uv run ruff format --check .
 uv run ruff check .
 uv run mypy
+uv run pytest
 ```
 
 Run the GUI from the checkout with `uv run cadmetrics-gui`.
