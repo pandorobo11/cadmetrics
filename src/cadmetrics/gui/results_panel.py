@@ -264,6 +264,10 @@ class ResultsPanel(QtWidgets.QWidget):
     def has_selection(self) -> bool:
         return self._current_source_row() is not None
 
+    def selected_row(self) -> MeasurementRow | None:
+        row = self._current_source_row()
+        return None if row is None else self._table_model.row(row)
+
     def select_last_row(self) -> None:
         if self._rows:
             self.select_source_row(len(self._rows) - 1)

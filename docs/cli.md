@@ -10,6 +10,7 @@ jobs, and gives the same results as the GUI.
 | `cadmetrics measure` | volume, surface area, base area, and bounds |
 | `cadmetrics project` | projected area for one direction |
 | `cadmetrics sweep` | projected area for a range of angles |
+| `cadmetrics sections` | cross-sectional area distribution along the flow, for the area rule |
 | `cadmetrics inspect` | information about the model, such as its unit and components |
 | `cadmetrics samples` | the bundled sample models |
 
@@ -32,6 +33,8 @@ terminal, so you can also redirect them with `> sweep.csv`. After a sweep, a sho
 smallest, largest, and average projected area is printed; add `--no-summary` to turn it off.
 
 `measure`, `project`, and `sweep` write the same CSV columns. See [Result Columns](results.md).
+`sections` writes its own columns, one row per cutting plane; see
+[Cross Sections and the Area Rule](sections.md#result-columns).
 `inspect` and `samples` print information only and do not have a CSV output option.
 
 ## measure
@@ -100,6 +103,34 @@ cadmetrics sweep model.step \
 - One sweep can have at most 10,000 combinations.
 
 With `--attitude vector`, `sweep` calculates the one given direction and returns one row.
+
+## sections
+
+Calculate the cross-sectional area distribution along the flow. Like `sweep`, it shows a progress bar,
+writes CSV rows to the terminal unless `--out` is given, and then prints a summary with the
+largest area, the wave drag D/q, and the matching Sears-Haack D/q (`--no-summary` turns it off).
+
+```bash
+cadmetrics sections model.step --sections 101 --out sections.csv
+```
+
+```bash
+cadmetrics sections model.step --mach 1.6 --thetas 16 --symmetric --out sections.csv
+```
+
+```bash
+cadmetrics sections model.step --mach 1.6 --alpha 3 --out sections.csv
+```
+
+- `--sections`: number of cutting planes from the front to the rear, 5 to 2001 (default 101).
+- `--mach`: 1 (default) cuts planes normal to the flow; above 1 cuts Mach planes.
+- `--alpha`, `--beta`: angle of attack and sideslip of the flow in degrees (default 0, the flow
+  along +X). See [Flow direction](sections.md#flow-direction).
+- `--thetas`: number of roll angles for Mach planes (default 16).
+- `--symmetric`: the model is mirror-symmetric about the XZ plane; cut about half the roll
+  angles. `--thetas` must be even and `--beta` 0.
+
+See [Cross Sections and the Area Rule](sections.md) for what the values mean.
 
 ## inspect
 

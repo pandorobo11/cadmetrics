@@ -187,6 +187,9 @@ class ResultsChart(QtWidgets.QWidget):
     """Projected area against the swept angle; click a point to select its row."""
 
     row_clicked = QtCore.Signal(int)
+    # Subclasses plotting other values override these and the hooks below.
+    y_title = "Projected area"
+    show_markers = True
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -256,7 +259,7 @@ class ResultsChart(QtWidgets.QWidget):
                 generator.setFileName(str(path))
                 generator.setSize(self.size())
                 generator.setViewBox(self.rect())
-                generator.setTitle("Projected area")
+                generator.setTitle(self.y_title)
                 self.render(generator)
                 # QSvgGenerator reports no write errors; an empty file means it failed.
                 if not path.is_file() or path.stat().st_size == 0:
@@ -288,10 +291,14 @@ class ResultsChart(QtWidgets.QWidget):
 
     # Layout -------------------------------------------------------------------------
 
+    def _reference_points(self) -> list[tuple[float, float]]:
+        """A dashed reference curve drawn under the series; none by default."""
+        return []
+
     def _layout(self) -> tuple[list[float], list[float]]:
         points = [point for series in self._data.series for point in series.points]
         xs = [point.x for point in points]
-        ys = [point.y for point in points]
+        ys = [point.y for point in points] + [y for _, y in self._reference_points()]
         x_ticks = nice_ticks(min(xs), max(xs), target=7)
         # Areas are magnitudes; start at zero unless the data sits far above it.
         y_low = 0.0 if min(ys) <= 0.5 * max(ys) else min(ys)
@@ -396,7 +403,7 @@ class ResultsChart(QtWidgets.QWidget):
             ),
             x_title,
         )
-        painter.drawText(QtCore.QPointF(8, plot.top() - 8), f"Projected area{self._y_unit()}")
+        painter.drawText(QtCore.QPointF(8, plot.top() - 8), f"{self.y_title}{self._y_unit()}")
 
     def _hovered_series(self) -> int | None:
         found = self._point_for_row(self._hovered)
@@ -405,6 +412,12 @@ class ResultsChart(QtWidgets.QWidget):
     def _paint_series(self, painter: QtGui.QPainter) -> None:
         surface = QtGui.QColor(_SURFACE)
         base_opacity = painter.opacity()
+        reference = self._reference_points()
+        if len(reference) >= 2:
+            pen = QtGui.QPen(QtGui.QColor(_MUTED_TEXT), 1.5, QtCore.Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            painter.drawPolyline(QtGui.QPolygonF([self._map_xy(x, y) for x, y in reference]))
         hovered = self._hovered_series()
         order = list(range(len(self._data.series)))
         if hovered is not None:
@@ -422,6 +435,8 @@ class ResultsChart(QtWidgets.QWidget):
             painter.setPen(pen)
             painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
             painter.drawPolyline(QtGui.QPolygonF([self._map(point) for point in series.points]))
+            if not self.show_markers:
+                continue
             # Markers wear a surface ring so they stay legible where lines cross.
             painter.setPen(QtGui.QPen(surface, 2.0))
             painter.setBrush(color)
@@ -585,18 +600,24 @@ class ResultsChart(QtWidgets.QWidget):
             QtWidgets.QToolTip.hideText()
             self.unsetCursor()
             return
-        row = self._rows[point.row]
-        unit = row.output_unit
+        QtWidgets.QToolTip.showText(
+            event.globalPosition().toPoint(),
+            "\n".join(self._tooltip_lines(point)),
+            self,
+            QtCore.QRect(),
+            4000,
+        )
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
+    def _tooltip_lines(self, point: ChartPoint) -> list[str]:
+        unit = self._rows[point.row].output_unit
         lines = []
         if self._data.series_label:
             series = next(s for s in self._data.series if point in s.points)
             lines.append(self._series_name(series))
         lines.append(f"{self._data.x_label.removesuffix(' (°)')} {point.x:g}°")
         lines.append(f"Projected area {point.y:.6g} {unit}²")
-        QtWidgets.QToolTip.showText(
-            event.globalPosition().toPoint(), "\n".join(lines), self, QtCore.QRect(), 4000
-        )
-        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        return lines
 
     def leaveEvent(self, event: QtCore.QEvent) -> None:  # noqa: N802
         self._hovered = None

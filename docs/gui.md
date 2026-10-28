@@ -22,8 +22,9 @@ cadmetrics-gui
 ## Window layout
 
 - **Left panel**: settings, from top to bottom:
+    - `Projected area` / `Sections`: which calculation to run
     - `Setup`: file and units
-    - `Attitude`: the directions to calculate
+    - `Attitude`: the directions to calculate (`Sections` with the `Sections` calculation)
     - `Components`: which STEP solids to include
     - `Shape Display`: what the 3D view shows
     - `Advanced`: axis map and mesh settings
@@ -109,6 +110,9 @@ interrupted; if you close the window during one of these steps, the app waits fo
 If you change a setting after a sweep, the old rows stay visible but are dimmed and marked
 `Results are out of date — Run Sweep to update.` You can still look at them and save them; each
 row keeps the settings it was calculated with. Opening a different model clears the results.
+If the model was loaded again with other units, components, or axes for the other calculation
+(projected area or sections), the old results are not drawn in the 3D view, because they would
+not match the model shown.
 
 ## Read the results
 
@@ -148,6 +152,16 @@ when scaled.
 
 `Save CSV` (⌘S / Ctrl+S, also in the `File` menu) saves every result row with all columns, at full
 precision.
+
+## Cross sections
+
+Click `Sections` at the top of the left panel to calculate the cross-sectional area
+distribution for area-rule studies instead of projected area. The `Attitude` settings are
+replaced by `Sections`, `Mach`, `Alpha`, `Beta`, and `Roll angles`, `Run Sweep` becomes `Run Sections`, and the
+results area shows the section chart and table. Click a point or row to see that cutting plane
+and the section outline in the 3D view. Each calculation keeps its own results when you switch.
+
+See [Cross Sections and the Area Rule](sections.md).
 
 ## Use the 3D view
 

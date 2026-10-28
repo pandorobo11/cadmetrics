@@ -4,7 +4,7 @@ The Python API lets you run cadmetrics from your own scripts and notebooks. It g
 results as the GUI and the CLI.
 
 ```python
-from cadmetrics import inspect_model, measure, project, sweep
+from cadmetrics import inspect_model, measure, project, sections, sweep
 ```
 
 | function | what it does | returns |
@@ -12,6 +12,7 @@ from cadmetrics import inspect_model, measure, project, sweep
 | `measure(files, ...)` | volume, surface area, base area, and bounds | one `MeasurementRow` |
 | `project(files, ...)` | projected area for one direction | one `MeasurementRow` |
 | `sweep(files, ...)` | projected area for a range of angles | a list of `MeasurementRow` |
+| `sections(files, ...)` | cross-sectional area distribution along the flow | a `CrossSectionResult` |
 | `inspect_model(files, ...)` | load the model and report its details | a `ModelData` |
 
 `files` is one path, or a list of paths that are treated as one model (see
@@ -98,6 +99,30 @@ with open("sweep.csv", "w", newline="", encoding="utf-8") as file:
     writer.writeheader()
     writer.writerows(records)
 ```
+
+## Cross sections
+
+`sections` cuts the model with planes along the flow and returns a `CrossSectionResult`.
+`alpha_deg` and `beta_deg` set the flow direction (default 0, along +X). See
+[Cross Sections and the Area Rule](sections.md) for the background.
+
+```python
+result = sections(
+    "model.step", section_count=101, mach=1.6, theta_count=16, symmetric=True, alpha_deg=3.0
+)
+
+print(result.wave_drag_area)  # D/q averaged over the roll angles
+print(result.sears_haack_drag_area)  # D/q of the matching Sears-Haack bodies
+for series in result.series:  # one per roll angle; a single one at Mach 1
+    print(series.theta_deg, series.weight, series.max_area, series.max_area_x)
+    print(series.x, series.area)  # NumPy arrays of the cutting planes
+```
+
+Each `SectionSeries` also has `length`, `volume` (the area integrated along x),
+`area_slope`, `wave_drag_area`, `sears_haack_area`, and `sears_haack_drag_area`.
+`result.rows()` returns one `SectionRow` per cutting plane, and `SectionRow.to_csv_row()` gives
+the same columns as the CLI and GUI. `progress_callback` is called with the number of finished
+sections and the total.
 
 ## Check a model and its components
 

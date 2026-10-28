@@ -4,12 +4,16 @@ import csv
 import os
 import tempfile
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Protocol, Sequence
 
-from cadmetrics.result_schema import RESULT_FIELD_SPECS
-from cadmetrics.types import MeasurementRow
+from cadmetrics.result_schema import CsvValue, RESULT_FIELD_SPECS, SECTION_FIELD_SPECS
 
 CSV_FIELDS = [spec.key for spec in RESULT_FIELD_SPECS]
+SECTION_CSV_FIELDS = [spec.key for spec in SECTION_FIELD_SPECS]
+
+
+class CsvRow(Protocol):
+    def to_csv_row(self) -> dict[str, CsvValue]: ...
 
 
 def validate_csv_output_path(
@@ -27,9 +31,10 @@ def validate_csv_output_path(
 
 def write_rows_csv(
     path: str | Path,
-    rows: Iterable[MeasurementRow],
+    rows: Iterable[CsvRow],
     *,
     protected_paths: Iterable[str | Path] = (),
+    fields: Sequence[str] = CSV_FIELDS,
 ) -> None:
     protected = tuple(protected_paths)
     output_path = validate_csv_output_path(path, protected_paths=protected)
@@ -45,7 +50,7 @@ def write_rows_csv(
             delete=False,
         ) as handle:
             temporary_path = Path(handle.name)
-            writer = csv.DictWriter(handle, fieldnames=CSV_FIELDS)
+            writer = csv.DictWriter(handle, fieldnames=list(fields))
             writer.writeheader()
             for row in rows:
                 writer.writerow(row.to_csv_row())
