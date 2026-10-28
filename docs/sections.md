@@ -186,5 +186,9 @@ The file, unit, component, mesh, method, version, and warning columns mean the s
 - Parts whose faces point inward (an inside-out STL) count like the others, and cavities stay
   empty. If an inside-out part crosses another part so that cadmetrics cannot tell it from a
   cavity, a warning says the overlapping area is left out.
+- Parts that touch or overlap along shared edges, for example separate STL files with mating
+  faces, are joined into one shell. If one of them is inside out, cadmetrics cannot turn it
+  around, so its sections may be partly or entirely missing. A warning is shown whenever parts
+  share edges; it can be ignored when every part faces outward.
 - A mesh with holes gives sections that cannot be closed. Their area is too small, and
   cadmetrics warns about them. Repair the mesh in your CAD or mesh tool.

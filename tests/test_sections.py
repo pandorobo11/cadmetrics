@@ -196,6 +196,23 @@ def test_shells_that_cannot_be_told_from_cavities_are_warned(tmp_path: Path) -> 
     assert result.series[0].max_area == pytest.approx(math.pi, rel=0.05)
 
 
+def test_parts_that_share_edges_are_warned(tmp_path: Path) -> None:
+    cube = (1.0, 1.0, 1.0)
+    normal = _boxes(tmp_path, (cube, (0.5, 0.0, 0.0), False))
+    touching = _boxes(tmp_path, (cube, (0.5, 1.0, 0.0), False))
+    touching_inside_out = _boxes(tmp_path, (cube, (0.5, 1.0, 0.0), True))
+    apart_inside_out = _boxes(tmp_path, (cube, (0.5, 2.0, 0.0), True))
+
+    outward = sections([normal, touching], section_count=5)
+    assert outward.series[0].area == pytest.approx([0.0, 2.0, 2.0, 2.0, 2.0])
+    assert any("shared edges" in warning for warning in outward.warnings)
+    # Joined into one shell, the inside-out part cannot be turned around, so it is warned.
+    inside_out = sections([normal, touching_inside_out], section_count=5)
+    assert any("shared edges" in warning for warning in inside_out.warnings)
+    apart = sections([normal, apart_inside_out], section_count=5)
+    assert not any("shared edges" in warning for warning in apart.warnings)
+
+
 def test_open_mesh_sections_are_flagged() -> None:
     result = sections(
         SAMPLES / "open_cube_missing_face" / "open_cube_missing_face_binary.stl",

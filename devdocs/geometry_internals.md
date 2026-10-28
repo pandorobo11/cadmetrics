@@ -136,7 +136,11 @@ signed volumes. When the signs are mixed it takes each shell's nesting depth fro
 depth a cavity. Shells whose sign disagrees with their depth are turned around, so outward
 solids, inside-out solids, and cavities all fill correctly. When the nesting is unclear
 (shells that cross, a zero-volume shell), the mesh is filled by even-odd parity with a warning
-instead, so an inside-out part is not dropped as a whole.
+instead, so an inside-out part is not dropped as a whole. Parts that touch along shared edges
+(or repeat each other) are one vertex component, so their signed volumes cancel and an
+inside-out part among them cannot be turned around. Telling such parts apart would need the
+source shells before welding, so instead any edge used by more than two faces sets
+`shared_edges` and a warning.
 
 Per plane, the segments are noded with `shapely.union_all` and split into faces with
 `polygonize_full`. A face is inside the section when:

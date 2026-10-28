@@ -67,6 +67,9 @@ class SectionMesh:
     # Shells face opposite ways and could not be told apart from cavities; the sections
     # are filled by even-odd parity instead of winding numbers.
     unresolved_shells: bool = False
+    # Some edges are shared by more than two faces: parts touch or overlap there and are
+    # joined into one shell, so a part that faces the other way cannot be turned around.
+    shared_edges: bool = False
 
 
 @dataclass(frozen=True)
@@ -394,6 +397,7 @@ def prepare_section_mesh(
     unique_keys, edge_index = np.unique(keys, return_inverse=True)
     edges = np.column_stack((unique_keys // vertex_count, unique_keys % vertex_count))
     face_edges = edge_index.reshape(-1, 3).astype(np.int64)
+    shared_edges = bool((np.bincount(edge_index) > 2).any())
     return SectionMesh(
         vertices=welded_vertices,
         faces=faces,
@@ -403,6 +407,7 @@ def prepare_section_mesh(
         orientation=orientation,
         axes=axes,
         unresolved_shells=unresolved_shells,
+        shared_edges=shared_edges,
     )
 
 
@@ -833,6 +838,11 @@ def calculate_sections(
             "Closed shells in the mesh face opposite ways and cross or touch each other, so "
             "they cannot be told apart from cavities; sections are filled by even-odd parity "
             "and areas where parts overlap are left out."
+        )
+    if mesh.shared_edges:
+        warnings.append(
+            "Parts of the mesh touch or overlap along shared edges; if one of them faces "
+            "inward (inside out), its sections may be partly or entirely left out."
         )
     if fallback_total:
         warnings.append(
