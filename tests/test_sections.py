@@ -134,6 +134,68 @@ def test_face_orientation_does_not_change_the_area(tmp_path: Path, transform) ->
     assert result.warnings[0].startswith("The body starts with a blunt face")
 
 
+def _boxes(tmp_path: Path, *specs: tuple[tuple[float, ...], tuple[float, ...], bool]) -> Path:
+    """One STL of boxes given as (extents, center, inside_out)."""
+
+    meshes = []
+    for extents, center, inside_out in specs:
+        box = trimesh.creation.box(extents=extents)
+        box.apply_translation(center)
+        if inside_out:
+            box.invert()
+        meshes.append(box)
+    path = tmp_path / f"boxes{len(list(tmp_path.glob('boxes*.stl')))}.stl"
+    return _write_mesh(path, trimesh.util.concatenate(meshes))
+
+
+def test_inside_out_parts_count_like_the_others(tmp_path: Path) -> None:
+    cube = (1.0, 1.0, 1.0)
+    normal = _boxes(tmp_path, (cube, (0.5, -1.0, 0.0), False))
+    inside_out = _boxes(tmp_path, (cube, (0.5, 1.0, 0.0), True))
+    larger_inside_out = _boxes(tmp_path, ((2.0, 2.0, 2.0), (1.0, 1.5, 0.0), True))
+    overlapping = _boxes(tmp_path, (cube, (0.5, -0.5, 0.0), True))
+
+    side_by_side = sections([normal, inside_out], section_count=5)
+    assert side_by_side.series[0].area == pytest.approx([0.0, 2.0, 2.0, 2.0, 2.0])
+    # The larger part used to decide the orientation for the whole mesh.
+    larger = sections([normal, larger_inside_out], section_count=5)
+    assert larger.series[0].area == pytest.approx([0.0, 5.0, 5.0, 4.0, 4.0])
+    union = sections([normal, overlapping], section_count=5)
+    assert union.series[0].area == pytest.approx([0.0, 1.5, 1.5, 1.5, 1.5])
+    assert not any("opposite ways" in warning for warning in union.warnings)
+
+
+@pytest.mark.parametrize("inside_out", [False, True])
+def test_cavities_stay_empty(tmp_path: Path, inside_out: bool) -> None:
+    hollow = _boxes(
+        tmp_path,
+        ((2.0, 2.0, 2.0), (0.0, 0.0, 0.0), inside_out),
+        ((1.0, 1.0, 1.0), (0.0, 0.0, 0.0), not inside_out),
+    )
+    separate = _boxes(tmp_path, ((1.0, 1.0, 1.0), (0.5, 1.0, 0.0), not inside_out))
+
+    result = sections(hollow, section_count=9)
+    assert result.series[0].area == pytest.approx([0, 4, 4, 3, 3, 3, 3, 4, 4])
+    assert result.model.volume == pytest.approx(7.0)
+    # A solid facing the other way, half inside the wall and half outside.
+    together = sections([hollow, separate], section_count=9)
+    assert together.series[0].area == pytest.approx([0, 4, 4, 3, 3, 3.5, 3.5, 4.5, 4.5])
+
+
+def test_shells_that_cannot_be_told_from_cavities_are_warned(tmp_path: Path) -> None:
+    # An inside-out box crossing the surface of a sphere: neither solid nor cavity.
+    sphere = trimesh.creation.icosphere(subdivisions=3)
+    box = trimesh.creation.box(extents=(0.4, 0.4, 0.4))
+    box.apply_translation((0.0, 0.6, 0.6))
+    box.invert()
+    path = _write_mesh(tmp_path / "crossing.stl", trimesh.util.concatenate([sphere, box]))
+    result = sections(path, section_count=21)
+
+    assert any("opposite ways" in warning for warning in result.warnings)
+    # Even-odd filling still counts the sphere where the box is not.
+    assert result.series[0].max_area == pytest.approx(math.pi, rel=0.05)
+
+
 def test_open_mesh_sections_are_flagged() -> None:
     result = sections(
         SAMPLES / "open_cube_missing_face" / "open_cube_missing_face_binary.stl",

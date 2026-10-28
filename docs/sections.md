@@ -183,5 +183,8 @@ The file, unit, component, mesh, method, version, and warning columns mean the s
 - The X axis must run from nose to tail. If your model uses other axes, set the
   [axis map](concepts.md#coordinate-system). Use `Alpha` and `Beta` for the flow direction, not
   the axis map.
+- Parts whose faces point inward (an inside-out STL) count like the others, and cavities stay
+  empty. If an inside-out part crosses another part so that cadmetrics cannot tell it from a
+  cavity, a warning says the overlapping area is left out.
 - A mesh with holes gives sections that cannot be closed. Their area is too small, and
   cadmetrics warns about them. Repair the mesh in your CAD or mesh tool.

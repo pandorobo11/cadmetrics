@@ -128,6 +128,16 @@ from the triangle's winding: from the edge after the lone vertex to the edge bef
 lone vertex lies past the plane, the other way otherwise. For a closed mesh with outward
 counter-clockwise faces, that runs the section boundary counter-clockwise around +X.
 
+Consistent winding inside each shell does not make separate shells face the same way: a
+multi-file STL can combine an outward part with an inside-out one. `_orient_shells` finds the
+shells (connected vertex components, by root hooking and pointer jumping in NumPy) and their
+signed volumes. When the signs are mixed it takes each shell's nesting depth from
+`_mesh_io._shell_depths`, the same rule the STL volume uses: an even depth is a solid, an odd
+depth a cavity. Shells whose sign disagrees with their depth are turned around, so outward
+solids, inside-out solids, and cavities all fill correctly. When the nesting is unclear
+(shells that cross, a zero-volume shell), the mesh is filled by even-odd parity with a warning
+instead, so an inside-out part is not dropped as a whole.
+
 Per plane, the segments are noded with `shapely.union_all` and split into faces with
 `polygonize_full`. A face is inside the section when:
 

@@ -59,10 +59,14 @@ class SectionMesh:
     edges: IntArray
     face_edges: IntArray
     closed_oriented: bool
-    # +1 for outward-facing triangles, -1 for an inside-out closed mesh.
+    # +1 for outward-facing triangles, -1 for an inside-out closed mesh. Closed shells
+    # that face the other way from the rest have already been turned around.
     orientation: float
     # Rows are the wind axes the vertices are expressed in, in model coordinates.
     axes: FloatArray = field(default_factory=lambda: np.eye(3))
+    # Shells face opposite ways and could not be told apart from cavities; the sections
+    # are filled by even-odd parity instead of winding numbers.
+    unresolved_shells: bool = False
 
 
 @dataclass(frozen=True)
@@ -368,27 +372,28 @@ def prepare_section_mesh(
         (faces[:, 0] != faces[:, 1]) & (faces[:, 1] != faces[:, 2]) & (faces[:, 2] != faces[:, 0])
     )
     faces = faces[keep]
+    vertex_count = int(welded_vertices.shape[0])
     starts = faces.reshape(-1)
     ends = faces[:, [1, 2, 0]].reshape(-1)
-    low = np.minimum(starts, ends)
-    high = np.maximum(starts, ends)
-    vertex_count = int(welded_vertices.shape[0])
-    keys = low * vertex_count + high
-    unique_keys, edge_index = np.unique(keys, return_inverse=True)
-    edges = np.column_stack((unique_keys // vertex_count, unique_keys % vertex_count))
-    face_edges = edge_index.reshape(-1, 3).astype(np.int64)
 
     # Closed and consistently oriented: every directed edge is matched by its reverse.
     forward = np.sort(starts * vertex_count + ends)
     backward = np.sort(ends * vertex_count + starts)
     closed_oriented = bool(forward.size > 0 and np.array_equal(forward, backward))
     orientation = 1.0
+    unresolved_shells = False
     if closed_oriented:
-        corners = welded_vertices[faces]
-        signed_volume = float(
-            np.einsum("ij,ij->i", corners[:, 0], np.cross(corners[:, 1], corners[:, 2])).sum()
-        )
-        orientation = -1.0 if signed_volume < 0.0 else 1.0
+        faces, orientation, unresolved_shells = _orient_shells(welded_vertices, faces)
+        closed_oriented = not unresolved_shells
+        starts = faces.reshape(-1)
+        ends = faces[:, [1, 2, 0]].reshape(-1)
+
+    low = np.minimum(starts, ends)
+    high = np.maximum(starts, ends)
+    keys = low * vertex_count + high
+    unique_keys, edge_index = np.unique(keys, return_inverse=True)
+    edges = np.column_stack((unique_keys // vertex_count, unique_keys % vertex_count))
+    face_edges = edge_index.reshape(-1, 3).astype(np.int64)
     return SectionMesh(
         vertices=welded_vertices,
         faces=faces,
@@ -397,7 +402,81 @@ def prepare_section_mesh(
         closed_oriented=closed_oriented,
         orientation=orientation,
         axes=axes,
+        unresolved_shells=unresolved_shells,
     )
+
+
+def _orient_shells(vertices: FloatArray, faces: IntArray) -> tuple[IntArray, float, bool]:
+    """Make every closed shell of a consistently oriented mesh face the same way.
+
+    Within one shell the winding is consistent, but separate shells, for example STL
+    files from different tools, can face opposite ways. A shell's signed volume and how
+    deeply other shells enclose it tell a solid (even depth) from a cavity (odd depth),
+    as the STL volume does. Solids facing inward, with their cavities, are turned
+    around. Returns the faces, the remaining overall orientation, and whether the
+    nesting could not be resolved.
+    """
+
+    shell_of_vertex = _vertex_components(vertices.shape[0], faces)
+    labels, shell_of_face = np.unique(shell_of_vertex[faces[:, 0]], return_inverse=True)
+    shell_of_face = shell_of_face.reshape(-1)
+    corners = vertices[faces] - vertices.mean(axis=0)
+    six_volumes = np.einsum("ij,ij->i", corners[:, 0], np.cross(corners[:, 1], corners[:, 2]))
+    shell_volumes = np.bincount(shell_of_face, weights=six_volumes, minlength=labels.size)
+    tolerance = (
+        np.bincount(shell_of_face, weights=np.abs(six_volumes), minlength=labels.size)
+        * np.finfo(float).eps
+        * 16.0
+    )
+    positive = shell_volumes > tolerance
+    negative = shell_volumes < -tolerance
+    if not (positive.any() and negative.any()):
+        return faces, -1.0 if negative.any() else 1.0, False
+
+    from cadmetrics._mesh_io import _MeshShell, _shell_depths
+
+    if not np.all(positive | negative):
+        return faces, 1.0, True
+    shells = tuple(
+        _MeshShell(vertices[faces[shell_of_face == index]], float(volume) / 6.0)
+        for index, volume in enumerate(shell_volumes)
+    )
+    depths = _shell_depths(shells)
+    if depths is None:
+        return faces, 1.0, True
+    inward = np.array(
+        [(volume > 0.0) == (depth % 2 == 1) for volume, depth in zip(shell_volumes, depths)]
+    )
+    turn = inward[shell_of_face]
+    faces = faces.copy()
+    faces[turn] = faces[turn][:, ::-1]
+    return faces, 1.0, False
+
+
+def _vertex_components(vertex_count: int, faces: IntArray) -> IntArray:
+    """Label each vertex with the smallest vertex index connected to it by faces."""
+
+    labels = np.arange(vertex_count, dtype=np.int64)
+    a = faces.reshape(-1)
+    b = faces[:, [1, 2, 0]].reshape(-1)
+    while True:
+        # Point every label at its root, then hook the larger root of each edge onto
+        # the smaller one until both ends of every edge share a root.
+        while True:
+            parents = labels[labels]
+            if np.array_equal(parents, labels):
+                break
+            labels = parents
+        label_a = labels[a]
+        label_b = labels[b]
+        differ = label_a != label_b
+        if not differ.any():
+            return labels
+        np.minimum.at(
+            labels,
+            np.maximum(label_a[differ], label_b[differ]),
+            np.minimum(label_a[differ], label_b[differ]),
+        )
 
 
 @dataclass(frozen=True)
@@ -748,6 +827,12 @@ def calculate_sections(
         warnings.append(
             f"{open_total} section(s) cross holes in the mesh; their areas include only "
             "closed outlines and may be too small."
+        )
+    if mesh.unresolved_shells:
+        warnings.append(
+            "Closed shells in the mesh face opposite ways and cross or touch each other, so "
+            "they cannot be told apart from cavities; sections are filled by even-odd parity "
+            "and areas where parts overlap are left out."
         )
     if fallback_total:
         warnings.append(
