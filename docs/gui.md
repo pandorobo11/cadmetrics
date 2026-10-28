@@ -110,6 +110,9 @@ interrupted; if you close the window during one of these steps, the app waits fo
 If you change a setting after a sweep, the old rows stay visible but are dimmed and marked
 `Results are out of date — Run Sweep to update.` You can still look at them and save them; each
 row keeps the settings it was calculated with. Opening a different model clears the results.
+If the model was loaded again with other units, components, or axes for the other calculation
+(projected area or sections), the old results are not drawn in the 3D view, because they would
+not match the model shown.
 
 ## Read the results
 

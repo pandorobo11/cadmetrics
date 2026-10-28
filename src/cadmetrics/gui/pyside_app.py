@@ -72,6 +72,9 @@ if QtWidgets is not None:
             self._section_results_request: CalculationRequest | None = None
             # Model and its prepared slicing mesh, for drawing section outlines.
             self._section_mesh: tuple[ModelData, tuple[float, float], SectionMesh] | None = None
+            # The model the projection rows were calculated on. Calculating the other
+            # analysis can reload the model while these rows are kept.
+            self._results_model: ModelData | None = None
             self._running_analysis: AnalysisMode = "projection"
             self._calculation_running = False
             self._close_when_idle = False
@@ -230,11 +233,13 @@ if QtWidgets is not None:
 
         @QtCore.Slot(list)
         def _on_rows_appended(self, rows: list[MeasurementRow]) -> None:
+            self._results_model = self.controller.model
             self.results.append_rows(rows)
 
         @QtCore.Slot(list)
         def _on_results_ready(self, rows: list[MeasurementRow]) -> None:
             self._calculation_running = False
+            self._results_model = self.controller.model
             if self._results_request is None:
                 self._results_request = self._request
             protected_paths = (
@@ -277,6 +282,9 @@ if QtWidgets is not None:
             if result is None or self.controls.analysis_mode != "sections":
                 return
             model = result.model
+            if model is not self.controller.model:
+                self._hide_reloaded_result("sections")
+                return
             mesh = self._section_mesh
             if mesh is None or mesh[0] is not model or mesh[1] != (row.alpha_deg, row.beta_deg):
                 mesh = (
@@ -354,8 +362,22 @@ if QtWidgets is not None:
 
         @QtCore.Slot(object)
         def _show_result(self, row: MeasurementRow) -> None:
+            if self._results_model is not self.controller.model:
+                self._hide_reloaded_result("results")
+                return
             # Rows always render with the request that produced them, even when stale.
             self.viewer.set_result(row, self._results_request, align_camera=True)
+
+        def _hide_reloaded_result(self, kind: str) -> None:
+            # The shown model was reloaded with other units, components, or axes, so the
+            # result would be drawn at the wrong place or scale.
+            if kind == "sections":
+                self.viewer.set_section(None)
+            else:
+                self.viewer.set_result(None, self._request)
+            self.status.setText(
+                f"The model changed after these {kind}: run again to show them in 3D"
+            )
 
         @QtCore.Slot(int, int, str)
         def _on_progress(self, index: int, total: int, description: str) -> None:
@@ -500,6 +522,7 @@ if QtWidgets is not None:
         def _invalidate_results(self) -> None:
             self.results.clear()
             self._results_request = None
+            self._results_model = None
             self.viewer.set_result(None, self._request)
             self.progress_bar.setRange(0, 1)
             self.progress_bar.setValue(0)

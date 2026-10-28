@@ -209,3 +209,40 @@ def test_main_window_runs_sections_without_touching_projection_results(window, q
     assert not window.viewer.section_mode
     assert window.run_action.text() == "Run Sweep"
     assert not window.save_csv_action.isEnabled()
+
+
+def test_results_of_a_reloaded_model_are_not_drawn_on_it(window, qtbot) -> None:
+    def run() -> None:
+        window.controls.run_button.click()
+        qtbot.waitUntil(lambda: window.controller.state is OperationState.IDLE, timeout=10000)
+
+    window.controls.set_file_paths((CUBE,))
+    window.controls.section_count.setValue(11)
+    run()
+    window.controls.sections_mode_button.click()
+    run()
+    model_in_m = window.controller.model
+
+    # Same model: switching keeps showing each analysis's selected result.
+    window.controls.projection_mode_button.click()
+    assert window.viewer.result_calls[-1] is not None
+    window.controls.sections_mode_button.click()
+    assert window.viewer.sections[-1] is not None
+
+    # Sections calculated in m, model reloaded in mm for projected area.
+    window.controls.projection_mode_button.click()
+    window.controls.output_unit.setCurrentText("mm")
+    run()
+    assert window.controller.model is not model_in_m
+    window.controls.sections_mode_button.click()
+    window.sections.select_max_area()
+    assert window.viewer.sections[-1] is None
+    assert "model changed" in window.status.text()
+    assert window.sections.rows
+
+    # Projected area calculated in mm, model reloaded in m for sections.
+    window.controls.output_unit.setCurrentText("m")
+    run()
+    window.controls.projection_mode_button.click()
+    assert window.viewer.result_calls[-1] is None
+    assert window.results.rows
