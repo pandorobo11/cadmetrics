@@ -13,11 +13,16 @@ pytest.importorskip("shapely")
 from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 import cadmetrics.gui.pyside_app as pyside_app  # noqa: E402
+import cadmetrics.gui.table_copy as table_copy  # noqa: E402
 from cadmetrics.api import inspect_model  # noqa: E402
 from cadmetrics.gui.control_panel import ControlPanel  # noqa: E402
 from cadmetrics.gui.gui_types import OperationState  # noqa: E402
 from cadmetrics.gui.jobs import CalculationRequest  # noqa: E402
-from cadmetrics.gui.sections_panel import SectionsPanel, section_chart_data  # noqa: E402
+from cadmetrics.gui.sections_panel import (  # noqa: E402
+    SECTION_DISPLAY_FIELDS,
+    SectionsPanel,
+    section_chart_data,
+)
 from cadmetrics.gui.viewer_geometry import section_plane_corners  # noqa: E402
 from cadmetrics.sections import calculate_sections, wind_axes  # noqa: E402
 
@@ -158,6 +163,36 @@ def test_sections_panel_shows_summary_chart_and_saves_csv(qtbot, tmp_path) -> No
     assert len(rows) == 11
     with pytest.raises(ValueError, match="overwrite"):
         panel.save_csv(CUBE)
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+def test_sections_table_copies_a_value_the_row_and_all_rows(qtbot, monkeypatch, platform) -> None:
+    monkeypatch.setattr(table_copy.sys, "platform", platform)
+    panel = SectionsPanel()
+    qtbot.addWidget(panel)
+    selected = []
+    panel.selected_row_changed.connect(selected.append)
+    panel.set_result(_cube_result())
+    panel.select_max_area()
+    # macOS keeps one native selected cell instead of the whole row.
+    selection = panel.table.selectionModel().selectedIndexes()
+    assert (len(selection) == 1) == (platform == "darwin")
+    assert selected and selected[-1] is panel.selected_row()
+    clipboard = QtWidgets.QApplication.clipboard()
+    actions = panel.copy_actions
+    area = SECTION_DISPLAY_FIELDS.index("area")
+
+    actions.copy_row.trigger()
+    header, values = (line.split("\t") for line in clipboard.text().splitlines())
+    assert header[area] == "Area (m²)"
+    assert float(values[area]) == pytest.approx(1.0)
+
+    actions.menu(panel.table.model().index(0, SECTION_DISPLAY_FIELDS.index("x")))
+    actions.copy_value.trigger()
+    assert clipboard.text() == f"{panel.rows[0].x:.12g}"
+
+    actions.copy_all.trigger()
+    assert len(clipboard.text().splitlines()) == len(panel.rows) + 1
 
 
 def test_supersonic_chart_has_one_line_per_roll_angle() -> None:

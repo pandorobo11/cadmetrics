@@ -18,6 +18,12 @@ from cadmetrics.gui.results_chart import (
     ResultsChart,
     series_colors,
 )
+from cadmetrics.gui.table_copy import (
+    TableCopyActions,
+    configure_row_selection,
+    full_precision,
+    tsv,
+)
 from cadmetrics.result_schema import SECTION_FIELD_SPECS, ResultFieldSpec
 from cadmetrics.sections import CrossSectionResult, SectionRow
 
@@ -60,6 +66,15 @@ def section_header_label(key: str, output_unit: str | None) -> str:
     if power is None or not output_unit:
         return spec.gui_label
     return f"{spec.gui_label} ({output_unit}{_UNIT_SUFFIXES[power]})"
+
+
+def section_rows_to_tsv(rows: Sequence[SectionRow]) -> str:
+    """Serialize sections as tab-separated text with headers and 12 significant digits."""
+    unit = rows[0].output_unit if rows else None
+    return tsv(
+        [section_header_label(key, unit) for key in SECTION_DISPLAY_FIELDS],
+        ([spec.extract_value(row) for spec in _GUI_SPECS] for row in rows),
+    )
 
 
 def section_summary_text(result: CrossSectionResult) -> str:
@@ -330,14 +345,19 @@ class SectionsPanel(QtWidgets.QWidget):
         header.setDefaultSectionSize(DEFAULT_COLUMN_WIDTH)
         header.setMinimumSectionSize(70)
         self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self._cocoa_cell_selection = configure_row_selection(self.table)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(24)
         for column, key in enumerate(SECTION_DISPLAY_FIELDS):
             if key == "file":
                 self.table.setColumnHidden(column, True)
         self.table.selectionModel().currentRowChanged.connect(self._emit_selected_row)
+        self.copy_actions = TableCopyActions(
+            self.table,
+            copy_value=self.copy_value,
+            copy_row=self.copy_selection,
+            copy_all=self.copy_all_rows,
+        )
         self.stack.addWidget(self.table)
         self.stack.addWidget(self.chart)
         layout.addWidget(self.stack, 1)
@@ -402,13 +422,36 @@ class SectionsPanel(QtWidgets.QWidget):
 
     def select_row(self, index: int) -> None:
         if 0 <= index < len(self._rows):
-            self.table.selectRow(index)
+            if self._cocoa_cell_selection:
+                column = next(
+                    c
+                    for c in range(len(SECTION_DISPLAY_FIELDS))
+                    if not self.table.isColumnHidden(c)
+                )
+                self.table.setCurrentIndex(self._table_model.index(index, column))
+            else:
+                self.table.selectRow(index)
 
     def select_max_area(self) -> None:
         """Select the station with the largest area, a useful first section to look at."""
         if self._rows:
             best = max(range(len(self._rows)), key=lambda index: self._rows[index].area)
             self.select_row(best)
+
+    def copy_value(self, index: QtCore.QModelIndex | QtCore.QPersistentModelIndex) -> None:
+        """Copy one cell at full precision."""
+        if index.isValid() and 0 <= index.row() < len(self._rows):
+            value = _GUI_SPECS[index.column()].extract_value(self._rows[index.row()])
+            QtWidgets.QApplication.clipboard().setText(full_precision(value))
+
+    def copy_selection(self) -> None:
+        row = self.selected_row()
+        if row is not None:
+            QtWidgets.QApplication.clipboard().setText(section_rows_to_tsv([row]))
+
+    def copy_all_rows(self) -> None:
+        if self._rows:
+            QtWidgets.QApplication.clipboard().setText(section_rows_to_tsv(self._rows))
 
     def save_csv(self, path: str | Path) -> None:
         if not self._rows:
