@@ -35,11 +35,12 @@ Before tagging a release:
 
 1. Update `project.version` in `pyproject.toml`.
 2. Run `uv lock`.
-3. Run `uv run ruff check .`.
-4. Run `uv run mypy`.
-5. Run `uv run pytest`.
-6. Commit the version bump and changes.
-7. Create and push a matching tag, for example:
+3. Run `uv run ruff format --check .`.
+4. Run `uv run ruff check .`.
+5. Run `uv run mypy`.
+6. Run `uv run pytest`.
+7. Commit the version bump and changes.
+8. Create and push a matching tag, for example:
 
 ```bash
 git tag vX.Y.Z
