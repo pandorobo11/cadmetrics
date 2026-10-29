@@ -5,6 +5,9 @@ fields below are grouped by purpose, not by CSV column order. Use the CSV header
 column. Lengths, areas, and volumes use the output unit (`output_unit`), its square, and its cube.
 An empty cell means the value does not apply or could not be calculated.
 
+Cross-section results have their own columns; see
+[Cross Sections and the Area Rule](sections.md#result-columns).
+
 ## Input and settings
 
 | column | meaning |

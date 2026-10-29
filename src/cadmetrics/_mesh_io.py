@@ -274,6 +274,34 @@ def _mesh_shells(
 
 
 def _nested_shell_volume(shells: tuple[_MeshShell, ...]) -> float | None:
+    depths = _shell_depths(shells)
+    if depths is None:
+        return None
+    normalized_signs = {
+        (1 if shell.signed_volume > 0.0 else -1) * (-1 if depth % 2 else 1)
+        for shell, depth in zip(shells, depths, strict=True)
+    }
+    if len(normalized_signs) != 1:
+        return None
+
+    volume_terms = [
+        abs(shell.signed_volume) * (-1 if depth % 2 else 1)
+        for shell, depth in zip(shells, depths, strict=True)
+    ]
+    volume = math.fsum(volume_terms)
+    absolute_volume = math.fsum(abs(value) for value in volume_terms)
+    tolerance = np.finfo(float).eps * max(absolute_volume, np.finfo(float).tiny) * 16.0
+    if not math.isfinite(volume) or volume <= tolerance:
+        return None
+    return volume
+
+
+def _shell_depths(shells: tuple[_MeshShell, ...]) -> tuple[int, ...] | None:
+    """How many other shells enclose each shell, or None when the nesting is unclear.
+
+    Shells that cross each other, or that sit inside two shells neither of which
+    contains the other, cannot be told apart from cavities.
+    """
     contains = [[False] * len(shells) for _ in shells]
     for parent_index, parent in enumerate(shells):
         for child_index, child in enumerate(shells):
@@ -293,25 +321,7 @@ def _nested_shell_volume(shells: tuple[_MeshShell, ...]) -> float | None:
             for second in shell_containers[index + 1 :]:
                 if not (contains[first][second] or contains[second][first]):
                     return None
-
-    depths = tuple(len(shell_containers) for shell_containers in containers)
-    normalized_signs = {
-        (1 if shell.signed_volume > 0.0 else -1) * (-1 if depth % 2 else 1)
-        for shell, depth in zip(shells, depths, strict=True)
-    }
-    if len(normalized_signs) != 1:
-        return None
-
-    volume_terms = [
-        abs(shell.signed_volume) * (-1 if depth % 2 else 1)
-        for shell, depth in zip(shells, depths, strict=True)
-    ]
-    volume = math.fsum(volume_terms)
-    absolute_volume = math.fsum(abs(value) for value in volume_terms)
-    tolerance = np.finfo(float).eps * max(absolute_volume, np.finfo(float).tiny) * 16.0
-    if not math.isfinite(volume) or volume <= tolerance:
-        return None
-    return volume
+    return tuple(len(shell_containers) for shell_containers in containers)
 
 
 def _bounds_strictly_contain(parent: _MeshShell, child: _MeshShell) -> bool:

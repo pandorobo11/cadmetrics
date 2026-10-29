@@ -22,6 +22,8 @@ from STL and STEP files.
 - Calculate exterior base-face area at cadmetrics-coordinate `Xmax`
 - Calculate orthographic projected outline area
 - Sweep all combinations for the selected attitude mode: alpha/beta or roll/pitch
+- Calculate cross-sectional area distributions along the flow (alpha/beta) for area-rule
+  studies, with Mach-plane cuts at several roll angles and a slender-body wave-drag estimate
 - Write CSV output
 - Publish a Python API
 

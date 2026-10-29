@@ -8,7 +8,7 @@ import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from cadmetrics.gui.gui_formatters import overlay_text
-from cadmetrics.gui.gui_types import ViewerOptions
+from cadmetrics.gui.gui_types import SectionDisplay, ViewerOptions
 from cadmetrics.gui.jobs import CalculationRequest
 from cadmetrics.gui.viewer_geometry import (
     base_face_polydata,
@@ -19,6 +19,7 @@ from cadmetrics.gui.viewer_geometry import (
     projection_arrow_geometry,
     projection_camera_geometry,
     row_centroid_point,
+    section_plane_corners,
 )
 from cadmetrics.orientation import Orientation, parse_vector, projection_direction_for_orientation
 from cadmetrics.types import MeasurementRow, ModelData
@@ -140,6 +141,10 @@ class ModelViewer(QtWidgets.QWidget):
         self._component_polydata: dict[int, Any] = {}
         self._highlighted_component: int | None = None
         self._highlight_actor: Any | None = None
+        self._section_mode = False
+        self._section: SectionDisplay | None = None
+        self._section_plane_actor: Any | None = None
+        self._section_outline_actor: Any | None = None
         self._camera_direction: tuple[float, float, float] = DEFAULT_CAMERA_DIRECTION
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -166,7 +171,9 @@ class ModelViewer(QtWidgets.QWidget):
         ).ravel()
         self._mesh_polydata = pv.PolyData(model.vertices, faces)
         self._component_polydata = {}
+        self._section = None
         self._remove_centroid()
+        self._remove_section_outline()
         self._remove_highlight()
         self._plotter.clear()
         self._reset_actors()
@@ -238,6 +245,27 @@ class ModelViewer(QtWidgets.QWidget):
         self._row = row
         self._request = request
         self._update_projection(align_camera=align_camera)
+
+    def set_section_mode(self, enabled: bool) -> None:
+        """Show cross sections instead of the projection arrow and centroid."""
+        if enabled == self._section_mode:
+            return
+        self._section_mode = enabled
+        if not enabled:
+            self._section = None
+        self._update_section(render=False)
+        self._update_projection()
+
+    def set_section(self, section: SectionDisplay | None) -> None:
+        self._section = section
+        self._update_section(render=False)
+        self._update_overlay(render=False)
+        if self._plotter is not None:
+            self._plotter.render()
+
+    @property
+    def section(self) -> SectionDisplay | None:
+        return self._section if self._section_mode else None
 
     def set_options(self, options: ViewerOptions) -> None:
         grid_changed = options.show_grid != self._options.show_grid
@@ -381,6 +409,8 @@ class ModelViewer(QtWidgets.QWidget):
         self._component_preview_bounds = []
         self._component_preview_indexes = []
         self._highlight_actor = None
+        self._section_plane_actor = None
+        self._section_outline_actor = None
 
     def _update_grid(self) -> None:
         if self._plotter is None:
@@ -557,6 +587,8 @@ class ModelViewer(QtWidgets.QWidget):
         self._plotter.render()
 
     def _projection_direction(self) -> np.ndarray | None:
+        if self._section_mode:
+            return None
         if self._row is not None and self._row.direction_x is not None:
             return np.array(
                 [self._row.direction_x, self._row.direction_y, self._row.direction_z], dtype=float
@@ -663,6 +695,9 @@ class ModelViewer(QtWidgets.QWidget):
             if self._options.show_overlay
             else ""
         )
+        section = self.section
+        if text and section is not None and section.overlay_lines:
+            text += "\n" + "\n".join(section.overlay_lines)
         if text and self._component_preview_pending():
             assert self._model is not None
             applied = len(self._model.selected_components) or len(self._model.component_meshes)
@@ -1098,6 +1133,66 @@ class ModelViewer(QtWidgets.QWidget):
             if distance < best_distance:
                 best_index, best_distance = index, distance
         return best_index
+
+    def _update_section(self, *, render: bool) -> None:
+        if self._plotter is None:
+            return
+        self._remove_actor("_section_plane_actor", render=False)
+        self._remove_section_outline()
+        section = self.section
+        if section is None or self._model is None or self._model.vertex_count == 0:
+            if render:
+                self._plotter.render()
+            return
+        import pyvista as pv
+
+        corners = section_plane_corners(
+            self._model.vertices, section.direction, section.x0, axes=section.axes
+        )
+        plane = pv.PolyData(corners, np.array([4, 0, 1, 2, 3]))
+        self._section_plane_actor = self._plotter.add_mesh(
+            plane,
+            color="#2f78c4",
+            opacity=0.18,
+            smooth_shading=False,
+            ambient=0.8,
+            diffuse=0.2,
+            pickable=False,
+        )
+        if section.loops:
+            points = np.vstack(section.loops)
+            lines: list[int] = []
+            offset = 0
+            for loop in section.loops:
+                count = loop.shape[0]
+                lines.extend([count, *range(offset, offset + count)])
+                offset += count
+            outline = pv.PolyData(points, lines=np.asarray(lines))
+            actor = self._plotter.add_mesh(
+                outline,
+                color="#e0306b",
+                line_width=3.0,
+                render_lines_as_tubes=True,
+                pickable=False,
+            )
+            self._section_outline_actor = actor
+            # The outline lies on the surface; draw it in front so it is never hidden.
+            front = self._ensure_front_renderer()
+            if front is not None:
+                self._plotter.remove_actor(actor)
+                front.AddActor(actor)
+        if render:
+            self._plotter.render()
+
+    def _remove_section_outline(self) -> None:
+        actor = self._section_outline_actor
+        if actor is None:
+            return
+        if self._front_renderer is not None and self._front_renderer.HasViewProp(actor):
+            self._front_renderer.RemoveActor(actor)
+            self._section_outline_actor = None
+        else:
+            self._remove_actor("_section_outline_actor", render=False)
 
     def _remove_actor(self, attribute: str, *, render: bool = True) -> None:
         if self._plotter is None:

@@ -242,3 +242,100 @@ GUI_RESULT_FIELD_SPECS = tuple(
 
 def serialize_result_row(row: object) -> dict[str, CsvValue]:
     return {spec.key: spec.extract_value(row) for spec in RESULT_FIELD_SPECS}
+
+
+SECTION_FIELD_SPECS = (
+    RESULT_FIELD_BY_KEY["file"],
+    RESULT_FIELD_BY_KEY["step_components"],
+    RESULT_FIELD_BY_KEY["step_component_names"],
+    RESULT_FIELD_BY_KEY["input_unit"],
+    RESULT_FIELD_BY_KEY["output_unit"],
+    _spec(
+        "mach",
+        "Mach number; 1 cuts planes normal to X, above 1 cuts Mach planes",
+        label="Mach",
+    ),
+    _spec(
+        "alpha_deg",
+        "angle of attack of the freestream the sections are cut relative to",
+        label="Alpha (°)",
+    ),
+    _spec(
+        "beta_deg",
+        "sideslip angle of the freestream the sections are cut relative to",
+        label="Beta (°)",
+    ),
+    _spec(
+        "theta_deg",
+        "roll angle of the Mach planes around the flow, from +Y toward +Z; empty at Mach 1",
+        label="Theta (°)",
+        priority=0,
+    ),
+    _spec(
+        "theta_weight",
+        "weight of this roll angle in the averaged wave drag; the weights add up to 1",
+        label="Theta weight",
+    ),
+    _spec("station", "1-based number of the cutting plane in its series", label="Station"),
+    _spec(
+        "x",
+        "where the cutting plane crosses the flow axis through the origin, in `output_unit`",
+        label="X",
+        priority=1,
+    ),
+    _spec(
+        "area",
+        "section area projected onto the plane normal to the flow, in `output_unit^2`",
+        label="Area",
+        priority=2,
+    ),
+    _spec(
+        "area_slope",
+        "dArea/dX by finite differences, in `output_unit`",
+        label="dArea/dX",
+        priority=3,
+    ),
+    _spec(
+        "sears_haack_area",
+        "area of the Sears-Haack body with the same length and volume, in `output_unit^2`",
+        label="Sears-Haack area",
+        priority=4,
+    ),
+    _spec(
+        "wave_drag_area",
+        "linear-theory wave drag D/q of this roll angle's equivalent body, in `output_unit^2`",
+        label="Wave drag D/q",
+    ),
+    _spec(
+        "sears_haack_drag_area",
+        "D/q of the matching Sears-Haack body, in `output_unit^2`",
+        label="Sears-Haack D/q",
+    ),
+    _spec(
+        "mean_wave_drag_area",
+        "wave drag D/q averaged over all roll angles, in `output_unit^2`",
+        label="Mean D/q",
+    ),
+    _spec(
+        "open_section",
+        "true when the plane crosses a hole in the mesh, so the area may be too small",
+        label="Open",
+    ),
+    RESULT_FIELD_BY_KEY["mesh_deflection"],
+    RESULT_FIELD_BY_KEY["angular_deflection"],
+    RESULT_FIELD_BY_KEY["step_component_mode"],
+    RESULT_FIELD_BY_KEY["method"],
+    RESULT_FIELD_BY_KEY["cadmetrics_version"],
+    RESULT_FIELD_BY_KEY["cadmetrics_hash"],
+    RESULT_FIELD_BY_KEY["warnings"],
+)
+
+SECTION_FIELD_BY_KEY: Mapping[str, ResultFieldSpec] = MappingProxyType(
+    {spec.key: spec for spec in SECTION_FIELD_SPECS}
+)
+if len(SECTION_FIELD_BY_KEY) != len(SECTION_FIELD_SPECS):
+    raise RuntimeError("Section field keys must be unique.")
+
+
+def serialize_section_row(row: object) -> dict[str, CsvValue]:
+    return {spec.key: spec.extract_value(row) for spec in SECTION_FIELD_SPECS}

@@ -34,6 +34,13 @@ from cadmetrics.orientation import (
     roll_pitch_from_direction,
 )
 from cadmetrics.projection import ProjectionMetrics, projected_metrics
+from cadmetrics.sections import (
+    DEFAULT_SECTION_COUNT,
+    DEFAULT_THETA_COUNT,
+    CrossSectionResult,
+    calculate_sections,
+    validate_section_options,
+)
 from cadmetrics.projection import projection_basis
 from cadmetrics.sweep import iter_orientations, orientation_count
 from cadmetrics.types import FloatArray, MeasurementRow, ModelData
@@ -310,6 +317,66 @@ def _centroid_model_coordinates(
     plane_offset = float(model.vertices.mean(axis=0) @ normal)
     point = basis_u * centroid_u + basis_v * centroid_v + normal * plane_offset
     return float(point[0]), float(point[1]), float(point[2])
+
+
+def sections(
+    path: str | Path | Sequence[str | Path],
+    *,
+    section_count: int = DEFAULT_SECTION_COUNT,
+    mach: float = 1.0,
+    theta_count: int = DEFAULT_THETA_COUNT,
+    symmetric: bool = False,
+    alpha_deg: float = 0.0,
+    beta_deg: float = 0.0,
+    input_unit: str = "auto",
+    output_unit: str = "m",
+    mesh_deflection: float | str = "auto",
+    angular_deflection: float | str = "auto",
+    axis_map: str = DEFAULT_AXIS_MAP,
+    step_metric_source: str = "brep",
+    step_components: tuple[int, ...] | None = None,
+    step_component_mode: StepComponentMode = "filter",
+    base_tolerance: float = DEFAULT_BASE_TOLERANCE,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> CrossSectionResult:
+    """Calculate the cross-sectional area distribution along the flow for area-rule studies.
+
+    The flow comes from the angle of attack ``alpha_deg`` and sideslip ``beta_deg``; with
+    both at 0 it runs along +X. At ``mach=1`` the sections are normal to the flow. Above
+    Mach 1 they are Mach planes at ``theta_count`` equally spaced roll angles around the
+    flow, and the wave drag is averaged over them.
+    """
+
+    validate_section_options(
+        section_count=section_count,
+        mach=mach,
+        theta_count=theta_count,
+        symmetric=symmetric,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
+    )
+    options = ModelLoadOptions.resolve(
+        input_unit=input_unit,
+        output_unit=output_unit,
+        mesh_deflection=mesh_deflection,
+        angular_deflection=angular_deflection,
+        axis_map=axis_map,
+        step_metric_source=step_metric_source,
+        step_components=step_components,
+        step_component_mode=step_component_mode,
+        base_tolerance=base_tolerance,
+    )
+    model = _inspect_model_with_options(path, options)
+    return calculate_sections(
+        model,
+        section_count=section_count,
+        mach=mach,
+        theta_count=theta_count,
+        symmetric=symmetric,
+        alpha_deg=alpha_deg,
+        beta_deg=beta_deg,
+        progress_callback=progress_callback,
+    )
 
 
 def sweep(

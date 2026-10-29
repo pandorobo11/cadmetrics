@@ -6,6 +6,7 @@ from pathlib import Path
 from PySide6 import QtCore
 
 from cadmetrics.gui.gui_formatters import format_cell, format_model_file_label
+from cadmetrics.gui.table_copy import tsv
 from cadmetrics.result_schema import GUI_RESULT_FIELD_SPECS, RESULT_FIELD_SPECS, CsvValue
 from cadmetrics.types import MeasurementRow
 
@@ -47,15 +48,10 @@ def header_label(key: str, output_unit: str | None) -> str:
 
 def rows_to_tsv(rows: Iterable[MeasurementRow], output_unit: str | None) -> str:
     """Serialize rows as tab-separated text with headers and 12 significant digits."""
-    lines = ["\t".join(header_label(key, output_unit) for key in DISPLAY_FIELDS)]
-    for row in rows:
-        lines.append(
-            "\t".join(
-                _full_precision(spec.extract_value(row)).replace("\t", " ").replace("\n", " ")
-                for spec in GUI_RESULT_FIELD_SPECS
-            )
-        )
-    return "\n".join(lines) + "\n"
+    return tsv(
+        [header_label(key, output_unit) for key in DISPLAY_FIELDS],
+        ([spec.extract_value(row) for spec in GUI_RESULT_FIELD_SPECS] for row in rows),
+    )
 
 
 def _is_number(value: object) -> bool:

@@ -6,7 +6,7 @@ from threading import Event
 from PySide6 import QtCore
 
 from cadmetrics.gui.gui_types import ModelLoadKey, OperationState
-from cadmetrics.gui.jobs import CalculationRequest, run_calculation
+from cadmetrics.gui.jobs import CalculationRequest, run_calculation, run_sections
 from cadmetrics.gui.model_loading import load_model_for_request, model_load_key
 from cadmetrics.types import MeasurementRow, ModelData
 
@@ -23,6 +23,7 @@ class _OperationWorker(QtCore.QObject):
     calculating = QtCore.Signal()
     rows_appended = QtCore.Signal(list)
     results_ready = QtCore.Signal(list)
+    sections_ready = QtCore.Signal(object)
     load_finished = QtCore.Signal()
     progress = QtCore.Signal(int, int, str)
     failed = QtCore.Signal(str)
@@ -60,6 +61,15 @@ class _OperationWorker(QtCore.QObject):
             self._raise_if_cancelled()
             self.calculating.emit()
             self._last_flush = time.monotonic()
+            if self._request.analysis == "sections":
+                result = run_sections(
+                    self._request,
+                    model=model,
+                    progress_callback=self._on_progress,
+                    cancel_callback=self._raise_if_cancelled,
+                )
+                self.sections_ready.emit(result)
+                return
             rows = run_calculation(
                 self._request,
                 model=model,
@@ -174,6 +184,7 @@ class CalculationController(QtCore.QObject):
     model_loaded = QtCore.Signal(object)
     rows_appended = QtCore.Signal(list)
     results_ready = QtCore.Signal(list)
+    sections_ready = QtCore.Signal(object)
     progress = QtCore.Signal(int, int, str)
     state_changed = QtCore.Signal(object)
     failed = QtCore.Signal(str)
@@ -229,7 +240,7 @@ class CalculationController(QtCore.QObject):
             return
         try:
             if calculate:
-                request.resolved_attitude()
+                request.validate()
             key = model_load_key(request)
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -258,11 +269,13 @@ class CalculationController(QtCore.QObject):
         )
         operation.worker.rows_appended.connect(self.rows_appended)
         operation.worker.results_ready.connect(self.results_ready)
+        operation.worker.sections_ready.connect(self.sections_ready)
         operation.worker.progress.connect(self.progress)
         operation.worker.failed.connect(self.failed)
         operation.worker.cancelled.connect(self.cancelled)
         for terminal in (
             operation.worker.results_ready,
+            operation.worker.sections_ready,
             operation.worker.load_finished,
             operation.worker.failed,
             operation.worker.cancelled,

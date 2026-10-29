@@ -5,11 +5,12 @@ import pytest
 pytest.importorskip("PySide6")
 
 import cadmetrics.gui.results_panel as results_panel
+import cadmetrics.gui.table_copy as table_copy
 from cadmetrics.types import MeasurementRow
 
 
 def test_cocoa_selection_changes_repaint_the_row_without_moving_current(qtbot, monkeypatch):
-    monkeypatch.setattr(results_panel.sys, "platform", "darwin")
+    monkeypatch.setattr(table_copy.sys, "platform", "darwin")
     panel = results_panel.ResultsPanel()
     qtbot.addWidget(panel)
     panel.set_rows(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -12,9 +12,17 @@ from cadmetrics.load_options import (
     ModelLoadOptions,
     StepComponentMode,
 )
+from cadmetrics.sections import (
+    DEFAULT_SECTION_COUNT,
+    DEFAULT_THETA_COUNT,
+    CrossSectionResult,
+    calculate_sections,
+    validate_section_options,
+)
 from cadmetrics.sweep import SweepRange
 from cadmetrics.types import MeasurementRow, ModelData
 
+AnalysisMode = Literal["projection", "sections"]
 AttitudeInputMode = Literal["alpha_beta", "roll_pitch", "vector"]
 ProgressCallback = Callable[[int, int, str], None]
 RowCallback = Callable[[MeasurementRow], None]
@@ -50,6 +58,75 @@ class CalculationRequest:
     vector_x: float = 1.0
     vector_y: float = 0.0
     vector_z: float = 0.0
+    analysis: AnalysisMode = "projection"
+    section_count: int = DEFAULT_SECTION_COUNT
+    mach: float = 1.0
+    theta_count: int = DEFAULT_THETA_COUNT
+    symmetric: bool = False
+    # Freestream direction the sections are cut relative to.
+    section_alpha: float = 0.0
+    section_beta: float = 0.0
+
+    def projection_inputs(self) -> CalculationRequest:
+        """This request with only the inputs that change projected-area results."""
+        return replace(
+            self,
+            analysis="projection",
+            section_count=DEFAULT_SECTION_COUNT,
+            mach=1.0,
+            theta_count=DEFAULT_THETA_COUNT,
+            symmetric=False,
+            section_alpha=0.0,
+            section_beta=0.0,
+        )
+
+    def section_inputs(self) -> CalculationRequest:
+        """This request with only the inputs that change cross-section results."""
+        defaults = CalculationRequest(file=self.file)
+        attitude_fields = {
+            name: getattr(defaults, name)
+            for name in (
+                "attitude_mode",
+                "roll_start",
+                "roll_end",
+                "roll_step",
+                "alpha_start",
+                "alpha_end",
+                "alpha_step",
+                "beta_start",
+                "beta_end",
+                "beta_step",
+                "pitch_start",
+                "pitch_end",
+                "pitch_step",
+                "vector_x",
+                "vector_y",
+                "vector_z",
+            )
+        }
+        # Roll angles only matter for Mach planes.
+        supersonic = self.mach > 1.0
+        return replace(
+            self,
+            analysis="sections",
+            theta_count=self.theta_count if supersonic else DEFAULT_THETA_COUNT,
+            symmetric=self.symmetric if supersonic else False,
+            **attitude_fields,
+        )
+
+    def validate(self) -> None:
+        """Raise ValueError when the analysis inputs cannot be calculated."""
+        if self.analysis == "sections":
+            validate_section_options(
+                section_count=self.section_count,
+                mach=self.mach,
+                theta_count=self.theta_count,
+                symmetric=self.symmetric,
+                alpha_deg=self.section_alpha,
+                beta_deg=self.section_beta,
+            )
+        else:
+            self.resolved_attitude()
 
     def load_options(self) -> ModelLoadOptions:
         return ModelLoadOptions.resolve(
@@ -128,6 +205,34 @@ def run_calculation(
         alpha_deg=attitude.alpha,
         beta_deg=attitude.beta,
         progress_callback=_orientation_progress(progress_callback, row_callback, "alpha_beta"),
+        cancel_callback=cancel_callback,
+    )
+
+
+def run_sections(
+    request: CalculationRequest,
+    *,
+    model: ModelData | None = None,
+    progress_callback: ProgressCallback | None = None,
+    cancel_callback: Callable[[], None] | None = None,
+) -> CrossSectionResult:
+    """Run one GUI cross-section request on a loaded (or newly loaded) model."""
+    if model is None:
+        model = _inspect_model_with_options(request.file, request.load_options())
+
+    def on_progress(done: int, total: int) -> None:
+        if progress_callback is not None:
+            progress_callback(done, total, "sections")
+
+    return calculate_sections(
+        model,
+        section_count=request.section_count,
+        mach=request.mach,
+        theta_count=request.theta_count,
+        symmetric=request.symmetric,
+        alpha_deg=request.section_alpha,
+        beta_deg=request.section_beta,
+        progress_callback=on_progress,
         cancel_callback=cancel_callback,
     )
 

@@ -22,8 +22,9 @@ cadmetrics-gui
 ## Window layout
 
 - **Left panel**: settings, from top to bottom:
+    - `Projected area` / `Sections`: which calculation to run
     - `Setup`: file and units
-    - `Attitude`: the directions to calculate
+    - `Attitude`: the directions to calculate (`Sections` with the `Sections` calculation)
     - `Components`: which STEP solids to include
     - `Shape Display`: what the 3D view shows
     - `Advanced`: axis map and mesh settings
@@ -109,6 +110,9 @@ interrupted; if you close the window during one of these steps, the app waits fo
 If you change a setting after a sweep, the old rows stay visible but are dimmed and marked
 `Results are out of date — Run Sweep to update.` You can still look at them and save them; each
 row keeps the settings it was calculated with. Opening a different model clears the results.
+If the model was loaded again with other units, components, or axes for the other calculation
+(projected area or sections), the old results are not drawn in the 3D view, because they would
+not match the model shown.
 
 ## Read the results
 
@@ -119,8 +123,11 @@ centroid, and the model values. Scroll sideways to see all columns.
 
 - Click a row to point the 3D view along that row's direction and show its values in the overlay.
 - Click a column header to sort.
-- Press ⌘C / Ctrl+C to copy the selected row as tab-separated text (for pasting into a
-  spreadsheet).
+- Press ⌘C / Ctrl+C to copy the selected row, or ⇧⌘C / Ctrl+Shift+C to copy every row in the
+  current sort order. Rows are copied with a header row as tab-separated text, ready to paste
+  into a spreadsheet.
+- Right-click a cell for `Copy Value` (just that value), `Copy Row`, and `Copy All Rows`.
+- Copied values keep 12 significant digits.
 - Numbers are shown with 6 significant digits. CSV files keep full precision.
 - Column headers include the unit, for example `Projected area (m²)`.
 
@@ -148,6 +155,17 @@ when scaled.
 
 `Save CSV` (⌘S / Ctrl+S, also in the `File` menu) saves every result row with all columns, at full
 precision.
+
+## Cross sections
+
+Click `Sections` at the top of the left panel to calculate the cross-sectional area
+distribution for area-rule studies instead of projected area. The `Attitude` settings are
+replaced by `Sections`, `Mach`, `Alpha`, `Beta`, and `Roll angles`, `Run Sweep` becomes `Run Sections`, and the
+results area shows the section chart and table. Click a point or row to see that cutting plane
+and the section outline in the 3D view. Each calculation keeps its own results when you switch.
+The section table copies values and rows the same way as the [result table](#table).
+
+See [Cross Sections and the Area Rule](sections.md).
 
 ## Use the 3D view
 
