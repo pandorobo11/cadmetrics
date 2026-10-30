@@ -111,12 +111,24 @@ class SectionSeries:
         return np.gradient(self.area, self.x) if self.length > 0.0 else np.zeros_like(self.area)
 
     @property
+    def fitted_area_slope(self) -> FloatArray:
+        return fitted_area_slope(self.x, self.area)
+
+    @property
     def wave_drag_area(self) -> float | None:
         return wave_drag_area(self.x, self.area)
 
     @property
+    def wave_drag_spectrum(self) -> FloatArray | None:
+        return wave_drag_spectrum(self.x, self.area)
+
+    @property
     def sears_haack_area(self) -> FloatArray:
         return sears_haack_area(self.x, volume=self.volume)
+
+    @property
+    def sears_haack_area_slope(self) -> FloatArray:
+        return sears_haack_area_slope(self.x, volume=self.volume)
 
     @property
     def sears_haack_drag_area(self) -> float | None:
@@ -139,7 +151,9 @@ class SectionRow:
     x: float
     area: float
     area_slope: float
+    fitted_area_slope: float
     sears_haack_area: float
+    sears_haack_area_slope: float
     wave_drag_area: float | None
     sears_haack_drag_area: float | None
     mean_wave_drag_area: float | None
@@ -186,6 +200,20 @@ class CrossSectionResult:
         return _weighted_mean([(s.weight, s.sears_haack_drag_area) for s in self.series])
 
     @property
+    def wave_drag_spectrum(self) -> FloatArray | None:
+        """D/q of each sine term averaged over the roll angles; it adds up to wave_drag_area."""
+
+        spectra = [s.wave_drag_spectrum for s in self.series]
+        if not spectra or any(spectrum is None for spectrum in spectra):
+            return None
+        total = sum(s.weight for s in self.series)
+        mean = np.zeros(max(spectrum.shape[0] for spectrum in spectra if spectrum is not None))
+        for series, spectrum in zip(self.series, spectra, strict=True):
+            if spectrum is not None:
+                mean[: spectrum.shape[0]] += series.weight * spectrum
+        return mean / total
+
+    @property
     def max_area(self) -> float:
         return max(s.max_area for s in self.series)
 
@@ -201,7 +229,9 @@ class CrossSectionResult:
         rows: list[SectionRow] = []
         for series in self.series:
             slope = series.area_slope
+            fitted_slope = series.fitted_area_slope
             sears_haack = series.sears_haack_area
+            sears_haack_slope = series.sears_haack_area_slope
             drag = series.wave_drag_area
             sears_haack_drag = series.sears_haack_drag_area
             for index, (x, area) in enumerate(zip(series.x, series.area, strict=True)):
@@ -219,7 +249,9 @@ class CrossSectionResult:
                         x=float(x),
                         area=float(area),
                         area_slope=float(slope[index]),
+                        fitted_area_slope=float(fitted_slope[index]),
                         sears_haack_area=float(sears_haack[index]),
+                        sears_haack_area_slope=float(sears_haack_slope[index]),
                         wave_drag_area=drag,
                         sears_haack_drag_area=sears_haack_drag,
                         mean_wave_drag_area=mean_drag,
@@ -885,19 +917,11 @@ def wave_drag_terms(station_count: int) -> int:
     return max(2, min(30, (station_count - 1) // 4))
 
 
-def wave_drag_area(x: FloatArray, area: FloatArray, *, terms: int | None = None) -> float | None:
-    """Zero-lift wave drag D/q of a slender body with the given area distribution.
+def _wave_drag_fit(
+    x: FloatArray, area: FloatArray, terms: int | None
+) -> tuple[FloatArray, FloatArray] | None:
+    """The angles ``phi`` of the stations and the sine coefficients ``A_n`` of S'(x)."""
 
-    Uses the von Karman slender-body result
-    ``D/q = -1/(2 pi) int int S''(x1) S''(x2) ln|x1 - x2| dx1 dx2`` in its Fourier form:
-    with ``x = L (1 - cos phi) / 2`` and ``S'(x) = sum A_n sin(n phi)``,
-    ``D/q = pi/4 sum n A_n^2``. The coefficients are fitted to S(x) by least squares, so
-    the body is taken to start with zero area and zero slope and to end with zero slope
-    (a flat base is allowed). The result is in the square of the length unit.
-    """
-
-    x = np.asarray(x, dtype=float)
-    area = np.asarray(area, dtype=float)
     if x.shape[0] < 4 or x.shape != area.shape:
         return None
     length = float(x[-1] - x[0])
@@ -913,8 +937,55 @@ def wave_drag_area(x: FloatArray, area: FloatArray, *, terms: int | None = None)
             length / 4.0 * (np.sin((n - 1) * phi) / (n - 1) - np.sin((n + 1) * phi) / (n + 1))
         )
     coefficients, *_ = np.linalg.lstsq(basis, area, rcond=None)
-    orders = np.arange(1, count + 1)
-    return float(math.pi / 4.0 * np.sum(orders * coefficients**2))
+    return phi, coefficients
+
+
+def wave_drag_area(x: FloatArray, area: FloatArray, *, terms: int | None = None) -> float | None:
+    """Zero-lift wave drag D/q of a slender body with the given area distribution.
+
+    Uses the von Karman slender-body result
+    ``D/q = -1/(2 pi) int int S''(x1) S''(x2) ln|x1 - x2| dx1 dx2`` in its Fourier form:
+    with ``x = L (1 - cos phi) / 2`` and ``S'(x) = sum A_n sin(n phi)``,
+    ``D/q = pi/4 sum n A_n^2``. The coefficients are fitted to S(x) by least squares, so
+    the body is taken to start with zero area and zero slope and to end with zero slope
+    (a flat base is allowed). The result is in the square of the length unit.
+    """
+
+    spectrum = wave_drag_spectrum(x, area, terms=terms)
+    return None if spectrum is None else float(np.sum(spectrum))
+
+
+def wave_drag_spectrum(
+    x: FloatArray, area: FloatArray, *, terms: int | None = None
+) -> FloatArray | None:
+    """D/q of each sine term ``pi/4 n A_n^2``, from n = 1; they add up to the wave drag.
+
+    The first term carries the base area, the second the overall size (it is all of a
+    Sears-Haack body), and the higher ones the local shape: kinks, bumps, and steps.
+    """
+
+    fit = _wave_drag_fit(np.asarray(x, dtype=float), np.asarray(area, dtype=float), terms)
+    if fit is None:
+        return None
+    _, coefficients = fit
+    orders = np.arange(1, coefficients.shape[0] + 1)
+    return np.asarray(math.pi / 4.0 * orders * coefficients**2, dtype=float)
+
+
+def fitted_area_slope(x: FloatArray, area: FloatArray, *, terms: int | None = None) -> FloatArray:
+    """dArea/dX of the sine series :func:`wave_drag_area` fits, at the stations ``x``.
+
+    This is the slope the wave drag is computed from: smooth, without tessellation noise,
+    and zero at both ends. It is zero everywhere when no series can be fitted.
+    """
+
+    x = np.asarray(x, dtype=float)
+    fit = _wave_drag_fit(x, np.asarray(area, dtype=float), terms)
+    if fit is None:
+        return np.zeros_like(x)
+    phi, coefficients = fit
+    orders = np.arange(1, coefficients.shape[0] + 1)
+    return np.sin(np.outer(phi, orders)) @ coefficients
 
 
 def sears_haack_area(x: FloatArray, *, volume: float) -> FloatArray:
@@ -927,6 +998,18 @@ def sears_haack_area(x: FloatArray, *, volume: float) -> FloatArray:
     xi = np.clip((x - x[0]) / length, 0.0, 1.0)
     max_area = 16.0 * volume / (3.0 * math.pi * length)
     return max_area * (4.0 * xi * (1.0 - xi)) ** 1.5
+
+
+def sears_haack_area_slope(x: FloatArray, *, volume: float) -> FloatArray:
+    """dArea/dX of the Sears-Haack body with the same length and volume."""
+
+    x = np.asarray(x, dtype=float)
+    length = float(x[-1] - x[0]) if x.size else 0.0
+    if not length > 0.0 or not volume > 0.0:
+        return np.zeros_like(x)
+    xi = np.clip((x - x[0]) / length, 0.0, 1.0)
+    max_area = 16.0 * volume / (3.0 * math.pi * length)
+    return 6.0 * max_area / length * np.sqrt(4.0 * xi * (1.0 - xi)) * (1.0 - 2.0 * xi)
 
 
 def sears_haack_drag_area(*, length: float, volume: float) -> float | None:

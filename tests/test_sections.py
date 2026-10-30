@@ -15,11 +15,14 @@ from cadmetrics.api import inspect_model, sections  # noqa: E402
 from cadmetrics.cli import app  # noqa: E402
 from cadmetrics.sections import (  # noqa: E402
     calculate_sections,
+    fitted_area_slope,
     section_outline,
     sears_haack_area,
+    sears_haack_area_slope,
     sears_haack_drag_area,
     theta_angles,
     wave_drag_area,
+    wave_drag_spectrum,
     wind_axes,
 )
 from cadmetrics.orientation import (  # noqa: E402
@@ -334,9 +337,19 @@ def test_wave_drag_of_analytic_distributions() -> None:
         9.0 * math.pi * max_area**2 / (2.0 * length**2)
     )
     assert sears_haack_area(x, volume=volume) == pytest.approx(sears_haack)
+    # The Sears-Haack slope is the single sine term (3 S_max / L) sin(2 phi), which the
+    # fitted series reproduces exactly.
+    phi = np.arccos(1.0 - 2.0 * x / length)
+    slope = 3.0 * max_area / length * np.sin(2.0 * phi)
+    assert sears_haack_area_slope(x, volume=volume) == pytest.approx(slope)
+    assert fitted_area_slope(x, sears_haack) == pytest.approx(slope, abs=1e-12)
+    # All of its wave drag is in the second term.
+    spectrum = wave_drag_spectrum(x, sears_haack)
+    assert spectrum is not None
+    assert spectrum[1] == pytest.approx(wave_drag_area(x, sears_haack))
+    assert np.delete(spectrum, 1) == pytest.approx(0.0, abs=1e-12)
 
     # The von Karman ogive is the minimum-drag nose for a given base area.
-    phi = np.arccos(1.0 - 2.0 * x / length)
     base_area = 0.5
     ogive = base_area / math.pi * (phi - np.sin(2.0 * phi) / 2.0)
     assert wave_drag_area(x, ogive) == pytest.approx(4.0 * base_area**2 / (math.pi * length**2))

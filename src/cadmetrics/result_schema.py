@@ -296,10 +296,22 @@ SECTION_FIELD_SPECS = (
         priority=3,
     ),
     _spec(
+        "fitted_area_slope",
+        "dArea/dX of the smooth sine series the wave drag is computed from, in `output_unit`",
+        label="Fitted dArea/dX",
+        priority=5,
+    ),
+    _spec(
         "sears_haack_area",
         "area of the Sears-Haack body with the same length and volume, in `output_unit^2`",
         label="Sears-Haack area",
         priority=4,
+    ),
+    _spec(
+        "sears_haack_area_slope",
+        "dArea/dX of the Sears-Haack body, in `output_unit`",
+        label="Sears-Haack dArea/dX",
+        priority=6,
     ),
     _spec(
         "wave_drag_area",

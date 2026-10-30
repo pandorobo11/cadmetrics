@@ -161,8 +161,11 @@ precision.
 Click `Sections` at the top of the left panel to calculate the cross-sectional area
 distribution for area-rule studies instead of projected area. The `Attitude` settings are
 replaced by `Sections`, `Mach`, `Alpha`, `Beta`, and `Roll angles`, `Run Sweep` becomes `Run Sections`, and the
-results area shows the section chart and table. Click a point or row to see that cutting plane
-and the section outline in the 3D view. Each calculation keeps its own results when you switch.
+results area shows the section chart and table. The chart plots the section `Area` or its
+`Slope` against x, or the wave drag by `Terms` or, above Mach 1, by `Roll angles`. `Roll angle`
+shows all roll angles or one of them. Click a point or row
+to see that cutting plane and the section outline in the 3D view. Each calculation keeps its own
+results when you switch.
 The section table copies values and rows the same way as the [result table](#table).
 
 See [Cross Sections and the Area Rule](sections.md).

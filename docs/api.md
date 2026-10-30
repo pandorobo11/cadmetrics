@@ -119,7 +119,9 @@ for series in result.series:  # one per roll angle; a single one at Mach 1
 ```
 
 Each `SectionSeries` also has `length`, `volume` (the area integrated along x),
-`area_slope`, `wave_drag_area`, `sears_haack_area`, and `sears_haack_drag_area`.
+`area_slope`, `fitted_area_slope`, `wave_drag_area`, `wave_drag_spectrum`, `sears_haack_area`,
+`sears_haack_area_slope`, and `sears_haack_drag_area`. `wave_drag_spectrum` is the D/q of each
+sine term from n = 1; `result.wave_drag_spectrum` averages it over the roll angles.
 `result.rows()` returns one `SectionRow` per cutting plane, and `SectionRow.to_csv_row()` gives
 the same columns as the CLI and GUI. `progress_callback` is called with the number of finished
 sections and the total.
