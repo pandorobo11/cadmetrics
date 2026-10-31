@@ -310,6 +310,65 @@ def test_terms_chart_splits_the_wave_drag_into_its_terms(qtbot) -> None:
     assert term_chart_data(result, theta=0.0) == panel.chart.data
 
 
+def test_term_bars_stand_on_zero_when_the_terms_are_close(qtbot) -> None:
+    # A cone of 11 sections has two terms of similar size, about 0.069 and 0.044.
+    result = _cube_result()
+    (series,) = result.series
+    x = np.linspace(0.0, 4.0, series.x.shape[0])
+    result = replace(result, series=(replace(series, x=x, area=(x / 4.0) ** 2),))
+    panel = SectionsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(900, 300)
+    panel.show()
+    panel.set_result(result)
+    panel.terms_view_button.click()
+    chart = panel.chart
+
+    for show_reference in (False, True):
+        panel.sears_haack_check.setChecked(show_reference)
+        chart.grab()
+        assert chart._y_range[0] == 0.0
+        for point in chart.data.series[0].points:
+            assert chart._bar_rect(point.x, point.y).bottom() == pytest.approx(chart._plot.bottom())
+
+    # Only the bars add zero; the area and slope charts keep their own ranges.
+    for button in (panel.area_view_button, panel.slope_view_button):
+        button.click()
+        assert chart._extra_y_values() == []
+
+
+def test_roll_angle_chart_does_not_refit_the_wave_drag_to_paint(qtbot, monkeypatch) -> None:
+    fits = []
+    lstsq = np.linalg.lstsq
+    monkeypatch.setattr(
+        np.linalg, "lstsq", lambda *args, **kw: fits.append(1) or lstsq(*args, **kw)
+    )
+    result = _cube_result(mach=1.5, theta_count=4)
+    panel = SectionsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(900, 300)
+    panel.show()
+    panel.set_result(result)
+    panel.roll_angles_view_button.click()
+    chart = panel.chart
+    chart.grab()
+
+    fitted = len(fits)
+    point = chart.data.series[0].points[0]
+    for _ in range(3):
+        chart.grab()
+        chart._roll_angle_tooltip(point, "m")
+    assert len(fits) == fitted
+
+    # A new result brings its own mean.
+    monkeypatch.setattr(np.linalg, "lstsq", lstsq)
+    other = _cube_result(mach=2.0, theta_count=4)
+    panel.set_result(other)
+    (mean,) = [line for line in chart._overlay_lines() if line.label == "Mean"]
+    assert mean.points[0][1] == pytest.approx(other.wave_drag_area)
+    assert other.wave_drag_area != pytest.approx(result.wave_drag_area)
+
+
 def test_roll_angle_chart_plots_each_wave_drag_and_picks_the_roll_angle(qtbot) -> None:
     result = _cube_result(mach=1.5, theta_count=4)
     panel = SectionsPanel()

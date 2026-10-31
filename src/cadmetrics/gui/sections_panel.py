@@ -286,6 +286,7 @@ class SectionsChart(ResultsChart):
         self._show_reference = True
         self._quantity = AREA
         self._theta: float | None = None
+        self._mean_drag: float | None = None
 
     @property
     def quantity(self) -> str:
@@ -304,6 +305,8 @@ class SectionsChart(ResultsChart):
         self._result = result
         self._section_rows = result.rows() if result is not None else []
         self._rows = self._section_rows  # type: ignore[assignment]
+        # Each wave drag is a least-squares fit; paints and tooltips reuse this one.
+        self._mean_drag = self._section_rows[0].mean_wave_drag_area if self._section_rows else None
         self._refresh()
 
     def set_quantity(self, quantity: str) -> None:
@@ -414,15 +417,24 @@ class SectionsChart(ResultsChart):
                 if (drag := by_theta[point.x].sears_haack_drag_area) is not None
             )
             lines.append(ChartLine(reference, REFERENCE_COLOR, "Sears-Haack", dashed=True))
-        mean = result.wave_drag_area
+        mean = self._mean_drag
         if mean is not None:
             ends = ((points[0].x, mean), (points[-1].x, mean))
             lines.append(ChartLine(ends, DETAIL_COLOR, "Mean", width=1.0))
         return lines
 
+    def _terms_reference(self) -> float | None:
+        """The Sears-Haack D/q outlined at n = 2, when it is shown with the terms."""
+        if self._quantity != TERMS or not self._show_reference:
+            return None
+        return self._sears_haack_drag()
+
     def _extra_y_values(self) -> list[float]:
-        drag = self._sears_haack_drag() if self._quantity == TERMS else None
-        return [drag] if drag is not None and self._show_reference else []
+        if self._quantity != TERMS:
+            return []
+        # The bars stand on zero, even when the terms are close to each other.
+        drag = self._terms_reference()
+        return [0.0] if drag is None else [0.0, drag]
 
     def _legend_entries(self) -> list[LegendEntry]:
         if self._quantity in {TERMS, ROLL_ANGLES}:
@@ -434,7 +446,7 @@ class SectionsChart(ResultsChart):
             elif self._quantity == TERMS and self._result and len(self._result.series) > 1:
                 name += ", mean of the roll angles"
             entries = [LegendEntry(self._colors[0], name)]
-            if self._quantity == TERMS and self._extra_y_values():
+            if self._terms_reference() is not None:
                 entries.append(LegendEntry(REFERENCE_COLOR, "Sears-Haack", dashed=True))
             entries += [
                 LegendEntry(line.color, line.label or "", line.dashed)
@@ -494,14 +506,14 @@ class SectionsChart(ResultsChart):
         for point in self._data.series[0].points:
             painter.setBrush(color.darker(130) if point.row == self._hovered else color)
             painter.drawRect(self._bar_rect(point.x, point.y))
-        drag = self._extra_y_values()
-        if drag:
+        drag = self._terms_reference()
+        if drag is not None:
             # The Sears-Haack body has a single term, n = 2.
             painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
             painter.setPen(
                 QtGui.QPen(QtGui.QColor(REFERENCE_COLOR), 1.5, QtCore.Qt.PenStyle.DashLine)
             )
-            painter.drawRect(self._bar_rect(2.0, drag[0], fill=0.95))
+            painter.drawRect(self._bar_rect(2.0, drag, fill=0.95))
 
     def _point_for_row(self, row: int | None) -> tuple[int, ChartPoint] | None:
         if self._quantity == ROLL_ANGLES and row is not None and 0 <= row < len(self._section_rows):
@@ -549,9 +561,9 @@ class SectionsChart(ResultsChart):
         if n > 1:
             share = f" ({cumulative / total:.0%})" if total > 0 else ""
             lines.append(f"Terms 1-{n} {cumulative:.6g} {unit}²{share}")
-        drag = self._extra_y_values()
-        if n == 2 and drag:
-            lines.append(f"Sears-Haack {drag[0]:.6g} {unit}²")
+        drag = self._terms_reference()
+        if n == 2 and drag is not None:
+            lines.append(f"Sears-Haack {drag:.6g} {unit}²")
         return lines
 
     def _roll_angle_tooltip(self, point: ChartPoint, unit: str) -> list[str]:
@@ -559,7 +571,7 @@ class SectionsChart(ResultsChart):
         result = self._result
         series = _series_for(result, point.x)
         if result is not None and series is not None:
-            mean = result.wave_drag_area
+            mean = self._mean_drag
             if mean:
                 total = sum(s.weight for s in result.series)
                 lines.append(f"Share of mean {series.weight * point.y / total / mean:.0%}")
@@ -577,21 +589,22 @@ def theta_choices(result: CrossSectionResult) -> list[tuple[str, float | None]]:
     if len(result.series) < 2:
         return []
     unit = result.model.output_unit
-    mean = result.wave_drag_area
+    drags = [series.wave_drag_area for series in result.series]
+    total = sum(series.weight for series in result.series)
+    weighted = [s.weight * drag for s, drag in zip(result.series, drags, strict=True) if drag]
+    mean = sum(weighted) / total if total and None not in drags else None
     shares = [
-        series.weight * series.wave_drag_area / mean
-        if series.wave_drag_area is not None and mean
-        else None
-        for series in result.series
+        series.weight * drag / mean if drag is not None and mean else None
+        for series, drag in zip(result.series, drags, strict=True)
     ]
     largest = max((share for share in shares if share is not None), default=None)
     choices: list[tuple[str, float | None]] = [("All", None)]
-    for series, share in sorted(
-        zip(result.series, shares, strict=True), key=lambda item: item[0].theta_deg or 0.0
+    for series, drag, share in sorted(
+        zip(result.series, drags, shares, strict=True), key=lambda item: item[0].theta_deg or 0.0
     ):
         text = f"{series.theta_deg:g}°"
-        if series.wave_drag_area is not None:
-            text += f"  D/q {format_cell(series.wave_drag_area)} {unit}²"
+        if drag is not None:
+            text += f"  D/q {format_cell(drag)} {unit}²"
         if share is not None and largest is not None:
             text += f", {share:.0%} of mean"
             if math.isclose(share, largest, rel_tol=1e-9):
