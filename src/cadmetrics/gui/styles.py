@@ -248,6 +248,7 @@ QLabel#sectionWarningLabel {
     color: #925c12; background: #fff4d8; border-radius: 5px; padding: 4px 7px; font-size: 12px;
 }
 QWidget#resultToolbar { background: #f7f9fb; border-top: 1px solid #d9dee4; }
+QWidget#chartOptions { background: #f7f9fb; }
 QLabel#resultCountLabel { color: #5f6872; font-weight: 500; }
 QLabel#emptyStateTitle { color: #344150; font-size: 16px; font-weight: 600; }
 QLabel#emptyStateMessage { color: #58636f; font-size: 13px; }

@@ -37,9 +37,12 @@ ORDINAL_RAMP = (
     "#0d366b",
 )
 MAX_SERIES = 24
+# Dashed reference curves, and thin detail lines under a series (at least 2:1 on the surface).
+REFERENCE_COLOR = "#5f6b78"
+DETAIL_COLOR = "#9aa5b1"
 _SURFACE = "#ffffff"
 _TEXT = "#202832"
-_MUTED_TEXT = "#5f6b78"
+_MUTED_TEXT = REFERENCE_COLOR
 _GRID = "#e1e5ea"
 _AXIS = "#b8c1cb"
 _LINE_WIDTH = 2.0
@@ -62,13 +65,33 @@ EMPTY_MESSAGE = "The chart needs an Alpha / Beta or Roll / Pitch sweep with seve
 class ChartPoint:
     x: float
     y: float
-    row: int  # Index into the rows given to the chart.
+    row: int  # Index into the rows given to the chart; negative for a point that is no row.
 
 
 @dataclass(frozen=True)
 class ChartSeries:
     value: float | None  # The series variable's value, or None for a single series.
     points: tuple[ChartPoint, ...]
+
+
+@dataclass(frozen=True)
+class ChartLine:
+    """A line drawn under the series, such as a reference curve; it is not clickable."""
+
+    points: tuple[tuple[float, float], ...]
+    color: str
+    label: str | None = None
+    dashed: bool = False
+    width: float = 1.5
+    # False leaves the line out of the y range; it is clipped to the plot instead.
+    scales_axis: bool = True
+
+
+@dataclass(frozen=True)
+class LegendEntry:
+    color: str
+    name: str
+    dashed: bool = False
 
 
 @dataclass(frozen=True)
@@ -291,23 +314,38 @@ class ResultsChart(QtWidgets.QWidget):
 
     # Layout -------------------------------------------------------------------------
 
-    def _reference_points(self) -> list[tuple[float, float]]:
-        """A dashed reference curve drawn under the series; none by default."""
+    def _overlay_lines(self) -> list[ChartLine]:
+        """Lines drawn under the series, such as reference curves; none by default."""
         return []
+
+    def _extra_y_values(self) -> list[float]:
+        """Values drawn outside the series and lines that the y range must include."""
+        return []
+
+    def _x_extent(self, xs: list[float]) -> tuple[float, float]:
+        return min(xs), max(xs)
+
+    def _x_ticks(self, low: float, high: float) -> list[float]:
+        return nice_ticks(low, high, target=7)
 
     def _layout(self) -> tuple[list[float], list[float]]:
         points = [point for series in self._data.series for point in series.points]
-        xs = [point.x for point in points]
-        ys = [point.y for point in points] + [y for _, y in self._reference_points()]
-        x_ticks = nice_ticks(min(xs), max(xs), target=7)
-        # Areas are magnitudes; start at zero unless the data sits far above it.
-        y_low = 0.0 if min(ys) <= 0.5 * max(ys) else min(ys)
-        y_ticks = nice_ticks(y_low, max(ys), target=5)
-        self._x_range = (min(xs), max(xs)) if max(xs) > min(xs) else (x_ticks[0], x_ticks[-1])
+        x_low, x_high = self._x_extent([point.x for point in points])
+        ys = [point.y for point in points] + [
+            y for line in self._overlay_lines() if line.scales_axis for _, y in line.points
+        ]
+        ys += self._extra_y_values()
+        x_ticks = self._x_ticks(x_low, x_high)
+        # Areas are magnitudes; start at zero unless the data sits far above it. Values
+        # that change sign, such as slopes, keep both sides of zero.
+        low, high = min(ys), max(ys)
+        y_low = low if low < 0.0 or low > 0.5 * high else 0.0
+        y_ticks = nice_ticks(y_low, max(high, 0.0), target=5)
+        self._x_range = (x_low, x_high) if x_high > x_low else (x_ticks[0], x_ticks[-1])
         self._y_range = (y_ticks[0], y_ticks[-1])
         metrics = self.fontMetrics()
         left = max(metrics.horizontalAdvance(_format_tick(tick)) for tick in y_ticks) + 22
-        legend = self._legend_height() if self._data.series_label else 8
+        legend = self._legend_height() if self._legend_entries() else 8
         top = legend + metrics.height() + 6  # Room for the y-axis title above the plot.
         bottom = metrics.height() * 2 + 16
         right = 18 + self._direct_label_width()
@@ -394,6 +432,9 @@ class ResultsChart(QtWidgets.QWidget):
             )
         painter.setPen(QtGui.QPen(QtGui.QColor(_AXIS), 1.0))
         painter.drawLine(plot.bottomLeft(), plot.bottomRight())
+        if self._y_range[0] < 0.0 < self._y_range[1]:
+            zero = self._map_xy(x0, 0.0).y()
+            painter.drawLine(QtCore.QPointF(plot.left(), zero), QtCore.QPointF(plot.right(), zero))
         painter.setPen(QtGui.QColor(_MUTED_TEXT))
         x_title = self._data.x_label
         painter.drawText(
@@ -412,12 +453,16 @@ class ResultsChart(QtWidgets.QWidget):
     def _paint_series(self, painter: QtGui.QPainter) -> None:
         surface = QtGui.QColor(_SURFACE)
         base_opacity = painter.opacity()
-        reference = self._reference_points()
-        if len(reference) >= 2:
-            pen = QtGui.QPen(QtGui.QColor(_MUTED_TEXT), 1.5, QtCore.Qt.PenStyle.DashLine)
-            painter.setPen(pen)
-            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-            painter.drawPolyline(QtGui.QPolygonF([self._map_xy(x, y) for x, y in reference]))
+        painter.save()
+        painter.setClipRect(self._plot.adjusted(-2, -2, 2, 2))
+        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        for line in self._overlay_lines():
+            if len(line.points) < 2:
+                continue
+            style = QtCore.Qt.PenStyle.DashLine if line.dashed else QtCore.Qt.PenStyle.SolidLine
+            painter.setPen(QtGui.QPen(QtGui.QColor(line.color), line.width, style))
+            painter.drawPolyline(QtGui.QPolygonF([self._map_xy(x, y) for x, y in line.points]))
+        painter.restore()
         hovered = self._hovered_series()
         order = list(range(len(self._data.series)))
         if hovered is not None:
@@ -491,24 +536,27 @@ class ResultsChart(QtWidgets.QWidget):
             painter.setBrush(QtGui.QColor(self._colors[index]))
             painter.drawEllipse(center, size / 2, size / 2)
 
-    def _legend_entries(self) -> list[tuple[str, str]]:
+    def _legend_entries(self) -> list[LegendEntry]:
+        """One entry per series when there are several; none for a single line."""
+        if not self._data.series_label:
+            return []
         return [
-            (self._colors[index], self._series_name(series))
+            LegendEntry(self._colors[index], self._series_name(series))
             for index, series in enumerate(self._data.series)
         ]
 
-    def _legend_rows(self) -> list[list[tuple[str, str, float]]]:
+    def _legend_rows(self) -> list[list[tuple[LegendEntry, float]]]:
         """Categorical legend entries wrapped to the plot width, with their widths."""
         metrics = self.fontMetrics()
         available = max(self.width() - 60.0, 120.0)
-        rows: list[list[tuple[str, str, float]]] = [[]]
+        rows: list[list[tuple[LegendEntry, float]]] = [[]]
         used = 0.0
-        for color, name in self._legend_entries():
-            width = 22 + metrics.horizontalAdvance(name) + 16
+        for entry in self._legend_entries():
+            width = 22 + metrics.horizontalAdvance(entry.name) + 16
             if rows[-1] and used + width > available:
                 rows.append([])
                 used = 0.0
-            rows[-1].append((color, name, width))
+            rows[-1].append((entry, width))
             used += width
         return rows
 
@@ -521,7 +569,7 @@ class ResultsChart(QtWidgets.QWidget):
         return rows * line + 10
 
     def _paint_legend(self, painter: QtGui.QPainter) -> None:
-        if not self._data.series_label:
+        if not self._legend_entries():
             return
         metrics = self.fontMetrics()
         line = metrics.height() + 4
@@ -531,11 +579,14 @@ class ResultsChart(QtWidgets.QWidget):
         for row_index, row in enumerate(self._legend_rows()):
             x = self._plot.left()
             y = 6 + metrics.height() / 2 + row_index * line
-            for color, name, width in row:
-                painter.setPen(QtGui.QPen(QtGui.QColor(color), 3.0))
+            for entry, width in row:
+                pen = QtGui.QPen(QtGui.QColor(entry.color), 1.5 if entry.dashed else 3.0)
+                if entry.dashed:
+                    pen.setStyle(QtCore.Qt.PenStyle.DashLine)
+                painter.setPen(pen)
                 painter.drawLine(QtCore.QPointF(x, y), QtCore.QPointF(x + 16, y))
                 painter.setPen(QtGui.QColor(_TEXT))
-                painter.drawText(QtCore.QPointF(x + 22, y + metrics.ascent() / 2 - 1), name)
+                painter.drawText(QtCore.QPointF(x + 22, y + metrics.ascent() / 2 - 1), entry.name)
                 x += width
 
     def _ordinal_legend_items(self) -> tuple[list[tuple[QtCore.QPointF, str]], list[QtCore.QRectF]]:

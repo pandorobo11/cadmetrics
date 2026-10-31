@@ -20,8 +20,13 @@ from cadmetrics.gui.gui_types import OperationState  # noqa: E402
 from cadmetrics.gui.jobs import CalculationRequest  # noqa: E402
 from cadmetrics.gui.sections_panel import (  # noqa: E402
     SECTION_DISPLAY_FIELDS,
+    ROLL_ANGLES,
+    SLOPE,
+    TERMS,
     SectionsPanel,
+    roll_angle_chart_data,
     section_chart_data,
+    term_chart_data,
 )
 from cadmetrics.gui.viewer_geometry import section_plane_corners  # noqa: E402
 from cadmetrics.sections import calculate_sections, wind_axes  # noqa: E402
@@ -201,6 +206,199 @@ def test_supersonic_chart_has_one_line_per_roll_angle() -> None:
 
     assert data.series_label == "Theta"
     assert [series.value for series in data.series] == [-90.0, 0.0, 90.0, 180.0]
+
+
+def test_slope_chart_plots_the_fitted_slope_over_the_differences(qtbot) -> None:
+    panel = SectionsPanel()
+    qtbot.addWidget(panel)
+    panel.set_result(_cube_result())
+
+    panel.slope_view_button.click()
+
+    rows = panel.rows
+    points = panel.chart.data.series[0].points
+    assert panel.chart.y_title == "dArea/dX"
+    assert [point.y for point in points] == [row.fitted_area_slope for row in rows]
+    assert [line.label for line in panel.chart._overlay_lines()] == [
+        "Differences",
+        "Sears-Haack",
+    ]
+    differences, reference = panel.chart._overlay_lines()
+    assert [y for _, y in differences.points] == [row.area_slope for row in rows]
+    assert [y for _, y in reference.points] == [row.sears_haack_area_slope for row in rows]
+    # A step such as the cube's flat front would squeeze the fitted line; it is clipped.
+    assert not differences.scales_axis
+
+    panel.sears_haack_check.setChecked(False)
+    assert [line.label for line in panel.chart._overlay_lines()] == ["Differences"]
+
+
+def test_one_roll_angle_can_be_charted_with_its_sears_haack_body(qtbot) -> None:
+    panel = SectionsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(900, 300)
+    panel.show()
+    result = _cube_result(mach=1.5, theta_count=4)
+    panel.set_result(result)
+
+    combo = panel.theta_combo
+    assert combo.isVisible()
+    assert combo.itemText(0) == "All"
+    assert [combo.itemData(index) for index in range(1, combo.count())] == [
+        -90.0,
+        0.0,
+        90.0,
+        180.0,
+    ]
+    assert all("% of mean" in combo.itemText(index) for index in range(1, combo.count()))
+    assert sum("(largest)" in combo.itemText(index) for index in range(combo.count())) >= 1
+    assert not panel.sears_haack_check.isVisible()
+    assert panel.chart._overlay_lines() == []
+
+    combo.setCurrentIndex(combo.findData(90.0))
+    panel.slope_view_button.click()
+
+    (series,) = panel.chart.data.series
+    assert {panel.rows[point.row].theta_deg for point in series.points} == {90.0}
+    assert panel.sears_haack_check.isVisible()
+    assert [line.label for line in panel.chart._overlay_lines()] == [
+        "Differences",
+        "Sears-Haack",
+    ]
+
+    # Selecting a row of another roll angle switches the chart to that roll angle.
+    other = next(index for index, row in enumerate(panel.rows) if row.theta_deg == 0.0)
+    panel.select_row(other)
+    assert combo.currentData() == 0.0
+    assert other in {point.row for point in panel.chart.data.series[0].points}
+
+
+def test_section_chart_can_show_one_roll_angle_and_the_slope() -> None:
+    rows = _cube_result(mach=1.5, theta_count=4).rows()
+    data = section_chart_data(rows, quantity=SLOPE, theta=0.0)
+
+    assert data.series_label is None
+    (series,) = data.series
+    assert all(rows[point.row].theta_deg == 0.0 for point in series.points)
+    assert [point.y for point in series.points] == [
+        rows[point.row].fitted_area_slope for point in series.points
+    ]
+
+
+def test_terms_chart_splits_the_wave_drag_into_its_terms(qtbot) -> None:
+    result = _cube_result(mach=1.5, theta_count=4)
+    panel = SectionsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(900, 300)
+    panel.show()
+    panel.set_result(result)
+
+    panel.terms_view_button.click()
+
+    assert panel.chart.quantity == TERMS
+    (series,) = panel.chart.data.series
+    assert [point.x for point in series.points] == list(range(1, len(series.points) + 1))
+    # The bars add up to the mean wave drag, and none of them is a table row.
+    assert sum(point.y for point in series.points) == pytest.approx(result.wave_drag_area)
+    assert all(point.row < 0 for point in series.points)
+    assert panel.sears_haack_check.isVisible()
+
+    panel.theta_combo.setCurrentIndex(panel.theta_combo.findData(0.0))
+    (series,) = panel.chart.data.series
+    zero = next(s for s in result.series if s.theta_deg == 0.0)
+    assert sum(point.y for point in series.points) == pytest.approx(zero.wave_drag_area)
+    assert term_chart_data(result, theta=0.0) == panel.chart.data
+
+
+def test_term_bars_stand_on_zero_when_the_terms_are_close(qtbot) -> None:
+    # A cone of 11 sections has two terms of similar size, about 0.069 and 0.044.
+    result = _cube_result()
+    (series,) = result.series
+    x = np.linspace(0.0, 4.0, series.x.shape[0])
+    result = replace(result, series=(replace(series, x=x, area=(x / 4.0) ** 2),))
+    panel = SectionsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(900, 300)
+    panel.show()
+    panel.set_result(result)
+    panel.terms_view_button.click()
+    chart = panel.chart
+
+    for show_reference in (False, True):
+        panel.sears_haack_check.setChecked(show_reference)
+        chart.grab()
+        assert chart._y_range[0] == 0.0
+        for point in chart.data.series[0].points:
+            assert chart._bar_rect(point.x, point.y).bottom() == pytest.approx(chart._plot.bottom())
+
+    # Only the bars add zero; the area and slope charts keep their own ranges.
+    for button in (panel.area_view_button, panel.slope_view_button):
+        button.click()
+        assert chart._extra_y_values() == []
+
+
+def test_roll_angle_chart_does_not_refit_the_wave_drag_to_paint(qtbot, monkeypatch) -> None:
+    fits = []
+    lstsq = np.linalg.lstsq
+    monkeypatch.setattr(
+        np.linalg, "lstsq", lambda *args, **kw: fits.append(1) or lstsq(*args, **kw)
+    )
+    result = _cube_result(mach=1.5, theta_count=4)
+    panel = SectionsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(900, 300)
+    panel.show()
+    panel.set_result(result)
+    panel.roll_angles_view_button.click()
+    chart = panel.chart
+    chart.grab()
+
+    fitted = len(fits)
+    point = chart.data.series[0].points[0]
+    for _ in range(3):
+        chart.grab()
+        chart._roll_angle_tooltip(point, "m")
+    assert len(fits) == fitted
+
+    # A new result brings its own mean.
+    monkeypatch.setattr(np.linalg, "lstsq", lstsq)
+    other = _cube_result(mach=2.0, theta_count=4)
+    panel.set_result(other)
+    (mean,) = [line for line in chart._overlay_lines() if line.label == "Mean"]
+    assert mean.points[0][1] == pytest.approx(other.wave_drag_area)
+    assert other.wave_drag_area != pytest.approx(result.wave_drag_area)
+
+
+def test_roll_angle_chart_plots_each_wave_drag_and_picks_the_roll_angle(qtbot) -> None:
+    result = _cube_result(mach=1.5, theta_count=4)
+    panel = SectionsPanel()
+    qtbot.addWidget(panel)
+    panel.resize(900, 300)
+    panel.show()
+    panel.set_result(result)
+
+    panel.roll_angles_view_button.click()
+
+    assert panel.chart.quantity == ROLL_ANGLES
+    data = roll_angle_chart_data(result)
+    assert panel.chart.data == data
+    (series,) = data.series
+    drags = {s.theta_deg: s.wave_drag_area for s in result.series}
+    assert {point.x: point.y for point in series.points} == drags
+    assert [line.label for line in panel.chart._overlay_lines()] == ["Sears-Haack", "Mean"]
+
+    # Clicking a roll angle selects its largest section and chooses it in the list.
+    point = next(point for point in series.points if point.x == 90.0)
+    panel.chart.row_clicked.emit(point.row)
+    assert panel.theta_combo.currentData() == 90.0
+    selected = panel.selected_row()
+    assert selected is not None and selected.theta_deg == 90.0
+    assert selected.area == max(row.area for row in panel.rows if row.theta_deg == 90.0)
+
+    # A Mach 1 result has a single roll angle; the chart falls back to the area.
+    panel.set_result(_cube_result())
+    assert not panel.roll_angles_view_button.isVisible()
+    assert panel.chart.quantity != ROLL_ANGLES
 
 
 def test_section_plane_corners_lie_on_the_cutting_plane() -> None:

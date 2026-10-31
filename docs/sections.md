@@ -44,8 +44,16 @@ The results appear below the 3D view as a chart of area against x, with one line
 Click a point, or a table row, to show that cutting plane and the outline of the section in the
 3D view. The section with the largest area is selected when the calculation finishes.
 
-With a single line, `Sears-Haack` overlays the ideal shape for comparison as a dashed line (see
-below). `Save CSV` saves every section, and `Save Image` saves the chart.
+- `Area` / `Slope` plots the section area or its slope dArea/dX against x (see
+  [Area and slope](#area-and-slope)).
+- `Terms` plots how much each part of the slope adds to the wave drag (see
+  [Wave drag by term](#wave-drag-by-term)).
+- Above Mach 1, `Roll angles` plots the wave drag of each roll angle, and `Roll angle` shows
+  every roll angle or one of them (see [Roll angles above Mach 1](#roll-angles-above-mach-1)).
+- `Sears-Haack` overlays the ideal body for comparison as a dashed line (see below). Against x,
+  it needs a single line.
+
+`Save CSV` saves every section, and `Save Image` saves the chart.
 
 Switching back to `Projected area` keeps the section results, and the projected-area results are
 kept while you work with sections.
@@ -153,6 +161,75 @@ The wave drag is an estimate for comparing designs, not a prediction of the real
   the area, and cadmetrics measures solid geometry only.
 - Only the wave drag at zero lift is included; skin friction and lift-dependent drag are not.
 
+### Area and slope
+
+The wave drag comes from how the *slope* of the area curve changes, not from the area itself.
+cadmetrics writes the slope dArea/dX as a sum of sine waves along the body, the n-th wave having
+n half-waves over the length, and the wave drag adds up the square of each wave's size times n:
+
+```
+D/q = π/4 · Σ n·Aₙ²     with dArea/dX = Σ Aₙ sin(nφ) and x = L (1 − cos φ) / 2
+```
+
+The Sears-Haack body is a single wave (n = 2). Every other wave adds drag, and short ones cost
+more than long ones. That is why kinks and narrow bumps in the area curve matter more than a
+smooth difference from the dashed line.
+
+`Slope` shows this directly:
+
+| line | meaning |
+|---|---|
+| Fitted (colored) | The sine series the wave drag is computed from. It is smooth and zero at both ends. |
+| Differences (gray) | dArea/dX from neighbouring sections, as in the `area_slope` column. It shows every step and some mesh noise, and it is cut off at the edges of the chart where it runs far beyond the fitted line. |
+| Sears-Haack (dashed) | The slope of the matching Sears-Haack body, a single smooth wave. |
+
+What to look for:
+
+- A **step** in the slope is a kink in the area curve, for example where a wing root starts.
+- A **sharp swing** up and down is a narrow bump, for example a canopy or a wing over a short
+  stretch of the body. Spreading it out along x lowers the drag.
+- A **spike** in the differences is a jump in the area, such as a flat front face. It is the
+  most expensive shape there is.
+- Where the fitted line ripples around a step or spike, the series cannot follow a shape that
+  sharp. The wave drag of such a model depends on the number of sections, so compare runs with
+  the same `Sections`.
+- Where the fitted line follows the dashed one closely, there is little to gain.
+
+### Wave drag by term
+
+`Terms` shows the wave drag of each term n of the sine series as a bar; the bars add up to D/q.
+Above Mach 1 they are averaged over the roll angles, unless `Roll angle` picks one.
+
+| terms | come from | to reduce them |
+|---|---|---|
+| n = 1 | The base area at the rear end. | A smaller base. |
+| n = 2 | The overall size: how much volume the length holds. A Sears-Haack body has this term only; its D/q is the dashed outline. | Less maximum area, or a longer body. |
+| higher n | The local shape: kinks, narrow bumps, and steps, the higher the sharper. | Smoothing the shape where the slope chart shows steps and swings. |
+
+When the n = 2 bar is close to the dashed outline and most of the drag sits in higher terms,
+the overall size is fine and the local shape is what to work on. When n = 2 dominates, smoothing
+gains little; the body has to get slimmer or longer.
+
+The highest terms can only follow features a few sections wide. A bar that is tall at the last
+terms usually means a step or sharp kink that the series cannot resolve.
+
+### Roll angles above Mach 1
+
+Above Mach 1 each roll angle is its own equivalent body, and the wave drag is their weighted
+mean. `Roll angles` plots the D/q of each roll angle against θ, with the D/q of its Sears-Haack
+body (dashed) and the mean (gray). Click a point to choose that roll angle and show its largest
+section. `Roll angle` lists each roll angle with its D/q and its share of the mean, and marks the
+largest share. Improve those roll angles first.
+
+Choose one roll angle to chart its line alone. Its Sears-Haack body, which has that roll angle's
+length, can then be overlaid in `Area` and `Slope`, and `Terms` shows that roll angle alone.
+Selecting a table row of another roll angle switches the chart to that roll angle.
+
+For a wing that lies close to the XY plane, the planes that lean toward ±Z (θ = ±90°) cut the
+wing almost as at Mach 1, so its area appears over a short stretch and the bump is sharpest.
+The planes that lean toward ±Y (θ = 0° and 180°) cut the wing at an angle and spread its area
+along x. These roll angles often differ most.
+
 ## Result columns
 
 Section results have their own CSV columns, one row per cutting plane:
@@ -166,8 +243,10 @@ Section results have their own CSV columns, one row per cutting plane:
 | `station` | Number of the cutting plane, from 1. |
 | `x` | Where the plane crosses the flow axis through the origin. |
 | `area` | Section area, projected onto the plane normal to the flow. |
-| `area_slope` | How fast the area changes, dArea/dX. |
+| `area_slope` | How fast the area changes, dArea/dX, from the neighbouring sections. |
+| `fitted_area_slope` | dArea/dX of the smooth sine series the wave drag is computed from. |
 | `sears_haack_area` | Area of the matching Sears-Haack body at this x. |
+| `sears_haack_area_slope` | dArea/dX of the matching Sears-Haack body. |
 | `wave_drag_area` | Wave drag D/q of this roll angle. |
 | `sears_haack_drag_area` | D/q of the matching Sears-Haack body. |
 | `mean_wave_drag_area` | D/q averaged over all roll angles. |
